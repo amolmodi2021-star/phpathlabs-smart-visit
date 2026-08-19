@@ -1,6 +1,7 @@
 import RefreshButton from "@/components/lims/RefreshButton";
 import PageSizeSelect from "@/components/lims/PageSizeSelect";
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
+import { useSearchParams } from "react-router-dom";
 import { recalculateRegistrationStatus } from "@/lib/limsStatus";
 import { formatAgeGender, patientAgeYears } from "@/lib/ageGender";
 import { patientDisplayName } from "@/lib/patientDisplayName";
@@ -153,10 +154,17 @@ const handleResultTabKey = (e: React.KeyboardEvent) => {
 
 const ResultsEntry = () => {
   const qc = useQueryClient();
+  const [searchParams] = useSearchParams();
   const { data: masterMachines = [] } = useMasterLookup("machine_name");
   const [mode, setMode] = useState<"patient" | "machine" | "outsourced">("patient");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+
+  // Deep-link from Workflow: ?tab=results&q=<invoice>
+  useEffect(() => {
+    const q = searchParams.get("q");
+    if (q) setSearch(q);
+  }, [searchParams]);
   const [selectedMachine, setSelectedMachine] = useState<string>("all");
   const [pageSize, setPageSize] = useState<LimsPageSize>(() => readLimsPageSize());
   const [expandedPatient, setExpandedPatient] = useState<string | null>(null);

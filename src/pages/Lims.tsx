@@ -1,9 +1,13 @@
 import { Component, lazy, Suspense, useState, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
 import { getAllowedSections } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
+import { fetchWorkflowPendingCount } from "@/lib/workflowFetch";
+import { addDaysToDayString, localDayString } from "@/lib/workflowWorksheet";
 
 const PatientRegistration = lazy(() => import("@/components/lims/PatientRegistration"));
 const RegisteredPatients = lazy(() => import("@/components/lims/RegisteredPatients"));
@@ -12,6 +16,7 @@ const DuePayments = lazy(() => import("@/components/lims/DuePayments"));
 const BadDebts = lazy(() => import("@/components/lims/BadDebts"));
 const SampleCollection = lazy(() => import("@/components/lims/SampleCollection"));
 const SampleAcceptance = lazy(() => import("@/components/lims/SampleAcceptance"));
+const Workflow = lazy(() => import("@/components/lims/Workflow"));
 const ResultsEntry = lazy(() => import("@/components/lims/ResultsEntry"));
 const ResultVerification = lazy(() => import("@/components/lims/ResultVerification"));
 const DoctorApproval = lazy(() => import("@/components/lims/DoctorApproval"));
@@ -25,6 +30,7 @@ const allLimsTabs = [
   { key: "patients", label: "Registered Patients", component: RegisteredPatients },
   { key: "sample_collection", label: "Sample Collection", component: SampleCollection },
   { key: "sample_acceptance", label: "Sample Acceptance", component: SampleAcceptance },
+  { key: "workflow", label: "Workflow", component: Workflow },
   { key: "results", label: "Results", component: ResultsEntry },
   { key: "verification", label: "Result Verification", component: ResultVerification },
   { key: "doctor_approval", label: "Doctor Approval", component: DoctorApproval },
@@ -97,6 +103,20 @@ const Lims = () => {
   const safeTab = visibleTabs.some((t) => t.key === activeTab)
     ? activeTab
     : (visibleTabs[0]?.key ?? "register");
+  const workflowTabVisible = visibleTabs.some((t) => t.key === "workflow");
+
+  const { data: workflowBadgeCount } = useQuery({
+    queryKey: ["workflow_badge_count"],
+    queryFn: () => {
+      const today = localDayString();
+      return fetchWorkflowPendingCount({
+        acceptedFromDay: addDaysToDayString(today, -1),
+        acceptedToDay: today,
+      });
+    },
+    enabled: workflowTabVisible,
+    staleTime: 60_000,
+  });
 
   // Keep visited panels mounted so RQ cache + UI state survive tab switches.
   const [mountedTabs, setMountedTabs] = useState<Set<string>>(() => new Set([safeTab]));
@@ -119,7 +139,13 @@ const Lims = () => {
       next.add(v);
       return next;
     });
-    setSearchParams({ tab: v }, { replace: true });
+    // Preserve Results deep-link `q` only while staying on / returning to Results.
+    const next: Record<string, string> = { tab: v };
+    if (v === "results") {
+      const q = searchParams.get("q");
+      if (q) next.q = q;
+    }
+    setSearchParams(next, { replace: true });
   };
 
   if (visibleTabs.length === 0) {
@@ -137,8 +163,13 @@ const Lims = () => {
       <Tabs value={safeTab} onValueChange={switchTab} className="w-full">
         <TabsList className="w-full justify-start flex-wrap h-auto gap-1">
           {visibleTabs.map((t) => (
-            <TabsTrigger key={t.key} value={t.key}>
+            <TabsTrigger key={t.key} value={t.key} className="gap-1.5">
               {t.label}
+              {t.key === "workflow" && typeof workflowBadgeCount === "number" && workflowBadgeCount > 0 && (
+                <Badge variant="secondary" className="h-5 min-w-5 px-1.5 text-[10px] font-mono">
+                  {workflowBadgeCount > 999 ? "999+" : workflowBadgeCount}
+                </Badge>
+              )}
             </TabsTrigger>
           ))}
         </TabsList>

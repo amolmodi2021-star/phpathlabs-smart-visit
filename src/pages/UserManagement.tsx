@@ -95,6 +95,7 @@ const ALL_TABS = [
       { key: "patients", label: "Registered Patients" },
       { key: "sample_collection", label: "Sample Collection" },
       { key: "sample_acceptance", label: "Sample Acceptance" },
+      { key: "workflow", label: "Workflow" },
       { key: "results", label: "Results" },
       { key: "verification", label: "Result Verification" },
       { key: "doctor_approval", label: "Doctor Approval" },
