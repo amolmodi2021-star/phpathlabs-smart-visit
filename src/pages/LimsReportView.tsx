@@ -107,8 +107,39 @@ const isBlankDataUrl = async (dataUrl: string): Promise<boolean> => {
   }
 };
 
+type PageCaptureOptions = {
+  /** Override html-to-image pixelRatio (default: snip 1.5 / structured 3). */
+  pixelRatio?: number;
+  /** JPEG quality 0–1 (default 0.92). */
+  quality?: number;
+  /** Force image cache bust (default: true for structured, false for snip). */
+  cacheBust?: boolean;
+  attempts?: number;
+};
+
+/** Run async work over items with a fixed concurrency pool (preserves result order). */
+async function mapPool<T, R>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  const run = async () => {
+    while (true) {
+      const i = next++;
+      if (i >= items.length) return;
+      results[i] = await worker(items[i], i);
+    }
+  };
+  const n = Math.max(1, Math.min(concurrency, items.length || 1));
+  await Promise.all(Array.from({ length: n }, () => run()));
+  return results;
+};
+
 // Capture a page with retries (handles intermittent blank captures from html-to-image).
-// Structured pages: pixelRatio 3 for sharp text.
+// Structured pages: pixelRatio 3 for sharp PDF text.
+// Print uses a lower ratio (still sharp on laser) for much faster dialog open.
 // Snip pages: lower pixelRatio — full-page photo captures at PR3 hang / OOM and stuck the
 // WhatsApp popup on "Downloading…".
 const captureWithRetry = async (
@@ -116,18 +147,20 @@ const captureWithRetry = async (
   width: number,
   height: number,
   format: "png" | "jpeg",
+  captureOpts?: PageCaptureOptions,
 ): Promise<string> => {
   const isSnipPage = !!el.querySelector("img[data-snip-image]");
-  const pixelRatio = isSnipPage ? 1.5 : 3;
-  const attempts = isSnipPage ? 2 : 3;
+  const pixelRatio = captureOpts?.pixelRatio ?? (isSnipPage ? 1.5 : 3);
+  const attempts = captureOpts?.attempts ?? (isSnipPage ? 2 : 3);
   const captureMs = isSnipPage ? 20_000 : 25_000;
+  const jpegQuality = captureOpts?.quality ?? 0.92;
   const opts = {
     pixelRatio,
     backgroundColor: "#ffffff",
     width,
     height,
     // data: URLs + cacheBust re-fetch loops can stall snip captures
-    cacheBust: !isSnipPage,
+    cacheBust: captureOpts?.cacheBust ?? !isSnipPage,
     style: { transform: "none", transformOrigin: "top left" } as Record<string, string>,
   };
   let lastUrl = "";
@@ -136,7 +169,7 @@ const captureWithRetry = async (
     try {
       lastUrl = format === "png"
         ? await withTimeout(toPng(el, { ...opts, quality: 1 }), captureMs, "snip/page PNG capture")
-        : await withTimeout(toJpeg(el, { ...opts, quality: 0.92 }), captureMs, "page JPEG capture");
+        : await withTimeout(toJpeg(el, { ...opts, quality: jpegQuality }), captureMs, "page JPEG capture");
       const blank = await isBlankDataUrl(lastUrl);
       if (!blank) return lastUrl;
     } catch (e) {
@@ -1520,32 +1553,40 @@ const LimsReportView = () => {
   const handlePrint = async () => {
     if (!printRef.current) return;
     setDownloading(true);
-    const originalLetterhead = showLetterhead;
     const histFills: SVGElement[] = [];
+    const root = printRef.current;
     try {
-      // Always print without letterhead. Hide histogram fill so print uses less ink.
-      setShowLetterhead(false);
-      printRef.current.classList.add("print-strip-colors");
-      histFills.push(...Array.from(printRef.current.querySelectorAll<SVGElement>(".hist-fill")));
-      histFills.forEach((el) => { el.style.display = "none"; });
-      await new Promise(r => setTimeout(r, 150));
-
-      await waitForCaptureReady(printRef.current);
-
-      const pageElements = printRef.current.querySelectorAll("[data-page]");
-      if (pageElements.length === 0) { toast.error("No pages to print"); return; }
-
-      const imageUrls: string[] = [];
-      const NATIVE_W = Math.round((PAGE_WIDTH_MM / 25.4) * 96);
-      const NATIVE_H = Math.round((PAGE_HEIGHT_MM / 25.4) * 96);
-      for (let i = 0; i < pageElements.length; i++) {
-        const el = pageElements[i] as HTMLElement;
-        imageUrls.push(await captureWithRetry(el, NATIVE_W, NATIVE_H, "jpeg"));
+      // Wait for measure-then-repack so printed pages match on-screen layout.
+      const waitStart = Date.now();
+      while (!paginationReadyRef.current && Date.now() - waitStart < 10_000) {
+        await new Promise((r) => setTimeout(r, 40));
       }
 
-      printRef.current.classList.remove("print-strip-colors");
+      // Hide letterhead / strip fills via CSS+DOM only — avoid React re-render of every page.
+      root.classList.add("print-strip-colors", "print-no-letterhead");
+      histFills.push(...Array.from(root.querySelectorAll<SVGElement>(".hist-fill")));
+      histFills.forEach((el) => { el.style.display = "none"; });
+      await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+
+      await waitForCaptureReady(root);
+
+      const pageElements = Array.from(root.querySelectorAll<HTMLElement>("[data-page]"));
+      if (pageElements.length === 0) { toast.error("No pages to print"); return; }
+
+      const NATIVE_W = Math.round((PAGE_WIDTH_MM / 25.4) * 96);
+      const NATIVE_H = Math.round((PAGE_HEIGHT_MM / 25.4) * 96);
+      // Print: PR2 (~2× fewer pixels than PDF PR3) + parallel capture. Still sharp on laser.
+      const imageUrls = await mapPool(pageElements, 2, (el) =>
+        captureWithRetry(el, NATIVE_W, NATIVE_H, "jpeg", {
+          pixelRatio: 2,
+          quality: 0.88,
+          cacheBust: false,
+          attempts: 2,
+        }),
+      );
+
+      root.classList.remove("print-strip-colors", "print-no-letterhead");
       histFills.forEach((el) => { el.style.display = ""; });
-      setShowLetterhead(originalLetterhead);
 
       // Create hidden iframe for printing (no new tab)
       const iframe = document.createElement("iframe");
@@ -1586,27 +1627,34 @@ const LimsReportView = () => {
 
       const images = iframeDoc.querySelectorAll(".print-page img");
       let loadedCount = 0;
+      let opened = false;
       const onAllLoaded = () => {
+        if (opened) return;
+        opened = true;
         setTimeout(() => {
           iframe.contentWindow!.focus();
           iframe.contentWindow!.print();
           setTimeout(() => { try { document.body.removeChild(iframe); } catch(e) {} }, 1000);
-        }, 300);
+        }, 50);
       };
 
       if (images.length === 0) { onAllLoaded(); }
       else {
         images.forEach(img => {
-          (img as HTMLImageElement).onload = () => { loadedCount++; if (loadedCount === images.length) onAllLoaded(); };
-          (img as HTMLImageElement).onerror = () => { loadedCount++; if (loadedCount === images.length) onAllLoaded(); };
+          const im = img as HTMLImageElement;
+          const done = () => { loadedCount++; if (loadedCount === images.length) onAllLoaded(); };
+          if (im.complete) done();
+          else {
+            im.onload = done;
+            im.onerror = done;
+          }
         });
       }
     } catch (err: any) {
       toast.error("Print failed: " + (err.message || "Unknown error"));
     } finally {
       histFills.forEach((el) => { el.style.display = ""; });
-      printRef.current?.classList.remove("print-strip-colors");
-      setShowLetterhead(originalLetterhead);
+      printRef.current?.classList.remove("print-strip-colors", "print-no-letterhead");
       setDownloading(false);
     }
   };
@@ -1734,6 +1782,7 @@ const LimsReportView = () => {
             {/* Background letterhead */}
             {letterheadImageUrl && showLetterhead && (
               <img
+                data-report-letterhead
                 src={letterheadImageUrl}
                 alt=""
                 className="absolute inset-0 w-full h-full object-cover pointer-events-none"
@@ -1933,8 +1982,11 @@ const LimsReportView = () => {
 
       {/* Print styles - minimal since we use image-based printing */}
       <style>{`
+        #print-container.print-no-letterhead [data-report-letterhead] {
+          display: none !important;
+        }
         @media print {
-          .print\\:hidden { display: none !important; }
+          .print\:hidden { display: none !important; }
         }
       `}</style>
     </div>
