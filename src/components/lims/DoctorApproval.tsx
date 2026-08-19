@@ -14,7 +14,15 @@ import { useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-quer
 import { useLimsPipelineRealtime } from "@/hooks/useLimsPipelineRealtime";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import {
+  loadOutsourcedRefRange,
+  loadOutsourcedUnit,
+  resolveOutsourcedFlag,
+  resolveOutsourcedRefRange,
+  resolveOutsourcedUnit,
+} from "@/lib/outsourcedResultOverrides";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -413,10 +421,14 @@ const DoctorApproval = () => {
           if (existing?.status === "approved" || existing?.status === "dispatched") continue;
           const resolved = resolveNormalRange(p.id, fullReg);
           const refText = resolved.text || p.normal_range_text || (p.normal_range_low != null && p.normal_range_high != null ? `${p.normal_range_low} - ${p.normal_range_high}` : "");
-          const savedUnit = isParamOutsourced && existing?.unit ? existing.unit : (p.unit || "");
-          const savedRefRange = resolved.rangeType === "descriptive"
-            ? (resolved.text || "")
-            : (isParamOutsourced && existing?.reference_range ? existing.reference_range : refText);
+          const savedUnit = loadOutsourcedUnit(!!isParamOutsourced, existing, p.unit || "");
+          const savedRefRange = loadOutsourcedRefRange(
+            !!isParamOutsourced,
+            existing,
+            refText,
+            resolved.rangeType,
+            resolved.text || "",
+          );
           parameters.push({
             parameterId: p.id, paramCode: p.param_code || "", parameterName: p.parameter_name,
             unit: savedUnit, referenceRange: savedRefRange, normalRangeLow: resolved.low ?? p.normal_range_low, normalRangeHigh: resolved.high ?? p.normal_range_high,
@@ -599,11 +611,26 @@ const DoctorApproval = () => {
         const k = `${reg.id}||${p.parameterId}`;
         const value = editedValues[k] !== undefined ? editedValues[k] : p.resultValue;
         const autoFlag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue, p.descriptiveOptions, p.normalRangeText, p.unit, p.normalFindings);
-        const flag = p.isOutsourced && editedFlags[k] !== undefined ? editedFlags[k] : autoFlag;
-        const unit = p.isOutsourced && editedUnits[k] !== undefined ? editedUnits[k] : p.unit;
-        const refRange = p.rangeType === "descriptive"
-          ? (p.normalRangeText || "")
-          : (p.isOutsourced && editedRefRanges[k] !== undefined ? editedRefRanges[k] : p.referenceRange);
+        const flag = resolveOutsourcedFlag({
+          isOutsourced: p.isOutsourced,
+          editedFlag: editedFlags[k],
+          savedFlag: p.flag,
+          autoFlag,
+        });
+        const unit = resolveOutsourcedUnit({
+          isOutsourced: p.isOutsourced,
+          editedUnit: editedUnits[k],
+          savedUnit: p.unit,
+          masterUnit: p.unit,
+        });
+        const refRange = resolveOutsourcedRefRange({
+          isOutsourced: p.isOutsourced,
+          editedRef: editedRefRanges[k],
+          savedRef: p.referenceRange,
+          masterRef: p.referenceRange,
+          rangeType: p.rangeType,
+          normalRangeText: p.normalRangeText,
+        });
          const noteVal = editedNotes[k] !== undefined ? editedNotes[k] : p.note;
          const testNoteVal = editedTestNotes[`${reg.id}||${testId}`] !== undefined ? editedTestNotes[`${reg.id}||${testId}`] : (loadedTestNotes[`${reg.id}||${testId}`] || "");
          upserts.push({ registration_id: reg.id, test_id: p.testId, parameter_id: p.parameterId, param_code: p.paramCode, parameter_name: p.parameterName, result_value: applyUnitSuffix(value, unit, p.rangeType) || null, unit, reference_range: refRange, normal_range_low: p.normalRangeLow, normal_range_high: p.normalRangeHigh, flag: flag || null, status: "approved", is_calculated: p.isCalculated, is_from_interface: p.isFromInterface, approved_at: new Date().toISOString(), entered_at: p.enteredAt || null, entered_by: p.enteredBy || null, verified_at: p.verifiedAt || null, verified_by: p.verifiedBy || null, approved_by: approver.pathologistName, note: noteVal || null, test_note: testNoteVal || null });
@@ -698,10 +725,29 @@ const DoctorApproval = () => {
           const k = `${reg.id}||${p.parameterId}`;
           const value = editedValues[k] !== undefined ? editedValues[k] : p.resultValue;
           const autoFlag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue, p.descriptiveOptions, p.normalRangeText, p.unit, p.normalFindings);
-          const flag = p.isOutsourced && editedFlags[k] !== undefined ? editedFlags[k] : autoFlag;
+          const flag = resolveOutsourcedFlag({
+            isOutsourced: p.isOutsourced,
+            editedFlag: editedFlags[k],
+            savedFlag: p.flag,
+            autoFlag,
+          });
+          const unit = resolveOutsourcedUnit({
+            isOutsourced: p.isOutsourced,
+            editedUnit: editedUnits[k],
+            savedUnit: p.unit,
+            masterUnit: p.unit,
+          });
+          const refRange = resolveOutsourcedRefRange({
+            isOutsourced: p.isOutsourced,
+            editedRef: editedRefRanges[k],
+            savedRef: p.referenceRange,
+            masterRef: p.referenceRange,
+            rangeType: p.rangeType,
+            normalRangeText: p.normalRangeText,
+          });
           const noteVal = editedNotes[k] !== undefined ? editedNotes[k] : p.note;
           const testNoteVal = editedTestNotes[`${reg.id}||${testId}`] !== undefined ? editedTestNotes[`${reg.id}||${testId}`] : (loadedTestNotes[`${reg.id}||${testId}`] || "");
-          upserts.push({ registration_id: reg.id, test_id: p.testId, parameter_id: p.parameterId, param_code: p.paramCode, parameter_name: p.parameterName, result_value: applyUnitSuffix(value, p.unit, p.rangeType) || null, unit: p.unit, reference_range: p.referenceRange, normal_range_low: p.normalRangeLow, normal_range_high: p.normalRangeHigh, flag: flag || null, status: "approved", is_calculated: p.isCalculated, is_from_interface: p.isFromInterface, approved_at: new Date().toISOString(), entered_at: p.enteredAt || null, entered_by: p.enteredBy || null, verified_at: p.verifiedAt || null, verified_by: p.verifiedBy || null, approved_by: approver.pathologistName, note: noteVal || null, test_note: testNoteVal || null });
+          upserts.push({ registration_id: reg.id, test_id: p.testId, parameter_id: p.parameterId, param_code: p.paramCode, parameter_name: p.parameterName, result_value: applyUnitSuffix(value, unit, p.rangeType) || null, unit, reference_range: refRange, normal_range_low: p.normalRangeLow, normal_range_high: p.normalRangeHigh, flag: flag || null, status: "approved", is_calculated: p.isCalculated, is_from_interface: p.isFromInterface, approved_at: new Date().toISOString(), entered_at: p.enteredAt || null, entered_by: p.enteredBy || null, verified_at: p.verifiedAt || null, verified_by: p.verifiedBy || null, approved_by: approver.pathologistName, note: noteVal || null, test_note: testNoteVal || null });
         }
         if (upserts.length > 0) {
           const paramIds = [...new Set(upserts.map((u) => u.parameter_id).filter(Boolean))];
@@ -792,11 +838,26 @@ const DoctorApproval = () => {
         const k = `${regId}||${p.parameterId}`;
         const value = editedValues[k] !== undefined ? editedValues[k] : p.resultValue;
         const autoFlag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue, p.descriptiveOptions, p.normalRangeText, p.unit, p.normalFindings);
-        const flag = p.isOutsourced && editedFlags[k] !== undefined ? editedFlags[k] : autoFlag;
-        const unit = p.isOutsourced && editedUnits[k] !== undefined ? editedUnits[k] : p.unit;
-        const refRange = p.rangeType === "descriptive"
-          ? (p.normalRangeText || "")
-          : (p.isOutsourced && editedRefRanges[k] !== undefined ? editedRefRanges[k] : p.referenceRange);
+        const flag = resolveOutsourcedFlag({
+          isOutsourced: p.isOutsourced,
+          editedFlag: editedFlags[k],
+          savedFlag: p.flag,
+          autoFlag,
+        });
+        const unit = resolveOutsourcedUnit({
+          isOutsourced: p.isOutsourced,
+          editedUnit: editedUnits[k],
+          savedUnit: p.unit,
+          masterUnit: p.unit,
+        });
+        const refRange = resolveOutsourcedRefRange({
+          isOutsourced: p.isOutsourced,
+          editedRef: editedRefRanges[k],
+          savedRef: p.referenceRange,
+          masterRef: p.referenceRange,
+          rangeType: p.rangeType,
+          normalRangeText: p.normalRangeText,
+        });
         upserts.push({
           registration_id: regId, test_id: p.testId, parameter_id: p.parameterId,
           param_code: p.paramCode, parameter_name: p.parameterName,
@@ -883,7 +944,12 @@ const DoctorApproval = () => {
     const key = `${regId}||${p.parameterId}`;
     const currentValue = editedValues[key] !== undefined ? editedValues[key] : p.resultValue;
     const autoFlag = calculateFlag(currentValue, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue, p.descriptiveOptions, p.normalRangeText, p.unit, p.normalFindings);
-    const flag = p.isOutsourced && editedFlags[key] !== undefined ? editedFlags[key] : autoFlag;
+    const flag = resolveOutsourcedFlag({
+      isOutsourced: p.isOutsourced,
+      editedFlag: editedFlags[key],
+      savedFlag: p.flag,
+      autoFlag,
+    });
     const isNegative = isSuspectNegativeResult(currentValue);
     const rowBg = isNegative ? "bg-red-50" : ((flag === "H" || flag === "L" || flag === "A" || flag === "X") ? "bg-destructive/5" : "");
     const negCls = isNegative ? "border-red-500 ring-1 ring-red-300 text-red-700 font-semibold" : "";
@@ -947,7 +1013,16 @@ const DoctorApproval = () => {
           {p.isOutsourced && !p.isSnipMode ? (<Input value={editedUnits[key] !== undefined ? editedUnits[key] : (p.unit || "")} onChange={e => setEditedUnits(prev => ({ ...prev, [key]: e.target.value }))} className="h-6 text-xs w-[70px]" />) : p.unit}
         </TableCell>
         <TableCell className="py-1.5 text-xs text-muted-foreground">
-          {p.isOutsourced && !p.isSnipMode ? (<Input value={editedRefRanges[key] !== undefined ? editedRefRanges[key] : (p.referenceRange || "")} onChange={e => setEditedRefRanges(prev => ({ ...prev, [key]: e.target.value }))} className="h-6 text-xs w-[100px]" />) : p.referenceRange}
+          {p.isOutsourced && !p.isSnipMode ? (
+            <Textarea
+              value={editedRefRanges[key] !== undefined ? editedRefRanges[key] : (p.referenceRange || "")}
+              onChange={e => setEditedRefRanges(prev => ({ ...prev, [key]: e.target.value }))}
+              className="min-h-[4.5rem] text-xs w-[220px] max-w-[280px] whitespace-pre-wrap resize-y"
+              placeholder="Normal / advisory range (paste as-is)"
+            />
+          ) : (
+            <span className="whitespace-pre-wrap">{p.referenceRange}</span>
+          )}
         </TableCell>
         <TableCell className="py-1.5 text-center">
           {p.isOutsourced && !p.isSnipMode ? (
@@ -1107,7 +1182,7 @@ const DoctorApproval = () => {
                       <TableHead className="py-1 text-xs w-[80px]">Code</TableHead><TableHead className="py-1 text-xs">Parameter</TableHead>
                       <TableHead className="py-1 text-xs w-[100px]">Prev 1</TableHead><TableHead className="py-1 text-xs w-[100px]">Prev 2</TableHead>
                       <TableHead className="py-1 text-xs w-[200px]">Result</TableHead><TableHead className="py-1 text-xs w-[60px]">Unit</TableHead>
-                      <TableHead className="py-1 text-xs w-[120px]">Ref. Range</TableHead><TableHead className="py-1 text-xs w-[70px] text-center">Flag</TableHead>
+                      <TableHead className="py-1 text-xs w-[240px]">Ref. Range</TableHead><TableHead className="py-1 text-xs w-[70px] text-center">Flag</TableHead>
                       <TableHead className="py-1 text-xs w-[70px] text-center">Status</TableHead><TableHead className="py-1 text-xs w-[40px] text-center"></TableHead>
                     </TableRow></TableHeader>
                     <TableBody>{tg.params.map(p => renderParamRow(entry, p))}</TableBody>

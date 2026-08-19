@@ -10,7 +10,15 @@ import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tansta
 import { useLimsPipelineRealtime } from "@/hooks/useLimsPipelineRealtime";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import {
+  loadOutsourcedRefRange,
+  loadOutsourcedUnit,
+  resolveOutsourcedFlag,
+  resolveOutsourcedRefRange,
+  resolveOutsourcedUnit,
+} from "@/lib/outsourcedResultOverrides";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -991,12 +999,16 @@ const ResultsEntry = () => {
           const rangeLow = resolved.low ?? p.normal_range_low;
           const rangeHigh = resolved.high ?? p.normal_range_high;
 
-          // For outsourced params, use saved values from patient_results if available.
-          // Descriptive: reference_range is Display Text only (never Normal Findings).
-          const savedUnit = isParamOutsourced && existing?.unit ? existing.unit : (p.unit || "");
-          const savedRefRange = resolved.rangeType === "descriptive"
-            ? (resolved.text || "")
-            : (isParamOutsourced && existing?.reference_range ? existing.reference_range : refText);
+          // Outsourced: patient_results overrides are patient-scoped (never master params).
+          // Prefer saved unit/range as pasted — including advisory / multi-line text.
+          const savedUnit = loadOutsourcedUnit(!!isParamOutsourced, existing, p.unit || "");
+          const savedRefRange = loadOutsourcedRefRange(
+            !!isParamOutsourced,
+            existing,
+            refText,
+            resolved.rangeType,
+            resolved.text || "",
+          );
 
           parameters.push({
             parameterId: p.id,
@@ -1186,11 +1198,26 @@ const ResultsEntry = () => {
       const key = `${regId}||${p.parameterId}`;
       const value = currentEdits[key] !== undefined ? currentEdits[key] : p.resultValue;
       const autoFlag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue, p.descriptiveOptions, p.normalRangeText, p.unit, p.normalFindings);
-      const flag = p.isOutsourced && editedFlags[key] !== undefined ? editedFlags[key] : autoFlag;
-      const unit = p.isOutsourced && editedUnits[key] !== undefined ? editedUnits[key] : p.unit;
-      const refRange = p.rangeType === "descriptive"
-        ? (p.normalRangeText || "")
-        : (p.isOutsourced && editedRefRanges[key] !== undefined ? editedRefRanges[key] : p.referenceRange);
+      const flag = resolveOutsourcedFlag({
+        isOutsourced: p.isOutsourced,
+        editedFlag: editedFlags[key],
+        savedFlag: p.flag,
+        autoFlag,
+      });
+      const unit = resolveOutsourcedUnit({
+        isOutsourced: p.isOutsourced,
+        editedUnit: editedUnits[key],
+        savedUnit: p.unit,
+        masterUnit: p.unit,
+      });
+      const refRange = resolveOutsourcedRefRange({
+        isOutsourced: p.isOutsourced,
+        editedRef: editedRefRanges[key],
+        savedRef: p.referenceRange,
+        masterRef: p.referenceRange,
+        rangeType: p.rangeType,
+        normalRangeText: p.normalRangeText,
+      });
       upserts.push({
         registration_id: regId,
         test_id: p.testId,
@@ -1349,11 +1376,26 @@ const ResultsEntry = () => {
         const key = `${reg.id}||${p.parameterId}`;
         const value = editedValues[key] !== undefined ? editedValues[key] : p.resultValue;
         const autoFlag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue, p.descriptiveOptions, p.normalRangeText, p.unit, p.normalFindings);
-        const flag = p.isOutsourced && editedFlags[key] !== undefined ? editedFlags[key] : autoFlag;
-        const unit = p.isOutsourced && editedUnits[key] !== undefined ? editedUnits[key] : p.unit;
-        const refRange = p.rangeType === "descriptive"
-          ? (p.normalRangeText || "")
-          : (p.isOutsourced && editedRefRanges[key] !== undefined ? editedRefRanges[key] : p.referenceRange);
+        const flag = resolveOutsourcedFlag({
+          isOutsourced: p.isOutsourced,
+          editedFlag: editedFlags[key],
+          savedFlag: p.flag,
+          autoFlag,
+        });
+        const unit = resolveOutsourcedUnit({
+          isOutsourced: p.isOutsourced,
+          editedUnit: editedUnits[key],
+          savedUnit: p.unit,
+          masterUnit: p.unit,
+        });
+        const refRange = resolveOutsourcedRefRange({
+          isOutsourced: p.isOutsourced,
+          editedRef: editedRefRanges[key],
+          savedRef: p.referenceRange,
+          masterRef: p.referenceRange,
+          rangeType: p.rangeType,
+          normalRangeText: p.normalRangeText,
+        });
         upserts.push({
           registration_id: reg.id,
           test_id: p.testId,
@@ -1642,7 +1684,12 @@ const ResultsEntry = () => {
     const key = `${regId}||${p.parameterId}`;
     const currentValue = editedValues[key] !== undefined ? editedValues[key] : p.resultValue;
     const autoFlag = calculateFlag(currentValue, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue, p.descriptiveOptions, p.normalRangeText, p.unit, p.normalFindings);
-    const flag = p.isOutsourced && editedFlags[key] !== undefined ? editedFlags[key] : autoFlag;
+    const flag = resolveOutsourcedFlag({
+      isOutsourced: p.isOutsourced,
+      editedFlag: editedFlags[key],
+      savedFlag: p.flag,
+      autoFlag,
+    });
     const isInterfaceParameter = p.sendForInterface && !p.isCalculated;
     const isAwaiting = isInterfaceParameter && !currentValue;
 
@@ -1810,14 +1857,16 @@ const ResultsEntry = () => {
             p.isSnipMode ? (
               <span className="text-xs text-muted-foreground">{p.referenceRange || "—"}</span>
             ) : (
-              <Input
+              <Textarea
                 value={editedRefRanges[key] !== undefined ? editedRefRanges[key] : (p.referenceRange || "")}
                 onChange={e => setEditedRefRanges(prev => ({ ...prev, [key]: e.target.value }))}
-                className="h-6 text-xs w-[100px]"
-                placeholder="Ref Range"
+                className="min-h-[4.5rem] text-xs w-[220px] max-w-[280px] whitespace-pre-wrap resize-y"
+                placeholder="Normal / advisory range (paste as-is)"
               />
             )
-          ) : p.referenceRange}
+          ) : (
+            <span className="whitespace-pre-wrap">{p.referenceRange}</span>
+          )}
         </TableCell>
         <TableCell className="py-1.5 text-center">
           {p.isOutsourced ? (
@@ -2177,7 +2226,7 @@ const ResultsEntry = () => {
                           <TableHead className="py-1 text-xs w-[100px]">Prev 1</TableHead>
                           <TableHead className="py-1 text-xs w-[200px]">Result</TableHead>
                           <TableHead className="py-1 text-xs w-[60px]">Unit</TableHead>
-                          <TableHead className="py-1 text-xs w-[120px]">Ref. Range</TableHead>
+                          <TableHead className="py-1 text-xs w-[240px]">Ref. Range</TableHead>
                           <TableHead className="py-1 text-xs w-[70px] text-center">Flag</TableHead>
                           <TableHead className="py-1 text-xs w-[70px] text-center">Status</TableHead>
                           <TableHead className="py-1 text-xs w-[40px] text-center" title="Outsource"></TableHead>
@@ -2447,7 +2496,7 @@ const ResultsEntry = () => {
                       <TableHead className="py-2 text-xs">Parameter</TableHead>
                       <TableHead className="py-2 text-xs w-[180px]">Result</TableHead>
                       <TableHead className="py-2 text-xs w-[80px]">Unit</TableHead>
-                      <TableHead className="py-2 text-xs w-[120px]">Ref. Range</TableHead>
+                      <TableHead className="py-2 text-xs w-[240px]">Ref. Range</TableHead>
                       <TableHead className="py-2 text-xs w-[80px] text-center">Flag</TableHead>
                       <TableHead className="py-2 text-xs w-[90px] text-center">Status</TableHead>
                       <TableHead className="py-2 text-xs w-[50px] text-center"></TableHead>
@@ -2457,7 +2506,12 @@ const ResultsEntry = () => {
                     {blankParams.map(p => {
                       const key = `${reg.id}||${p.parameterId}`;
                       const currentValue = editedValues[key] !== undefined ? editedValues[key] : p.resultValue;
-                      const flag = p.isOutsourced && editedFlags[key] !== undefined ? editedFlags[key] : calculateFlag(currentValue, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue, p.descriptiveOptions, p.normalRangeText, p.unit, p.normalFindings);
+                      const flag = resolveOutsourcedFlag({
+                        isOutsourced: p.isOutsourced,
+                        editedFlag: editedFlags[key],
+                        savedFlag: p.flag,
+                        autoFlag: calculateFlag(currentValue, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue, p.descriptiveOptions, p.normalRangeText, p.unit, p.normalFindings),
+                      });
                       const isInterfaceParameter = p.sendForInterface && !p.isCalculated;
                       const isAwaiting = isInterfaceParameter && !currentValue;
                       return (
@@ -2516,13 +2570,15 @@ const ResultsEntry = () => {
                           </TableCell>
                           <TableCell className="py-2 text-xs text-muted-foreground">
                             {p.isOutsourced ? (
-                              <Input
+                              <Textarea
                                 value={editedRefRanges[key] !== undefined ? editedRefRanges[key] : (p.referenceRange || "")}
                                 onChange={e => setEditedRefRanges(prev => ({ ...prev, [key]: e.target.value }))}
-                                className="h-6 text-xs w-[100px]"
-                                placeholder="Ref Range"
+                                className="min-h-[4.5rem] text-xs w-full whitespace-pre-wrap resize-y"
+                                placeholder="Normal / advisory range (paste as-is)"
                               />
-                            ) : p.referenceRange}
+                            ) : (
+                              <span className="whitespace-pre-wrap">{p.referenceRange}</span>
+                            )}
                           </TableCell>
                           <TableCell className="py-2 text-center">
                             {p.isOutsourced ? (

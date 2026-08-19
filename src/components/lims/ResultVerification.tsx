@@ -10,7 +10,15 @@ import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tansta
 import { useLimsPipelineRealtime } from "@/hooks/useLimsPipelineRealtime";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import {
+  loadOutsourcedRefRange,
+  loadOutsourcedUnit,
+  resolveOutsourcedFlag,
+  resolveOutsourcedRefRange,
+  resolveOutsourcedUnit,
+} from "@/lib/outsourcedResultOverrides";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -38,6 +46,7 @@ import { fetchVerificationCandidateIds, fetchFilteredSortedIds } from "@/lib/lim
 import SyncingOverlay from "./SyncingOverlay";
 import NewBadge from "./NewBadge";
 import { isSnipResultDetail } from "@/lib/outsourcedResultMode";
+import { useNavigate } from "react-router-dom";
 
 /** List headers — omit tests / cancelled_tests JSON (egress). */
 const REG_LIST_SELECT =
@@ -104,15 +113,48 @@ interface PatientEntry {
   snipOnlyTests: SnipOnlyTest[];
 }
 
+const VERIFICATION_UI_RESTORE_KEY = "lims-verification-ui-restore";
+
+type VerificationUiRestore = {
+  scrollTop: number;
+  expandedPatient: string | null;
+  rvPage: number;
+  search: string;
+  mode: "patient" | "machine";
+  selectedMachine: string;
+};
+
+function readVerificationUiRestore(): VerificationUiRestore | null {
+  try {
+    const raw = sessionStorage.getItem(VERIFICATION_UI_RESTORE_KEY);
+    if (!raw) return null;
+    sessionStorage.removeItem(VERIFICATION_UI_RESTORE_KEY);
+    const parsed = JSON.parse(raw) as Partial<VerificationUiRestore>;
+    return {
+      scrollTop: Number(parsed.scrollTop) || 0,
+      expandedPatient: parsed.expandedPatient || null,
+      rvPage: Number.isFinite(parsed.rvPage) ? Number(parsed.rvPage) : 0,
+      search: parsed.search || "",
+      mode: parsed.mode === "machine" ? "machine" : "patient",
+      selectedMachine: parsed.selectedMachine || "all",
+    };
+  } catch {
+    return null;
+  }
+}
+
 const ResultVerification = () => {
+  const navigate = useNavigate();
   const qc = useQueryClient();
+  const restoredUiRef = useRef<VerificationUiRestore | null>(readVerificationUiRestore());
+  const restoredScrollAppliedRef = useRef(false);
   const { data: masterMachines = [] } = useMasterLookup("machine_name");
-  const [mode, setMode] = useState<"patient" | "machine">("patient");
-  const [search, setSearch] = useState("");
+  const [mode, setMode] = useState<"patient" | "machine">(() => restoredUiRef.current?.mode ?? "patient");
+  const [search, setSearch] = useState(() => restoredUiRef.current?.search ?? "");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [selectedMachine, setSelectedMachine] = useState<string>("all");
+  const [selectedMachine, setSelectedMachine] = useState<string>(() => restoredUiRef.current?.selectedMachine ?? "all");
   const [pageSize, setPageSize] = useState<LimsPageSize>(() => readLimsPageSize());
-  const [expandedPatient, setExpandedPatient] = useState<string | null>(null);
+  const [expandedPatient, setExpandedPatient] = useState<string | null>(() => restoredUiRef.current?.expandedPatient ?? null);
   const [editedValues, setEditedValues] = useState<Record<string, string>>({});
   const [editedUnits, setEditedUnits] = useState<Record<string, string>>({});
   const [editedRefRanges, setEditedRefRanges] = useState<Record<string, string>>({});
@@ -128,12 +170,28 @@ const ResultVerification = () => {
   const [blankParamIds, setBlankParamIds] = useState<Set<string>>(new Set());
   const [highlightBlanksForRegs, setHighlightBlanksForRegs] = useState<Set<string>>(new Set());
   const [diffConfirm, setDiffConfirm] = useState<{ entry: PatientEntry; mode: "test" | "all"; testId: string; testName: string; issues: { testName: string; sum: number; diff: number }[] } | null>(null);
-  const [rvPage, setRvPage] = useState(0);
+  const [rvPage, setRvPage] = useState(() => restoredUiRef.current?.rvPage ?? 0);
 
   useEffect(() => {
     const t = setTimeout(() => { setDebouncedSearch(search); setRvPage(0); }, 400);
     return () => clearTimeout(t);
   }, [search]);
+
+  const saveVerificationUiForReturn = () => {
+    const payload: VerificationUiRestore = {
+      scrollTop: window.scrollY || document.documentElement.scrollTop || 0,
+      expandedPatient,
+      rvPage,
+      search,
+      mode,
+      selectedMachine,
+    };
+    try {
+      sessionStorage.setItem(VERIFICATION_UI_RESTORE_KEY, JSON.stringify(payload));
+    } catch {
+      // ignore storage failure
+    }
+  };
 
   // Pending candidates (regs with at least one entered result/snip).
   // Pagination is computed from this set so the queue's "X total" matches reality.
@@ -173,6 +231,16 @@ const ResultVerification = () => {
     const onPage = new Set(pageIds);
     return (registrationsRaw as any[]).filter((r) => onPage.has(r.id));
   }, [registrationsRaw, pageIds, pendingIds.length, idsPlaceholder]);
+
+  useEffect(() => {
+    if (loadingIds || loadingRegs || restoredScrollAppliedRef.current) return;
+    const restored = restoredUiRef.current;
+    if (!restored) return;
+    restoredScrollAppliedRef.current = true;
+    window.requestAnimationFrame(() => {
+      window.scrollTo({ top: Math.max(0, restored.scrollTop || 0), behavior: "auto" });
+    });
+  }, [loadingIds, loadingRegs]);
 
   const rvTotalPages = Math.max(1, Math.ceil(rvCount / pageSize));
 
@@ -464,10 +532,14 @@ const ResultVerification = () => {
           
           const resolved = resolveNormalRange(p.id, fullReg);
           const refText = resolved.text || p.normal_range_text || (p.normal_range_low != null && p.normal_range_high != null ? `${p.normal_range_low} - ${p.normal_range_high}` : "");
-          const savedUnit = isParamOutsourced && existing?.unit ? existing.unit : (p.unit || "");
-          const savedRefRange = resolved.rangeType === "descriptive"
-            ? (resolved.text || "")
-            : (isParamOutsourced && existing?.reference_range ? existing.reference_range : refText);
+          const savedUnit = loadOutsourcedUnit(!!isParamOutsourced, existing, p.unit || "");
+          const savedRefRange = loadOutsourcedRefRange(
+            !!isParamOutsourced,
+            existing,
+            refText,
+            resolved.rangeType,
+            resolved.text || "",
+          );
           parameters.push({
             parameterId: p.id, paramCode: p.param_code || "", parameterName: p.parameter_name,
             unit: savedUnit, referenceRange: savedRefRange,
@@ -833,17 +905,26 @@ const ResultVerification = () => {
 
       const autoFlag = calculateFlag(baseVal, rangeLow, rangeHigh, rangeType, expectedValue, descriptiveOptions, normalRangeText, p?.unit ?? live?.unit ?? null, normalFindings);
       const isOutsourced = !!p?.isOutsourced;
-      const flag = isOutsourced && editedFlags[k] !== undefined
-        ? editedFlags[k]
-        : (autoFlag || live?.flag || null);
-      const unit = isOutsourced && editedUnits[k] !== undefined
-        ? editedUnits[k]
-        : (p?.unit ?? live?.unit ?? null);
-      const refRange = rangeType === "descriptive"
-        ? (normalRangeText || "")
-        : (isOutsourced && editedRefRanges[k] !== undefined
-          ? editedRefRanges[k]
-          : (p?.referenceRange ?? live?.reference_range ?? null));
+      const flag = resolveOutsourcedFlag({
+        isOutsourced,
+        editedFlag: editedFlags[k],
+        savedFlag: p?.flag ?? live?.flag,
+        autoFlag,
+      });
+      const unit = resolveOutsourcedUnit({
+        isOutsourced,
+        editedUnit: editedUnits[k],
+        savedUnit: p?.unit ?? live?.unit,
+        masterUnit: p?.unit ?? live?.unit,
+      });
+      const refRange = resolveOutsourcedRefRange({
+        isOutsourced,
+        editedRef: editedRefRanges[k],
+        savedRef: p?.referenceRange ?? live?.reference_range,
+        masterRef: p?.referenceRange ?? live?.reference_range ?? "",
+        rangeType,
+        normalRangeText,
+      });
 
       const noteEdited = editedNotes[k];
       const note = noteEdited !== undefined
@@ -1007,11 +1088,26 @@ const ResultVerification = () => {
         const k = `${regId}||${p.parameterId}`;
         const value = editedValues[k] !== undefined ? editedValues[k] : p.resultValue;
         const autoFlag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue, p.descriptiveOptions, p.normalRangeText, p.unit, p.normalFindings);
-        const flag = p.isOutsourced && editedFlags[k] !== undefined ? editedFlags[k] : autoFlag;
-        const unit = p.isOutsourced && editedUnits[k] !== undefined ? editedUnits[k] : p.unit;
-        const refRange = p.rangeType === "descriptive"
-          ? (p.normalRangeText || "")
-          : (p.isOutsourced && editedRefRanges[k] !== undefined ? editedRefRanges[k] : p.referenceRange);
+        const flag = resolveOutsourcedFlag({
+          isOutsourced: p.isOutsourced,
+          editedFlag: editedFlags[k],
+          savedFlag: p.flag,
+          autoFlag,
+        });
+        const unit = resolveOutsourcedUnit({
+          isOutsourced: p.isOutsourced,
+          editedUnit: editedUnits[k],
+          savedUnit: p.unit,
+          masterUnit: p.unit,
+        });
+        const refRange = resolveOutsourcedRefRange({
+          isOutsourced: p.isOutsourced,
+          editedRef: editedRefRanges[k],
+          savedRef: p.referenceRange,
+          masterRef: p.referenceRange,
+          rangeType: p.rangeType,
+          normalRangeText: p.normalRangeText,
+        });
         upserts.push({
           registration_id: regId, test_id: p.testId, parameter_id: p.parameterId,
           param_code: p.paramCode, parameter_name: p.parameterName,
@@ -1108,7 +1204,12 @@ const ResultVerification = () => {
     const key = `${regId}||${p.parameterId}`;
     const currentValue = editedValues[key] !== undefined ? editedValues[key] : p.resultValue;
     const autoFlag = calculateFlag(currentValue, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue, p.descriptiveOptions, p.normalRangeText, p.unit, p.normalFindings);
-    const flag = p.isOutsourced && editedFlags[key] !== undefined ? editedFlags[key] : autoFlag;
+    const flag = resolveOutsourcedFlag({
+      isOutsourced: p.isOutsourced,
+      editedFlag: editedFlags[key],
+      savedFlag: p.flag,
+      autoFlag,
+    });
     const isNegative = isSuspectNegativeResult(currentValue);
     const rowBg = isNegative ? "bg-red-50" : ((flag === "H" || flag === "L" || flag === "A" || flag === "X") ? "bg-destructive/5" : "");
     const negCls = isNegative ? "border-red-500 ring-1 ring-red-300 text-red-700 font-semibold" : "";
@@ -1194,8 +1295,15 @@ const ResultVerification = () => {
         </TableCell>
         <TableCell className="py-1.5 text-xs text-muted-foreground">
           {p.isOutsourced && !p.isSnipMode ? (
-            <Input value={editedRefRanges[key] !== undefined ? editedRefRanges[key] : (p.referenceRange || "")} onChange={e => setEditedRefRanges(prev => ({ ...prev, [key]: e.target.value }))} className="h-6 text-xs w-[100px]" placeholder="Ref Range" />
-          ) : p.referenceRange}
+            <Textarea
+              value={editedRefRanges[key] !== undefined ? editedRefRanges[key] : (p.referenceRange || "")}
+              onChange={e => setEditedRefRanges(prev => ({ ...prev, [key]: e.target.value }))}
+              className="min-h-[4.5rem] text-xs w-[220px] max-w-[280px] whitespace-pre-wrap resize-y"
+              placeholder="Normal / advisory range (paste as-is)"
+            />
+          ) : (
+            <span className="whitespace-pre-wrap">{p.referenceRange}</span>
+          )}
         </TableCell>
         <TableCell className="py-1.5 text-center">
           {p.isOutsourced && !p.isSnipMode ? (
@@ -1369,7 +1477,7 @@ const ResultVerification = () => {
                         <TableHead className="py-1 text-xs w-[100px]">Prev 2</TableHead>
                         <TableHead className="py-1 text-xs w-[200px]">Result</TableHead>
                         <TableHead className="py-1 text-xs w-[60px]">Unit</TableHead>
-                        <TableHead className="py-1 text-xs w-[120px]">Ref. Range</TableHead>
+                        <TableHead className="py-1 text-xs w-[240px]">Ref. Range</TableHead>
                         <TableHead className="py-1 text-xs w-[70px] text-center">Flag</TableHead>
                         <TableHead className="py-1 text-xs w-[70px] text-center">Status</TableHead>
                         <TableHead className="py-1 text-xs w-[40px] text-center"></TableHead>
@@ -1491,9 +1599,10 @@ const ResultVerification = () => {
                       title="Preview provisional report"
                       onClick={(e) => {
                         e.stopPropagation();
-                        // Open in a new tab so Verification stays mounted — navigating away
-                        // and Back remounts the list and briefly drops every patient.
-                        window.open(`/lims/report/${reg.id}?provisional=1`, "_blank", "noopener,noreferrer");
+                        saveVerificationUiForReturn();
+                        navigate(`/lims/report/${reg.id}?provisional=1`, {
+                          state: { from: "verification" },
+                        });
                       }}
                     >
                       <Eye className="h-3.5 w-3.5 mr-1" /> View Report
@@ -1556,7 +1665,7 @@ const ResultVerification = () => {
                       <TableHead className="py-2 text-xs">Parameter</TableHead>
                       <TableHead className="py-2 text-xs w-[180px]">Result</TableHead>
                       <TableHead className="py-2 text-xs w-[80px]">Unit</TableHead>
-                      <TableHead className="py-2 text-xs w-[120px]">Ref. Range</TableHead>
+                      <TableHead className="py-2 text-xs w-[240px]">Ref. Range</TableHead>
                       <TableHead className="py-2 text-xs w-[80px] text-center">Flag</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -1564,7 +1673,12 @@ const ResultVerification = () => {
                     {blankParams.map(p => {
                       const key = `${reg.id}||${p.parameterId}`;
                       const currentValue = editedValues[key] !== undefined ? editedValues[key] : p.resultValue;
-                      const flag = calculateFlag(currentValue, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue, p.descriptiveOptions, p.normalRangeText, p.unit, p.normalFindings);
+                      const flag = resolveOutsourcedFlag({
+                        isOutsourced: p.isOutsourced,
+                        editedFlag: editedFlags[key],
+                        savedFlag: p.flag,
+                        autoFlag: calculateFlag(currentValue, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue, p.descriptiveOptions, p.normalRangeText, p.unit, p.normalFindings),
+                      });
                       return (
                         <TableRow key={key} className="bg-yellow-50">
                           <TableCell className="py-2 text-xs font-mono text-muted-foreground">{p.paramCode}</TableCell>
@@ -1605,8 +1719,15 @@ const ResultVerification = () => {
                           </TableCell>
                           <TableCell className="py-2 text-xs text-muted-foreground">
                             {p.isOutsourced ? (
-                              <Input value={editedRefRanges[key] !== undefined ? editedRefRanges[key] : (p.referenceRange || "")} onChange={e => setEditedRefRanges(prev => ({ ...prev, [key]: e.target.value }))} className="h-6 text-xs w-[100px]" placeholder="Ref Range" />
-                            ) : p.referenceRange}
+                              <Textarea
+                                value={editedRefRanges[key] !== undefined ? editedRefRanges[key] : (p.referenceRange || "")}
+                                onChange={e => setEditedRefRanges(prev => ({ ...prev, [key]: e.target.value }))}
+                                className="min-h-[4.5rem] text-xs w-full whitespace-pre-wrap resize-y"
+                                placeholder="Normal / advisory range (paste as-is)"
+                              />
+                            ) : (
+                              <span className="whitespace-pre-wrap">{p.referenceRange}</span>
+                            )}
                           </TableCell>
                           <TableCell className="py-2 text-center">
                             {flag === "H" && <Badge variant="destructive" className="text-xs">HIGH</Badge>}
