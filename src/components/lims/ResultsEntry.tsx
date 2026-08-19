@@ -1154,6 +1154,13 @@ const ResultsEntry = () => {
     }
 
     setEditedValues(newEdited);
+    // Value changed → drop session flag lock so H/L auto-recalculates.
+    setEditedFlags((prev) => {
+      if (prev[key] === undefined) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
 
     // Schedule auto-save for this test (debounced)
     const testId = entry.parameters.find(p => p.parameterId === paramId)?.testId;
@@ -1199,6 +1206,8 @@ const ResultsEntry = () => {
         editedFlag: editedFlags[key],
         savedFlag: p.flag,
         autoFlag,
+        currentValue: value,
+        savedValue: p.resultValue,
       });
       const unit = resolveOutsourcedUnit({
         isOutsourced: p.isOutsourced,
@@ -1377,6 +1386,8 @@ const ResultsEntry = () => {
           editedFlag: editedFlags[key],
           savedFlag: p.flag,
           autoFlag,
+          currentValue: value,
+          savedValue: p.resultValue,
         });
         const unit = resolveOutsourcedUnit({
           isOutsourced: p.isOutsourced,
@@ -1685,6 +1696,8 @@ const ResultsEntry = () => {
       editedFlag: editedFlags[key],
       savedFlag: p.flag,
       autoFlag,
+      currentValue,
+      savedValue: p.resultValue,
     });
     const isInterfaceParameter = p.sendForInterface && !p.isCalculated;
     const isAwaiting = isInterfaceParameter && !currentValue;
@@ -2507,6 +2520,8 @@ const ResultsEntry = () => {
                         editedFlag: editedFlags[key],
                         savedFlag: p.flag,
                         autoFlag: calculateFlag(currentValue, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue, p.descriptiveOptions, p.normalRangeText, p.unit, p.normalFindings),
+                        currentValue,
+                        savedValue: p.resultValue,
                       });
                       const isInterfaceParameter = p.sendForInterface && !p.isCalculated;
                       const isAwaiting = isInterfaceParameter && !currentValue;

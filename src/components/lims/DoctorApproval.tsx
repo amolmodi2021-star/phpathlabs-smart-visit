@@ -510,6 +510,12 @@ const DoctorApproval = () => {
     for (const p of entry.parameters) { const pk = `${regId}||${p.parameterId}`; paramValues[p.parameterId] = pk === key ? value : (newEdited[pk] !== undefined ? newEdited[pk] : p.resultValue); }
     for (const p of entry.parameters) { if (p.isCalculated && p.calculationFormula.length > 0) { const r = evaluateFormula(p.calculationFormula, paramValues); newEdited[`${regId}||${p.parameterId}`] = r; paramValues[p.parameterId] = r; } }
     setEditedValues(newEdited);
+    setEditedFlags((prev) => {
+      if (prev[key] === undefined) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
   };
 
   // ─── Auto-evaluate calculated parameters whenever entries refresh ───
@@ -619,6 +625,8 @@ const DoctorApproval = () => {
           editedFlag: editedFlags[k],
           savedFlag: p.flag,
           autoFlag,
+          currentValue: value,
+          savedValue: p.resultValue,
         });
         const unit = resolveOutsourcedUnit({
           isOutsourced: p.isOutsourced,
@@ -733,6 +741,8 @@ const DoctorApproval = () => {
             editedFlag: editedFlags[k],
             savedFlag: p.flag,
             autoFlag,
+            currentValue: value,
+            savedValue: p.resultValue,
           });
           const unit = resolveOutsourcedUnit({
             isOutsourced: p.isOutsourced,
@@ -846,6 +856,8 @@ const DoctorApproval = () => {
           editedFlag: editedFlags[k],
           savedFlag: p.flag,
           autoFlag,
+          currentValue: value,
+          savedValue: p.resultValue,
         });
         const unit = resolveOutsourcedUnit({
           isOutsourced: p.isOutsourced,
@@ -952,6 +964,8 @@ const DoctorApproval = () => {
       editedFlag: editedFlags[key],
       savedFlag: p.flag,
       autoFlag,
+      currentValue,
+      savedValue: p.resultValue,
     });
     const isNegative = isSuspectNegativeResult(currentValue);
     const rowBg = isNegative ? "bg-red-50" : ((flag === "H" || flag === "L" || flag === "A" || flag === "X") ? "bg-destructive/5" : "");

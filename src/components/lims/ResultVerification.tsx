@@ -670,6 +670,12 @@ const ResultVerification = () => {
       }
     }
     setEditedValues(newEdited);
+    setEditedFlags((prev) => {
+      if (prev[key] === undefined) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
   };
 
   // ─── Auto-evaluate calculated parameters whenever entries refresh ───
@@ -916,6 +922,8 @@ const ResultVerification = () => {
         editedFlag: editedFlags[k],
         savedFlag: p?.flag ?? live?.flag,
         autoFlag,
+        currentValue: baseVal,
+        savedValue: p?.resultValue ?? live?.result_value,
       });
       const unit = resolveOutsourcedUnit({
         isOutsourced,
@@ -1099,6 +1107,8 @@ const ResultVerification = () => {
           editedFlag: editedFlags[k],
           savedFlag: p.flag,
           autoFlag,
+          currentValue: value,
+          savedValue: p.resultValue,
         });
         const unit = resolveOutsourcedUnit({
           isOutsourced: p.isOutsourced,
@@ -1215,6 +1225,8 @@ const ResultVerification = () => {
       editedFlag: editedFlags[key],
       savedFlag: p.flag,
       autoFlag,
+      currentValue,
+      savedValue: p.resultValue,
     });
     const isNegative = isSuspectNegativeResult(currentValue);
     const rowBg = isNegative ? "bg-red-50" : ((flag === "H" || flag === "L" || flag === "A" || flag === "X") ? "bg-destructive/5" : "");
@@ -1700,6 +1712,8 @@ const ResultVerification = () => {
                         editedFlag: editedFlags[key],
                         savedFlag: p.flag,
                         autoFlag: calculateFlag(currentValue, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue, p.descriptiveOptions, p.normalRangeText, p.unit, p.normalFindings),
+                        currentValue,
+                        savedValue: p.resultValue,
                       });
                       return (
                         <TableRow key={key} className="bg-yellow-50">
