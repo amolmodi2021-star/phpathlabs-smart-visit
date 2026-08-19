@@ -159,12 +159,16 @@ function buildFullDispatchEntry(
 
     const collectedAt = tube?.collected_at || null;
     const acceptedAt = tube?.accepted_at || null;
-    const getEarliest = (field: string) => {
-      const vals = testResults.map((r: any) => r[field]).filter(Boolean);
+    // Only count results that have actually left Results Entry (ignore pending stubs).
+    const progressedResults = testResults.filter((r: any) =>
+      ["entered", "results_entered", "verified", "approved", "dispatched"].includes(String(r.status || "")),
+    );
+    const getEarliest = (field: string, rows: any[] = progressedResults) => {
+      const vals = rows.map((r: any) => r[field]).filter(Boolean);
       return vals.length > 0 ? vals.sort()[0] : null;
     };
-    const getFirstBy = (field: string) => {
-      const vals = testResults.map((r: any) => r[field]).filter(Boolean);
+    const getFirstBy = (field: string, rows: any[] = progressedResults) => {
+      const vals = rows.map((r: any) => r[field]).filter(Boolean);
       return vals.length > 0 ? vals[0] : null;
     };
 
@@ -177,22 +181,30 @@ function buildFullDispatchEntry(
     let approvedBy = getFirstBy("approved_by");
     let dispatchedBy = getFirstBy("dispatched_by");
     if (snip && !isCancelled) {
-      const snipStatus = snip.outsource_status;
-      const snipTime = snip.updated_at || snip.sent_at || null;
-      if (["results_entered", "results_saved", "sent", "verified", "approved", "dispatched"].includes(snipStatus)) {
-        enteredAt = enteredAt || snip.entered_at || snipTime;
+      const snipStatus = String(snip.outsource_status || "");
+      const urls = Array.isArray(snip.snip_image_urls) ? snip.snip_image_urls.filter(Boolean) : [];
+      const mode = String(snip.result_mode || "").toLowerCase();
+      const isSnipMode = mode === "snip" || mode === "image" || urls.length > 0;
+      const hasSnipImage = urls.length > 0;
+      // "sent" / "pending" = transferred to lab only — NOT Results Entered.
+      const snipEntered =
+        ["results_entered", "results_saved", "verified", "approved", "dispatched"].includes(snipStatus) &&
+        (!isSnipMode || hasSnipImage || !!snip.entered_at);
+
+      if (snipEntered) {
+        enteredAt = enteredAt || snip.entered_at || snip.updated_at || null;
         enteredBy = enteredBy || snip.entered_by || null;
       }
       if (["verified", "approved", "dispatched"].includes(snipStatus)) {
-        verifiedAt = verifiedAt || snip.verified_at || snipTime;
+        verifiedAt = verifiedAt || snip.verified_at || snip.updated_at || null;
         verifiedBy = verifiedBy || snip.verified_by || null;
       }
       if (["approved", "dispatched"].includes(snipStatus)) {
-        approvedAtTs = approvedAtTs || snip.approved_at || snipTime;
+        approvedAtTs = approvedAtTs || snip.approved_at || snip.updated_at || null;
         approvedBy = approvedBy || snip.approved_by || null;
       }
       if (snipStatus === "dispatched") {
-        dispatchedAtTs = dispatchedAtTs || snip.dispatched_at || snipTime;
+        dispatchedAtTs = dispatchedAtTs || snip.dispatched_at || snip.updated_at || null;
         dispatchedBy = dispatchedBy || snip.dispatched_by || null;
       }
     }
