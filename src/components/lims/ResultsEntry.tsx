@@ -160,7 +160,8 @@ const ResultsEntry = () => {
   const [selectedMachine, setSelectedMachine] = useState<string>("all");
   const [pageSize, setPageSize] = useState<LimsPageSize>(() => readLimsPageSize());
   const [expandedPatient, setExpandedPatient] = useState<string | null>(null);
-  const [expandedTests, setExpandedTests] = useState<Set<string>>(new Set());
+  /** Accordion: only one test's parameters open at a time (`regId||testId`). */
+  const [expandedTestKey, setExpandedTestKey] = useState<string | null>(null);
   const [snipEntryKeys, setSnipEntryKeys] = useState<Set<string>>(new Set());
   const [uploadingSnipKey, setUploadingSnipKey] = useState<string | null>(null);
   const [savingSnipKey, setSavingSnipKey] = useState<string | null>(null);
@@ -222,6 +223,7 @@ const ResultsEntry = () => {
   useEffect(() => {
     setRePage(0);
     setExpandedPatient(null);
+    setExpandedTestKey(null);
   }, [mode, selectedMachine]);
 
   const { data: pendingIds = [] as string[], isLoading: loadingIds, isPlaceholderData: idsPlaceholder } = useQuery({
@@ -513,24 +515,10 @@ const ResultsEntry = () => {
     return { transferredTestKeys: testKeys, outsourcedParamSets: paramSets, outsourcedSnipDetails: details };
   }, [outsourcedSnips]);
 
-  const autoExpandedRegRef = useRef<string | null>(null);
+  // When patient changes, close any open test accordion (show test list only).
   useEffect(() => {
-    if (!expandedPatient) {
-      autoExpandedRegRef.current = null;
-      return;
-    }
-    const keys = new Set<string>();
-    transferredTestKeys.forEach((k) => { if (k.startsWith(`${expandedPatient}||`)) keys.add(k); });
-    Object.keys(outsourcedParamSets).forEach((k) => { if (k.startsWith(`${expandedPatient}||`)) keys.add(k); });
-    Object.keys(outsourcedSnipDetails).forEach((k) => { if (k.startsWith(`${expandedPatient}||`)) keys.add(k); });
-    if (keys.size === 0 || autoExpandedRegRef.current === expandedPatient) return;
-    autoExpandedRegRef.current = expandedPatient;
-    setExpandedTests((prev) => {
-      const next = new Set(prev);
-      keys.forEach((k) => next.add(k));
-      return next;
-    });
-  }, [expandedPatient, transferredTestKeys, outsourcedParamSets, outsourcedSnipDetails]);
+    setExpandedTestKey(null);
+  }, [expandedPatient]);
 
   // ─── Fetch historical results for expanded patient (prev 1 & prev 2) ───
   const expandedUmr = useMemo(() => {
@@ -733,7 +721,7 @@ const ResultsEntry = () => {
     } as any, { onConflict: "registration_id,test_id" });
     if (error) throw error;
     setSnipEntryKeys((prev) => new Set(prev).add(testKey));
-    setExpandedTests((prev) => new Set(prev).add(testKey));
+    setExpandedTestKey(testKey);
     qc.invalidateQueries({ queryKey: ["results_outsourced_snips"] });
     qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
     qc.invalidateQueries({ queryKey: ["patient_results_existing"] });
@@ -754,7 +742,7 @@ const ResultsEntry = () => {
       next.delete(testKey);
       return next;
     });
-    setExpandedTests((prev) => new Set(prev).add(testKey));
+    setExpandedTestKey(testKey);
     qc.invalidateQueries({ queryKey: ["results_outsourced_snips"] });
     qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
   };
@@ -2039,18 +2027,14 @@ const ResultsEntry = () => {
               const testSnipDetail = outsourcedSnipDetails[testKey];
               const isOutsourcedTest = isFullTestOutsourced || tg.params.some((p) => p.isOutsourced);
               const isSnipMode = snipEntryKeys.has(testKey) || testSnipDetail?.resultMode === "snip";
-              const isTestExpanded = expandedTests.has(testKey);
+              const isTestExpanded = expandedTestKey === testKey;
               const filledCount = tg.params.filter(p => {
                 const k = `${reg.id}||${p.parameterId}`;
                 const v = editedValues[k] !== undefined ? editedValues[k] : p.resultValue;
                 return v && v.trim() !== "";
               }).length;
               const toggleTest = () => {
-                setExpandedTests(prev => {
-                  const next = new Set(prev);
-                  if (next.has(testKey)) next.delete(testKey); else next.add(testKey);
-                  return next;
-                });
+                setExpandedTestKey((prev) => (prev === testKey ? null : testKey));
               };
               return (
                 <div key={tg.testId} className="ml-1">
@@ -2156,7 +2140,7 @@ const ResultsEntry = () => {
                       <Trash2 className="h-3 w-3 text-destructive/60 hover:text-destructive cursor-pointer shrink-0" onClick={() => setEditedTestNotes(prev => ({ ...prev, [testKey]: "" }))} />
                     </div>
                   )}
-                  {isOutsourcedTest && (
+                  {isTestExpanded && isOutsourcedTest && (
                     <div className="mt-2 mx-1 rounded-md border border-blue-200 bg-blue-50/80 p-2 space-y-2" onClick={(e) => e.stopPropagation()}>
                       <div className="text-xs font-medium text-blue-900">
                         Outsourced result — type parameter values or add a snipped image, not both.
@@ -2215,7 +2199,7 @@ const ResultsEntry = () => {
                       )}
                     </div>
                   )}
-                  {(isTestExpanded || isOutsourcedTest) && !isSnipMode && (
+                  {isTestExpanded && !isSnipMode && (
                     <div className="overflow-x-auto -mx-1">
                     <Table>
                       <TableHeader>
@@ -2378,7 +2362,11 @@ const ResultsEntry = () => {
                   <Card key={reg.id} className={isExpanded ? "ring-1 ring-primary/30" : ""}>
                     <div
                       className="flex flex-wrap items-center gap-2 sm:gap-3 p-3 cursor-pointer hover:bg-muted/30 transition-colors"
-                      onClick={() => { markArrivalSeen(reg.id); setExpandedPatient(isExpanded ? null : reg.id); }}
+                      onClick={() => {
+                        markArrivalSeen(reg.id);
+                        setExpandedPatient(isExpanded ? null : reg.id);
+                        if (isExpanded) setExpandedTestKey(null);
+                      }}
                     >
                       {isExpanded ? <ChevronUp className="h-4 w-4 shrink-0" /> : <ChevronDown className="h-4 w-4 shrink-0" />}
                       <div className="flex-1 min-w-0">

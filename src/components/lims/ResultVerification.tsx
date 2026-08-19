@@ -155,6 +155,8 @@ const ResultVerification = () => {
   const [selectedMachine, setSelectedMachine] = useState<string>(() => restoredUiRef.current?.selectedMachine ?? "all");
   const [pageSize, setPageSize] = useState<LimsPageSize>(() => readLimsPageSize());
   const [expandedPatient, setExpandedPatient] = useState<string | null>(() => restoredUiRef.current?.expandedPatient ?? null);
+  /** Accordion: only one test's parameters open at a time. */
+  const [expandedTestKey, setExpandedTestKey] = useState<string | null>(null);
   const [editedValues, setEditedValues] = useState<Record<string, string>>({});
   const [editedUnits, setEditedUnits] = useState<Record<string, string>>({});
   const [editedRefRanges, setEditedRefRanges] = useState<Record<string, string>>({});
@@ -176,6 +178,10 @@ const ResultVerification = () => {
     const t = setTimeout(() => { setDebouncedSearch(search); setRvPage(0); }, 400);
     return () => clearTimeout(t);
   }, [search]);
+
+  useEffect(() => {
+    setExpandedTestKey(null);
+  }, [expandedPatient]);
 
   const saveVerificationUiForReturn = () => {
     const payload: VerificationUiRestore = {
@@ -1413,10 +1419,20 @@ const ResultVerification = () => {
             {groupByTest(mg.params).map((tg) => {
               const testKey = `${reg.id}||${tg.testId}`;
               const isVerifying = verifyingKey === testKey;
+              const isTestExpanded = expandedTestKey === testKey;
+              const filledCount = tg.params.filter((p) => {
+                const k = `${reg.id}||${p.parameterId}`;
+                const v = editedValues[k] !== undefined ? editedValues[k] : p.resultValue;
+                return v && v.trim() !== "";
+              }).length;
               return (
                 <div key={tg.testId} className="ml-1">
-                  <div className="flex items-center justify-between px-1 py-0.5 bg-muted/40 rounded-t">
+                  <div
+                    className="flex items-center justify-between px-2 py-1.5 bg-muted/40 rounded cursor-pointer hover:bg-muted/60 transition-colors"
+                    onClick={() => setExpandedTestKey((prev) => (prev === testKey ? null : testKey))}
+                  >
                     <div className="flex items-center gap-2">
+                      {isTestExpanded ? <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />}
                       {(() => {
                         const hasNegative = tg.params.some(p => {
                           const k = `${reg.id}||${p.parameterId}`;
@@ -1434,9 +1450,11 @@ const ResultVerification = () => {
                           </>
                         );
                       })()}
+                      <Badge variant="outline" className="text-[10px]">{filledCount}/{tg.params.length}</Badge>
                       <StickyNote
                         className={`inline h-3.5 w-3.5 cursor-pointer shrink-0 ${getTestNote(reg.id, tg.testId) ? 'text-amber-600' : 'text-muted-foreground hover:text-primary'}`}
-                        onClick={() => {
+                        onClick={(e) => {
+                          e.stopPropagation();
                           if (activeTestNoteKey === testKey) { setActiveTestNoteKey(null); }
                           else {
                             setActiveTestNoteKey(testKey);
@@ -1446,7 +1464,7 @@ const ResultVerification = () => {
                         }}
                       />
                     </div>
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                       <Button size="sm" variant="ghost" className="h-6 text-[11px] gap-1 text-orange-600" onClick={() => sendBackTest(reg.id, tg.testId, tg.testName)}>
                         <Undo2 className="h-3 w-3" /> Send Back
                       </Button>
@@ -1456,6 +1474,8 @@ const ResultVerification = () => {
                       </Button>
                     </div>
                   </div>
+                  {isTestExpanded && (
+                    <>
                   {activeTestNoteKey === testKey && (
                     <div className="flex items-center gap-1 mt-1 px-1">
                       <Input value={getTestNote(reg.id, tg.testId)} onChange={e => setEditedTestNotes(prev => ({ ...prev, [testKey]: e.target.value }))} className="h-6 text-xs w-full" placeholder="Kindly correlate clinically" autoFocus />
@@ -1485,6 +1505,8 @@ const ResultVerification = () => {
                     </TableHeader>
                     <TableBody>{tg.params.map(p => renderParamRow(entry, p))}</TableBody>
                   </Table>
+                    </>
+                  )}
                 </div>
               );
             })}
@@ -1568,7 +1590,7 @@ const ResultVerification = () => {
             const isVerifying = verifyingKey === reg.id;
             return (
               <Card key={reg.id} className={isExpanded ? "ring-1 ring-primary/30" : ""}>
-                <div className="flex items-center gap-3 p-3 cursor-pointer hover:bg-muted/30 transition-colors" onClick={() => { markArrivalSeen(reg.id); setExpandedPatient(isExpanded ? null : reg.id); }}>
+                <div className="flex items-center gap-3 p-3 cursor-pointer hover:bg-muted/30 transition-colors" onClick={() => { markArrivalSeen(reg.id); setExpandedPatient(isExpanded ? null : reg.id); if (isExpanded) setExpandedTestKey(null); }}>
                   {isExpanded ? <ChevronUp className="h-4 w-4 shrink-0" /> : <ChevronDown className="h-4 w-4 shrink-0" />}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
