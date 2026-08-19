@@ -25,6 +25,7 @@ import { toast } from "sonner";
 import { format, startOfDay, endOfDay, subDays, isSameDay } from "date-fns";
 import { cn } from "@/lib/utils";
 import { expandRegistrationTests } from "@/lib/expandRegistrationTests";
+import { deriveTestPipelineStatus, type PipelineTestStatus } from "@/lib/testPipelineStatus";
 import { PATIENT_RESULTS_SELECT_DISPATCH } from "@/lib/patientResultsSelect";
 import {
   fetchDispatchFilterIds,
@@ -76,7 +77,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-type TestStatus = "registered" | "sample_collected" | "sample_accepted" | "results_entered" | "verified" | "approved" | "dispatched" | "cancelled";
+type TestStatus = PipelineTestStatus;
 
 interface DispatchTest {
   testId: string;
@@ -137,25 +138,21 @@ function buildFullDispatchEntry(
     const snip = allSnips.find((s: any) => s.registration_id === reg.id && s.test_id === t.test_id);
     const tube = allTubes.find((tb: any) => tb.registration_id === reg.id && Array.isArray(tb.test_ids) && tb.test_ids.includes(t.test_id));
 
-    const hasDispatchedResults = testResults.some((r: any) => r.status === "dispatched");
-    const hasDispatchedSnip = snip && snip.outsource_status === "dispatched";
-    const hasApprovedResults = testResults.some((r: any) => r.status === "approved");
-    const hasApprovedSnip = snip && snip.outsource_status === "approved";
-    const hasVerifiedResults = testResults.some((r: any) => r.status === "verified");
-    const hasVerifiedSnip = snip && snip.outsource_status === "verified";
-    const hasEnteredResults = testResults.some((r: any) => r.status === "entered" || r.status === "results_entered");
-    const hasEnteredSnip = snip && (snip.outsource_status === "results_entered" || snip.outsource_status === "results_saved" || snip.outsource_status === "sent");
-
-    let status: TestStatus = "registered";
-    if (isCancelled) {
-      status = "cancelled";
-    } else if (hasDispatchedResults || hasDispatchedSnip) status = "dispatched";
-    else if (hasApprovedResults || hasApprovedSnip) status = "approved";
-    else if (hasVerifiedResults || hasVerifiedSnip) status = "verified";
-    else if (hasEnteredResults || hasEnteredSnip) status = "results_entered";
-    else if (tube?.status === "accepted" || tube?.accepted_at) status = "sample_accepted";
-    else if (tube?.status === "collected" || tube?.collected_at) status = "sample_collected";
-    else status = "registered";
+    const status: TestStatus = deriveTestPipelineStatus({
+      isCancelled,
+      isOutsourcedMaster: !!testInfo.is_outsourced,
+      isRepeat: Array.isArray(reg.repeat_tests) && reg.repeat_tests.some((x: any) => (x?.test_id || x) === t.test_id),
+      hasNoParameters: false,
+      tube: tube ? { status: tube.status || (tube.accepted_at ? "accepted" : tube.collected_at ? "collected" : tube.status) } : null,
+      resultStatuses: testResults.map((r: any) => String(r.status || "")),
+      snip: snip
+        ? {
+            outsource_status: snip.outsource_status,
+            result_mode: snip.result_mode,
+            snip_image_urls: snip.snip_image_urls,
+          }
+        : null,
+    });
 
     const snipUrls = snip && snip.result_mode === "snip" && Array.isArray(snip.snip_image_urls) ? snip.snip_image_urls : [];
     const approvedResults = testResults.filter((r: any) => r.status === "approved");
@@ -437,9 +434,9 @@ const Dispatch = () => {
   }, [failedWaJobs, registrations]);
 
   const { data: testsMap = {} } = useQuery({
-    queryKey: ["results_tests_map"],
+    queryKey: ["results_tests_map", "with_outsourced"],
     queryFn: async () => {
-      const { data } = await supabase.from("tests").select("id, test_name");
+      const { data } = await supabase.from("tests").select("id, test_name, is_outsourced");
       const map: Record<string, any> = {};
       (data || []).forEach((t: any) => { map[t.id] = t; });
       return map;
@@ -733,6 +730,9 @@ const Dispatch = () => {
       case "registered": return <Badge variant="outline" className="text-[10px]">Registered</Badge>;
       case "sample_collected": return <Badge variant="outline" className="text-[10px] border-orange-400 text-orange-600">Collected</Badge>;
       case "sample_accepted": return <Badge variant="outline" className="text-[10px] border-yellow-500 text-yellow-700">Accepted</Badge>;
+      case "outsourced": return <Badge variant="outline" className="text-[10px] border-purple-500 text-purple-700">Outsourced</Badge>;
+      case "collect_later": return <Badge variant="outline" className="text-[10px] border-sky-500 text-sky-700">Collect later</Badge>;
+      case "repeat_collection": return <Badge variant="outline" className="text-[10px] border-rose-500 text-rose-700">Repeat</Badge>;
       case "results_entered": return <Badge className="text-[10px] bg-indigo-500">Entered</Badge>;
       case "verified": return <Badge className="text-[10px] bg-purple-600">Verified</Badge>;
       case "approved": return <Badge className="text-[10px] bg-green-600">Approved</Badge>;

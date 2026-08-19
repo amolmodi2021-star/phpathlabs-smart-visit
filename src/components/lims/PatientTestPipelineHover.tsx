@@ -27,6 +27,8 @@ function statusBadge(status: PipelineTestStatus) {
       return <Badge variant="outline" className="text-[10px] border-orange-400 text-orange-600">Collected</Badge>;
     case "sample_accepted":
       return <Badge variant="outline" className="text-[10px] border-yellow-500 text-yellow-700">Accepted</Badge>;
+    case "outsourced":
+      return <Badge variant="outline" className="text-[10px] border-purple-500 text-purple-700">Outsourced</Badge>;
     case "results_entered":
       return <Badge className="text-[10px] bg-indigo-500">Entered</Badge>;
     case "verified":

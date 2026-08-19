@@ -12,7 +12,7 @@ import {
 const REG_SELECT = "id, tests, cancelled_tests, repeat_tests, bill_cancelled";
 const TUBE_SELECT = "test_ids, status";
 const RESULT_SELECT = "test_id, status";
-const SNIP_SELECT = "test_id, outsource_status";
+const SNIP_SELECT = "test_id, outsource_status, result_mode, snip_image_urls";
 
 export async function fetchPatientTestPipeline(registrationId: string): Promise<PipelineTestRow[]> {
   if (!registrationId) return [];
@@ -43,11 +43,11 @@ export async function fetchPatientTestPipeline(registrationId: string): Promise<
   }
 
   const leafIdList = [...leafIds];
-  let testsMap: Record<string, { test_name?: string | null }> = {};
+  let testsMap: Record<string, { test_name?: string | null; is_outsourced?: boolean | null }> = {};
   if (leafIdList.length > 0) {
     const { data: tests, error: tErr } = await supabase
       .from("tests")
-      .select("id, test_name")
+      .select("id, test_name, is_outsourced")
       .in("id", leafIdList.slice(0, 200));
     if (tErr) throw tErr;
     for (const t of tests || []) testsMap[t.id] = t;
@@ -69,6 +69,25 @@ export async function fetchPatientTestPipeline(registrationId: string): Promise<
     leafTests.push({ test_id: id, test_name: testsMap[id]?.test_name || "" });
   }
 
+  // Lean param presence check only for outsourced leafs (no-setup → Outsourced until results).
+  const outsourcedIds = leafTests
+    .map((t) => t.test_id)
+    .filter((id) => !!testsMap[id]?.is_outsourced)
+    .slice(0, 100);
+  const hasParamsByTestId: Record<string, boolean> = {};
+  if (outsourcedIds.length > 0) {
+    const { data: params, error: pErr } = await supabase
+      .from("test_parameters")
+      .select("test_id")
+      .in("test_id", outsourcedIds)
+      .eq("is_subheader", false);
+    if (pErr) throw pErr;
+    for (const id of outsourcedIds) hasParamsByTestId[id] = false;
+    for (const p of params || []) {
+      if (p?.test_id) hasParamsByTestId[p.test_id] = true;
+    }
+  }
+
   return buildPipelineOverview({
     registration: reg as any,
     tubes: (tubes || []) as any[],
@@ -76,5 +95,6 @@ export async function fetchPatientTestPipeline(registrationId: string): Promise<
     snips: (snips || []) as any[],
     testsMap,
     leafTests,
+    hasParamsByTestId: outsourcedIds.length > 0 ? hasParamsByTestId : undefined,
   });
 }
