@@ -561,6 +561,15 @@ const Dispatch = () => {
     return buildFullDispatchEntry(selectedReg, detailResults, detailTubes, detailSnips, testsMap);
   }, [selectedPatientId, selectedReg, detailLoading, detailResults, detailTubes, detailSnips, testsMap]);
 
+  // All Approved: only show approved + already-dispatched tests (hide anything not yet approved).
+  const selectedDetailTests = useMemo(() => {
+    if (!selectedEntry) return [] as DispatchTest[];
+    if (listMode !== "all_approved") return selectedEntry.tests;
+    return selectedEntry.tests.filter(
+      (t) => t.status === "approved" || t.status === "dispatched" || t.status === "cancelled",
+    );
+  }, [selectedEntry, listMode]);
+
   const dispatchRegIds = useMemo(
     () =>
       listEntries
@@ -969,7 +978,7 @@ const Dispatch = () => {
           : listMode === "pending_dispatch"
             ? "Pending — at least one test not yet dispatched (any status). Includes due bills."
             : listMode === "all_approved"
-              ? "All Approved — every active test approved and ready to dispatch. Includes due bills."
+              ? "All Approved — every active test is approved or already dispatched, with at least one still approved to dispatch. Includes due bills."
               : "Partially Approved — at least one approved (not dispatched) test, and other tests still incomplete. Includes due bills."}
       </p>
 
@@ -1171,9 +1180,9 @@ const Dispatch = () => {
                   <ScrollArea className="flex-1">
                     <div className="p-4 space-y-3">
                       <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
-                        Tests ({selectedEntry.tests.length})
+                        Tests ({selectedDetailTests.length})
                       </div>
-                      {selectedEntry.tests.map((test) => {
+                      {selectedDetailTests.map((test) => {
                         const testKey = `${selectedEntry.registration.id}||${test.testId}`;
 
                         const auditSteps = [
