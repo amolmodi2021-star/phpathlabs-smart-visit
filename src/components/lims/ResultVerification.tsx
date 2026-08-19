@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { recalculateRegistrationStatus } from "@/lib/limsStatus";
 import { formatAgeGender, patientAgeYears } from "@/lib/ageGender";
 import { patientDisplayName } from "@/lib/patientDisplayName";
+import PatientTestPipelineHover from "./PatientTestPipelineHover";
 import { isSuspectNegativeResult, calculateResultFlag } from "@/lib/reportFlags";
 import { getCurrentUser, getCurrentUserName } from "@/lib/auth";
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
@@ -1382,6 +1383,7 @@ const ResultVerification = () => {
         <div className="flex items-center gap-3">
           <div>
             <span className="font-semibold">{reg.invoice_number}</span>
+            <PatientTestPipelineHover registrationId={reg.id} invoiceNumber={reg.invoice_number} />
             {reg.status !== "sample_accepted" && reg.status !== "entered" && Array.isArray(reg.accepted_samples) && reg.accepted_samples.length > 0 && (
               <Badge className="bg-amber-100 text-amber-700 text-[10px] ml-1">PARTIAL</Badge>
             )}
@@ -1607,6 +1609,7 @@ const ResultVerification = () => {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="font-medium font-mono">{reg.invoice_number}</span>
+                        <PatientTestPipelineHover registrationId={reg.id} invoiceNumber={reg.invoice_number} />
                       <NewBadge show={isNewArrival(reg.id)} />
                       {reg.status !== "sample_accepted" && reg.status !== "entered" && Array.isArray(reg.accepted_samples) && reg.accepted_samples.length > 0 && (
                         <Badge className="bg-amber-100 text-amber-700 text-[10px]">PARTIAL</Badge>

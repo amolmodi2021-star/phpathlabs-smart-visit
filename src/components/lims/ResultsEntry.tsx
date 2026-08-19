@@ -43,6 +43,7 @@ import { shortIdsKey } from "@/lib/queryKeys";
 import { readLimsPageSize, type LimsPageSize } from "@/lib/limsListPrefs";
 import SyncingOverlay from "./SyncingOverlay";
 import NewBadge from "./NewBadge";
+import PatientTestPipelineHover from "./PatientTestPipelineHover";
 import OutsourcedResults from "./OutsourcedResults";
 import SnipOnLetterhead from "./SnipOnLetterhead";
 import { format } from "date-fns";
@@ -2393,6 +2394,7 @@ const ResultsEntry = () => {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <span className="font-medium font-mono">{reg.invoice_number}</span>
+                          <PatientTestPipelineHover registrationId={reg.id} invoiceNumber={reg.invoice_number} />
                           <NewBadge show={isNewArrival(reg.id)} />
                           {reg.status !== "sample_accepted" && Array.isArray(reg.accepted_samples) && reg.accepted_samples.length > 0 && (
                             <Badge className="bg-amber-100 text-amber-700 text-[10px]">PARTIAL</Badge>

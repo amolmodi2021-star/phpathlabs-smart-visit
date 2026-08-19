@@ -6,6 +6,7 @@ import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { recalculateRegistrationStatus } from "@/lib/limsStatus";
 import { formatAgeGender, patientAgeYears } from "@/lib/ageGender";
 import { patientDisplayName } from "@/lib/patientDisplayName";
+import PatientTestPipelineHover from "./PatientTestPipelineHover";
 import { isSuspectNegativeResult, calculateResultFlag } from "@/lib/reportFlags";
 import TimeResultInput from "./TimeResultInput";
 import { parseTimeResultToSeconds, isCanonicalTimeValue, formatTimeResult } from "@/lib/timeRange";
@@ -1063,6 +1064,7 @@ const DoctorApproval = () => {
       <div className="space-y-3 p-3 bg-muted/20 rounded-lg border">
         <div className="flex items-center gap-3">
           <span className="font-semibold">{reg.invoice_number}</span>
+            <PatientTestPipelineHover registrationId={reg.id} invoiceNumber={reg.invoice_number} />
           {!["sample_accepted","entered","verified"].includes(reg.status) && Array.isArray(reg.accepted_samples) && reg.accepted_samples.length > 0 && (
             <Badge className="bg-amber-100 text-amber-700 text-[10px]">PARTIAL</Badge>
           )}
@@ -1308,6 +1310,7 @@ const DoctorApproval = () => {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="font-medium font-mono">{reg.invoice_number}</span>
+                      <PatientTestPipelineHover registrationId={reg.id} invoiceNumber={reg.invoice_number} />
                       <NewBadge show={isNewArrival(reg.id)} />
                       {!["sample_accepted","entered","verified"].includes(reg.status) && Array.isArray(reg.accepted_samples) && reg.accepted_samples.length > 0 && (
                         <Badge className="bg-amber-100 text-amber-700 text-[10px]">PARTIAL</Badge>
