@@ -223,7 +223,6 @@ export type Database = {
           doctor_name: string | null
           email: string | null
           gender: string | null
-          histograms: Json
           id: string
           invoice_number: string | null
           is_held: boolean
@@ -251,7 +250,6 @@ export type Database = {
           doctor_name?: string | null
           email?: string | null
           gender?: string | null
-          histograms?: Json
           id?: string
           invoice_number?: string | null
           is_held?: boolean
@@ -279,7 +277,6 @@ export type Database = {
           doctor_name?: string | null
           email?: string | null
           gender?: string | null
-          histograms?: Json
           id?: string
           invoice_number?: string | null
           is_held?: boolean
@@ -297,66 +294,6 @@ export type Database = {
           title?: string | null
           umr_number?: string | null
           visit_type?: string | null
-        }
-        Relationships: []
-      }
-      analyzer_histograms: {
-        Row: {
-          bin_count: number
-          bins: Json
-          created_at: string
-          discriminators: Json | null
-          estimated: boolean
-          format: string
-          id: string
-          kind: string
-          machine_id: string | null
-          registration_id: string
-          sample_id: string
-          source: string | null
-          test_id: string | null
-          updated_at: string
-          x_label: string | null
-          x_max: number | null
-          x_min: number | null
-        }
-        Insert: {
-          bin_count: number
-          bins: Json
-          created_at?: string
-          discriminators?: Json | null
-          estimated?: boolean
-          format?: string
-          id?: string
-          kind: string
-          machine_id?: string | null
-          registration_id: string
-          sample_id: string
-          source?: string | null
-          test_id?: string | null
-          updated_at?: string
-          x_label?: string | null
-          x_max?: number | null
-          x_min?: number | null
-        }
-        Update: {
-          bin_count?: number
-          bins?: Json
-          created_at?: string
-          discriminators?: Json | null
-          estimated?: boolean
-          format?: string
-          id?: string
-          kind?: string
-          machine_id?: string | null
-          registration_id?: string
-          sample_id?: string
-          source?: string | null
-          test_id?: string | null
-          updated_at?: string
-          x_label?: string | null
-          x_max?: number | null
-          x_min?: number | null
         }
         Relationships: []
       }
