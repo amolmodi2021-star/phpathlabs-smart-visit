@@ -1,12 +1,13 @@
 /**
  * Lean on-demand fetch for patient test pipeline hover (egress-aware).
- * Loads only when the hover opens; caches briefly via react-query on the caller.
+ * Prefer single RPC; fall back to multi-query build if RPC unavailable.
  */
 import { supabase } from "@/integrations/supabase/client";
 import { expandRegistrationTests } from "@/lib/expandRegistrationTests";
 import {
   buildPipelineOverview,
   type PipelineTestRow,
+  type PipelineTestStatus,
 } from "@/lib/testPipelineStatus";
 
 const REG_SELECT = "id, tests, cancelled_tests, repeat_tests, bill_cancelled";
@@ -14,9 +15,19 @@ const TUBE_SELECT = "test_ids, status";
 const RESULT_SELECT = "test_id, status";
 const SNIP_SELECT = "test_id, outsource_status, result_mode, snip_image_urls";
 
-export async function fetchPatientTestPipeline(registrationId: string): Promise<PipelineTestRow[]> {
-  if (!registrationId) return [];
+function mapRpcRows(data: unknown): PipelineTestRow[] {
+  if (!Array.isArray(data)) return [];
+  return data
+    .map((r: any) => ({
+      testId: String(r.test_id || ""),
+      testName: String(r.test_name || "Unknown"),
+      status: String(r.status || "registered") as PipelineTestStatus,
+    }))
+    .filter((r) => !!r.testId);
+}
 
+/** Legacy multi-query path (kept as fallback). */
+async function fetchPatientTestPipelineLegacy(registrationId: string): Promise<PipelineTestRow[]> {
   const [{ data: reg, error: regErr }, { data: tubes, error: tubeErr }, { data: results, error: resErr }, { data: snips, error: snipErr }] =
     await Promise.all([
       supabase.from("patient_registrations").select(REG_SELECT).eq("id", registrationId).maybeSingle(),
@@ -37,7 +48,6 @@ export async function fetchPatientTestPipeline(registrationId: string): Promise<
       if (id) leafIds.add(id);
     }
   }
-  // Also include registered tests not yet on a tube
   for (const t of Array.isArray((reg as any).tests) ? (reg as any).tests : []) {
     if (t?.test_id) leafIds.add(t.test_id);
   }
@@ -62,14 +72,12 @@ export async function fetchPatientTestPipeline(registrationId: string): Promise<
     test_name: t.test_name || testsMap[t.test_id]?.test_name || "",
   }));
 
-  // Include orphan leafs present on tubes but missing from registration JSON
   const seen = new Set(leafTests.map((t) => t.test_id));
   for (const id of leafIds) {
     if (seen.has(id)) continue;
     leafTests.push({ test_id: id, test_name: testsMap[id]?.test_name || "" });
   }
 
-  // Lean param presence check only for outsourced leafs (no-setup → Outsourced until results).
   const outsourcedIds = leafTests
     .map((t) => t.test_id)
     .filter((id) => !!testsMap[id]?.is_outsourced)
@@ -97,4 +105,24 @@ export async function fetchPatientTestPipeline(registrationId: string): Promise<
     leafTests,
     hasParamsByTestId: outsourcedIds.length > 0 ? hasParamsByTestId : undefined,
   });
+}
+
+export async function fetchPatientTestPipeline(registrationId: string): Promise<PipelineTestRow[]> {
+  if (!registrationId) return [];
+
+  const { data, error } = await supabase.rpc("lims_patient_test_pipeline_status", {
+    p_registration_id: registrationId,
+  });
+
+  if (!error && data != null) {
+    return mapRpcRows(data);
+  }
+
+  // RPC missing / schema lag → legacy path so hover still works.
+  const msg = String((error as any)?.message || (error as any)?.code || "");
+  if (/does not exist|PGRST202|42883/i.test(msg) || (error as any)?.code === "PGRST202") {
+    return fetchPatientTestPipelineLegacy(registrationId);
+  }
+  if (error) throw error;
+  return [];
 }
