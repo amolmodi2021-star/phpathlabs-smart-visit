@@ -15,8 +15,10 @@ import { format } from "date-fns";
 import { Save, Ban, RotateCcw, Lock } from "lucide-react";
 import DeletePasswordDialog from "@/components/DeletePasswordDialog";
 import { recalculateRegistrationStatus } from "@/lib/limsStatus";
-import { logPaymentTransaction, syncRegistrationPaymentRow, splitPaymentModes } from "@/lib/paymentTransactions";
+import { logPaymentTransaction, syncRegistrationPaymentRow, syncDueCollectionPaymentModes, splitPaymentModes } from "@/lib/paymentTransactions";
 import {
+  applyDueCollectionModeEdits,
+  dueCollectionModesChanged,
   mergeEditedRegistrationSplit,
   rebuildPaymentsForPaidCap,
   splitRegistrationAndDuePayments,
@@ -54,6 +56,8 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
   // Payment editing
   const [selectedModes, setSelectedModes] = useState<Set<string>>(new Set());
   const [modeAmounts, setModeAmounts] = useState<Record<string, number>>({});
+  /** Parallel to dated due-collection payment lines — mode-only corrections. */
+  const [dueModes, setDueModes] = useState<string[]>([]);
 
   // Cancel / Refund
   const [cancelledTestIds, setCancelledTestIds] = useState<Set<string>>(new Set());
@@ -109,12 +113,13 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
       // Populate only the original at-registration split (no `date`).
       // Due-collection rows must not be treated as a second registration payment.
       const existingPayments: any[] = Array.isArray(reg.payments) ? reg.payments : [];
-      const { registration: originalSplit } = splitRegistrationAndDuePayments(existingPayments);
+      const { registration: originalSplit, dueCollections } = splitRegistrationAndDuePayments(existingPayments);
       const modes = new Set<string>(originalSplit.map((p: any) => p.mode).filter(Boolean));
       setSelectedModes(modes);
       const amounts: Record<string, number> = {};
       originalSplit.forEach((p: any) => { amounts[p.mode] = Number(p.amount) || 0; });
       setModeAmounts(amounts);
+      setDueModes(dueCollections.map((p: any) => String(p.mode || "Cash")));
       const existing = Array.isArray(reg.cancelled_tests) ? reg.cancelled_tests : [];
       setCancelledTestIds(new Set(existing.map((t: any) => t.test_id || t)));
       setRefundMode("Cash");
@@ -192,6 +197,14 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
     const existingPayments: any[] = Array.isArray(reg?.payments) ? reg.payments : [];
     return sumPaymentEntries(splitRegistrationAndDuePayments(existingPayments).registration);
   }, [reg?.payments]);
+  const dueCollectionEntries = useMemo(() => {
+    const existingPayments: any[] = Array.isArray(reg?.payments) ? reg.payments : [];
+    return splitRegistrationAndDuePayments(existingPayments).dueCollections;
+  }, [reg?.payments]);
+  const dueModesDirty = useMemo(
+    () => dueCollectionModesChanged(reg?.payments, dueModes),
+    [reg?.payments, dueModes],
+  );
 
   const togglePaymentMode = (mode: string) => {
     setSelectedModes(prev => {
@@ -295,6 +308,10 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
   const handleSaveDetails = async () => {
     setSaving(true);
     try {
+      if (isPaymentLocked && dueModesDirty) {
+        throw new Error("Unlock payment mode editing for older invoices before changing due collection modes");
+      }
+
       const editedSplit = Array.from(selectedModes)
         .filter(m => (modeAmounts[m] || 0) > 0)
         .map(m => ({ mode: m, amount: modeAmounts[m] || 0 }));
@@ -302,7 +319,10 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
       const existingPayments: any[] = Array.isArray(reg.payments) ? reg.payments : [];
       const { registration: originalRegEntries } = splitRegistrationAndDuePayments(existingPayments);
       const newFinalForCap = discountChanged ? discountCalc.finalAmount : Number(reg.final_amount || 0);
-      const payments = mergeEditedRegistrationSplit(existingPayments, editedSplit, newFinalForCap);
+      // Remap due-collection modes first (amount/date unchanged), then apply any
+      // at-registration split edit — never invents a second registration payment.
+      const paymentsWithDueModes = applyDueCollectionModeEdits(existingPayments, dueModes);
+      const payments = mergeEditedRegistrationSplit(paymentsWithDueModes, editedSplit, newFinalForCap);
 
       const updateData: any = {
         patient_name: patientName.replace(/\s+/g, ' ').trim().toUpperCase(),
@@ -420,7 +440,16 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
         }
       }
 
-      toast.success("Registration updated");
+      if (dueModesDirty) {
+        const remappedDue = splitRegistrationAndDuePayments(payments).dueCollections;
+        await syncDueCollectionPaymentModes({
+          registration_id: reg.id,
+          dueCollections: remappedDue,
+        });
+        qc.invalidateQueries({ queryKey: ["lims-daily-report"] });
+      }
+
+      toast.success(dueModesDirty ? "Registration updated (due collection mode corrected)" : "Registration updated");
     } catch (e: any) {
       toast.error(e.message);
     } finally {
@@ -935,6 +964,65 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
               </div>
             )}
 
+            {/* Due collection mode correction — amount stays the same; mode only */}
+            {!isBillCancelled && dueCollectionEntries.length > 0 && (
+              <div className="space-y-2">
+                <h3 className="font-semibold text-sm">Due Collection Mode</h3>
+                <div className="text-sm text-muted-foreground mb-1">
+                  Correct a wrong mode chosen during due collection. Amount cannot be changed.
+                </div>
+
+                {isPaymentLocked && (
+                  <div className="p-3 rounded border border-orange-300 bg-orange-50 space-y-2">
+                    <div className="text-sm text-orange-700 flex items-center gap-2">
+                      <Lock className="h-4 w-4" />
+                      Due collection mode editing is locked for invoices from previous dates. Enter admin password to unlock.
+                    </div>
+                    <Button variant="outline" size="sm" onClick={() => setShowPaymentUnlockPwd(true)}>
+                      🔓 Unlock Payment Mode
+                    </Button>
+                  </div>
+                )}
+
+                <fieldset disabled={isPaymentLocked} className={isPaymentLocked ? "opacity-60 pointer-events-none" : ""}>
+                  <div className="space-y-2">
+                    {dueCollectionEntries.map((entry, idx) => (
+                      <div key={`${entry.date || "due"}-${idx}`} className="flex flex-wrap items-center gap-2 rounded border p-2">
+                        <span className="text-sm font-medium w-24">₹{Number(entry.amount || 0)}</span>
+                        <span className="text-xs text-muted-foreground min-w-[140px]">
+                          {entry.date ? format(new Date(entry.date), "dd-MM-yyyy hh:mm a") : "Due collection"}
+                        </span>
+                        <Select
+                          value={dueModes[idx] || entry.mode || "Cash"}
+                          onValueChange={(value) => {
+                            setDueModes((prev) => {
+                              const next = [...prev];
+                              next[idx] = value;
+                              return next;
+                            });
+                          }}
+                        >
+                          <SelectTrigger className="w-36 h-8">
+                            <SelectValue placeholder="Mode" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {PAYMENT_MODES.map((mode) => (
+                              <SelectItem key={mode} value={mode}>{mode}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    ))}
+                  </div>
+                  {dueModesDirty && (
+                    <div className="text-xs text-muted-foreground pt-1">
+                      Mode change will update Daily Report payment-mode columns (same amount).
+                    </div>
+                  )}
+                </fieldset>
+              </div>
+            )}
+
             {!isBillCancelled && (
               <Button onClick={handleSaveDetails} disabled={saving || paymentModesMismatch || overpaymentBlocksSave} className="w-full">
                 <Save className="h-4 w-4 mr-2" />{overpaymentBlocksSave ? "Process Refund Below First" : "Save Details"}
@@ -1238,7 +1326,7 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
           setPaymentUnlocked(true);
           toast.success("Payment mode editing unlocked for this session");
         }}
-        description={`Invoice ${reg.invoice_number} is from a previous date. Enter admin password to unlock payment mode editing.`}
+        description={`Invoice ${reg.invoice_number} is from a previous date. Enter admin password to unlock registration / due collection payment mode editing.`}
       />
       <DeletePasswordDialog
         open={showOverpaymentRefundPwd}

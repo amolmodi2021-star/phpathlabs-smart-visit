@@ -162,3 +162,45 @@ export function rebuildPaymentsForPaidCap(
     .filter((p) => paymentEntryAmount(p) > 0);
   return [...scaledReg, ...dueCollections];
 }
+
+const ALLOWED_PAYMENT_MODES = new Set(["Cash", "GPay", "Paytm", "Credit Card", "NEFT"]);
+
+/**
+ * Remap payment modes on due-collection lines only (amounts + dates unchanged).
+ * Used to correct a wrong mode chosen during Due Payments without inventing
+ * a second registration payment.
+ */
+export function applyDueCollectionModeEdits(
+  existingPayments: BillPaymentEntry[] | null | undefined,
+  dueModes: string[],
+): BillPaymentEntry[] {
+  const { registration, dueCollections } = splitRegistrationAndDuePayments(existingPayments);
+  if (dueCollections.length === 0) {
+    return [...registration];
+  }
+  if (dueModes.length !== dueCollections.length) {
+    throw new Error("Due collection mode list does not match existing due payments");
+  }
+  const remapped = dueCollections.map((p, i) => {
+    const mode = String(dueModes[i] || "").trim();
+    if (!ALLOWED_PAYMENT_MODES.has(mode)) {
+      throw new Error(`Invalid due collection payment mode: ${mode || "(empty)"}`);
+    }
+    return {
+      mode,
+      amount: paymentEntryAmount(p),
+      date: p.date,
+    };
+  });
+  return [...registration, ...remapped];
+}
+
+export function dueCollectionModesChanged(
+  existingPayments: BillPaymentEntry[] | null | undefined,
+  dueModes: string[],
+): boolean {
+  const { dueCollections } = splitRegistrationAndDuePayments(existingPayments);
+  if (dueCollections.length === 0) return false;
+  if (dueModes.length !== dueCollections.length) return true;
+  return dueCollections.some((p, i) => String(p.mode || "") !== String(dueModes[i] || ""));
+}

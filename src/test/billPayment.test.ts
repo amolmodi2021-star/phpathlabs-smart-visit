@@ -6,6 +6,8 @@ import {
   isOverpaymentMessage,
   mergeEditedRegistrationSplit,
   rebuildPaymentsForPaidCap,
+  applyDueCollectionModeEdits,
+  dueCollectionModesChanged,
   OVERPAYMENT_MESSAGE,
   paymentSelectionIsSet,
   paymentsExceedBill,
@@ -116,5 +118,25 @@ describe("billPayment", () => {
     expect(isOverpaymentMessage("Payment (₹1200) cannot exceed the bill value (₹800)")).toBe(true);
     expect(isOverpaymentMessage("Payment cannot exceed grand total")).toBe(true);
     expect(isOverpaymentMessage("Valid mobile number required")).toBe(false);
+  });
+
+  it("remaps due collection mode without changing amount or inventing registration pay", () => {
+    const due = { mode: "GPay", amount: 550, date: "2026-08-12T13:34:37.191Z" };
+    const remapped = applyDueCollectionModeEdits([due], ["NEFT"]);
+    expect(remapped).toEqual([{ mode: "NEFT", amount: 550, date: due.date }]);
+    expect(dueCollectionModesChanged([due], ["NEFT"])).toBe(true);
+    expect(dueCollectionModesChanged([due], ["GPay"])).toBe(false);
+  });
+
+  it("preserves registration split when remapping due collection mode", () => {
+    const due = { mode: "Cash", amount: 300, date: "2026-08-12T13:34:37.191Z" };
+    const remapped = applyDueCollectionModeEdits(
+      [{ mode: "GPay", amount: 200 }, due],
+      ["NEFT"],
+    );
+    expect(remapped).toEqual([
+      { mode: "GPay", amount: 200 },
+      { mode: "NEFT", amount: 300, date: due.date },
+    ]);
   });
 });
