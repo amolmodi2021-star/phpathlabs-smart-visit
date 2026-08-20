@@ -761,8 +761,12 @@ const PatientRegistration = ({
         payments,
         paid_amount: (isCreditPickup || isCreditChannel) ? 0 : paidAmount,
         due_amount: (isCreditPickup || isCreditChannel) ? finalAmt : Math.max(0, finalAmt - paidAmount),
-        global_discount_type: globalDiscountValue > 0 ? globalDiscountType : null,
-        global_discount_value: globalDiscountValue,
+        global_discount_type: billing.roundUpApplied
+          ? null
+          : (globalDiscountValue > 0 ? globalDiscountType : null),
+        // After ₹10 round-up, per-test `discount` amounts are authoritative; keep global %
+        // would make Edit Registration recompute a higher discount and false overpayment.
+        global_discount_value: billing.roundUpApplied ? 0 : globalDiscountValue,
         remarks: remarks.replace(/\s+/g, ' ').trim().toUpperCase() || null,
         is_stat: isStat,
         report_language: visitType === "pickup_point" ? "ENGLISH" : reportLanguage.toUpperCase(),

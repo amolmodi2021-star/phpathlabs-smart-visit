@@ -68,6 +68,11 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
   const [editTests, setEditTests] = useState<any[]>([]);
   const [globalDiscountType, setGlobalDiscountType] = useState<"percent" | "amount">("percent");
   const [globalDiscountValue, setGlobalDiscountValue] = useState(0);
+  /** Snapshot of global discount when dialog opened — used to detect real edits vs round-up mismatch. */
+  const [globalDiscountBaseline, setGlobalDiscountBaseline] = useState<{ type: "percent" | "amount"; value: number }>({
+    type: "percent",
+    value: 0,
+  });
   const [allowIneligibleDiscount, setAllowIneligibleDiscount] = useState(false);
   const [showDiscountUnlockPwd, setShowDiscountUnlockPwd] = useState(false);
   const [discountUnlocked, setDiscountUnlocked] = useState(false);
@@ -116,8 +121,11 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
         individual_discount_value: Number(t.individual_discount_value || 0),
         discount_applicable: t.discount_applicable !== false,
       })));
-      setGlobalDiscountType((reg.global_discount_type as any) || "percent");
-      setGlobalDiscountValue(Number(reg.global_discount_value || 0));
+      const gType = ((reg.global_discount_type as "percent" | "amount") || "percent");
+      const gVal = Number(reg.global_discount_value || 0);
+      setGlobalDiscountType(gType);
+      setGlobalDiscountValue(gVal);
+      setGlobalDiscountBaseline({ type: gType, value: gVal });
       setAllowIneligibleDiscount(false);
     }
   }, [reg, open]);
@@ -186,33 +194,61 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
   }, [selectedModes.size, originalRegPaid]);
 
   // Discount calculations
+  // Prefer frozen per-test `discount` from registration when the user has not edited
+  // Global Discount. Round-up billing lowers line discounts but leaves global % stale
+  // (e.g. 20% → ₹74) while stored discounts are the true bill (e.g. ₹70).
+  const globalDiscountDirty =
+    globalDiscountType !== globalDiscountBaseline.type
+    || Math.abs(globalDiscountValue - globalDiscountBaseline.value) > 0.001;
+
   const discountCalc = useMemo(() => {
     let totalAmount = 0;
     let totalDiscount = 0;
     const updatedTests = editTests.map(t => {
       if (alreadyCancelled.has(t.test_id)) {
-        return { ...t, discounted_price: 0 };
+        return { ...t, discounted_price: 0, discount: 0 };
       }
       const price = Number(t.price || 0);
       totalAmount += price;
       let discount = 0;
       const discountOk = !!t.discount_applicable || allowIneligibleDiscount;
       const hasIndividual = t.individual_discount_type && t.individual_discount_value > 0 && discountOk;
+      const storedLineDiscount = Number(t.discount || 0);
       if (hasIndividual) {
         discount = t.individual_discount_type === "percent"
-          ? (price * t.individual_discount_value) / 100 : t.individual_discount_value;
+          ? Math.round((price * t.individual_discount_value) / 100)
+          : Math.round(t.individual_discount_value);
+      } else if (discountOk && globalDiscountDirty) {
+        if (globalDiscountValue > 0) {
+          discount = globalDiscountType === "percent"
+            ? Math.round((price * globalDiscountValue) / 100)
+            : Math.round(globalDiscountValue);
+        } else {
+          discount = 0;
+        }
+      } else if (discountOk && storedLineDiscount > 0) {
+        discount = Math.round(storedLineDiscount);
       } else if (discountOk && globalDiscountValue > 0) {
         discount = globalDiscountType === "percent"
-          ? (price * globalDiscountValue) / 100 : globalDiscountValue;
+          ? Math.round((price * globalDiscountValue) / 100)
+          : Math.round(globalDiscountValue);
       }
-      discount = Math.min(discount, price);
+      discount = Math.min(Math.max(0, discount), price);
       totalDiscount += discount;
-      return { ...t, discounted_price: price - discount };
+      return { ...t, discount, discounted_price: price - discount };
     });
     const hvc = Number(reg?.home_visit_charges || 0);
     const finalAmount = totalAmount - totalDiscount + hvc;
     return { totalAmount, totalDiscount, finalAmount, hvc, updatedTests };
-  }, [editTests, globalDiscountType, globalDiscountValue, alreadyCancelled, reg, allowIneligibleDiscount]);
+  }, [
+    editTests,
+    globalDiscountType,
+    globalDiscountValue,
+    globalDiscountDirty,
+    alreadyCancelled,
+    reg,
+    allowIneligibleDiscount,
+  ]);
 
   const discountChanged = useMemo(() => {
     return Math.abs(discountCalc.finalAmount - Number(reg?.final_amount || 0)) > 0.01 ||

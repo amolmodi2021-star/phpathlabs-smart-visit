@@ -351,8 +351,10 @@ const HomeVisitRegistrationWizard = ({ visit, open, onClose }: Props) => {
           payments: patientPayments,
           paid_amount: patientPaid,
           due_amount: patientDue,
-          global_discount_type: draft.globalDiscountValue > 0 ? draft.globalDiscountType : null,
-          global_discount_value: draft.globalDiscountValue,
+          global_discount_type: roundUpSelected
+            ? null
+            : (draft.globalDiscountValue > 0 ? draft.globalDiscountType : null),
+          global_discount_value: roundUpSelected ? 0 : draft.globalDiscountValue,
           remarks: draft.remarks,
           is_stat: draft.isStat,
           report_language: (draft.reportLanguage || "English").toUpperCase(),
