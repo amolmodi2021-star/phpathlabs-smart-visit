@@ -243,7 +243,11 @@ const DailyReport = () => {
 
   // Summary totals
   const totals = useMemo(() => {
-    const t = { cash: 0, gpay: 0, paytm: 0, credit_card: 0, neft: 0, total_in: 0, total_out: 0, gross: 0, discount: 0, final: 0, paid: 0, due: 0, refund: 0 };
+    const t = {
+      cash: 0, gpay: 0, paytm: 0, credit_card: 0, neft: 0,
+      total_in: 0, total_out: 0, gross: 0, discount: 0, final: 0,
+      paid: 0, due: 0, credit_due: 0, debit_due: 0, refund: 0,
+    };
     filtered.forEach((r: any) => {
       t.cash += Number(r.cash_amount || 0);
       t.gpay += Number(r.gpay_amount || 0);
@@ -254,13 +258,17 @@ const DailyReport = () => {
       t.discount += Number(r.discount_amount || 0);
       t.final += Number(r.final_amount || 0);
       t.paid += getRowPaid(r);
-      t.due += Number(r.due_amount || 0);
+      const due = Number(r.due_amount || 0);
+      t.due += due;
+      const billing = getRegInfo(r.registration_id).billing;
+      if (billing === "credit") t.credit_due += due;
+      else t.debit_due += due;
       t.refund += Number(r.refund_amount || 0);
       if (r.direction === "in") t.total_in += Number(r.total_amount || 0);
       else t.total_out += Number(r.total_amount || 0);
     });
     return t;
-  }, [filtered, regMap]);
+  }, [filtered, regMap, channelMap, pickupMap]);
 
   const exportToExcel = () => {
     const rows = filtered.map((r: any) => {
@@ -384,7 +392,7 @@ const DailyReport = () => {
 
       // Summary band
       doc.setFillColor(245, 245, 245);
-      doc.rect(margin, y, pageW - 2 * margin, 8, "F");
+      doc.rect(margin, y, pageW - 2 * margin, 12, "F");
       doc.setFontSize(7.5);
       doc.setFont("helvetica", "bold");
       const sumParts = [
@@ -396,12 +404,18 @@ const DailyReport = () => {
         `Paytm: ${totals.paytm.toFixed(0)}`,
         `NEFT: ${totals.neft.toFixed(0)}`,
         `CC: ${totals.credit_card.toFixed(0)}`,
-        `Due: ${totals.due.toFixed(0)}`,
         `Refund: ${totals.refund.toFixed(0)}`,
       ];
       doc.setTextColor(40, 40, 40);
-      doc.text(sumParts.join("    "), margin + 2, y + 5.2);
-      y += 10;
+      doc.text(sumParts.join("    "), margin + 2, y + 4.5);
+      doc.setTextColor(140, 60, 0);
+      doc.text(
+        `Credit Dues: ${totals.credit_due.toFixed(0)}    Debit Dues: ${totals.debit_due.toFixed(0)}    Total Due: ${totals.due.toFixed(0)}`,
+        margin + 2,
+        y + 9.5,
+      );
+      doc.setTextColor(40, 40, 40);
+      y += 14;
 
       // Column header row
       doc.setFillColor(225, 230, 240);
@@ -768,7 +782,11 @@ const DailyReport = () => {
     };
 
     const computeTotals = (rows: any[]) => {
-      const t = { cash: 0, gpay: 0, paytm: 0, credit_card: 0, neft: 0, total_in: 0, total_out: 0, gross: 0, discount: 0, final: 0, paid: 0, due: 0, refund: 0 };
+      const t = {
+        cash: 0, gpay: 0, paytm: 0, credit_card: 0, neft: 0,
+        total_in: 0, total_out: 0, gross: 0, discount: 0, final: 0,
+        paid: 0, due: 0, credit_due: 0, debit_due: 0, refund: 0,
+      };
       rows.forEach((r: any) => {
         t.cash += Number(r.cash_amount || 0);
         t.gpay += Number(r.gpay_amount || 0);
@@ -779,7 +797,11 @@ const DailyReport = () => {
         t.discount += Number(r.discount_amount || 0);
         t.final += Number(r.final_amount || 0);
         t.paid += getRowPaid(r);
-        t.due += Number(r.due_amount || 0);
+        const due = Number(r.due_amount || 0);
+        t.due += due;
+        const billing = getRegInfo(r.registration_id).billing;
+        if (billing === "credit") t.credit_due += due;
+        else t.debit_due += due;
         t.refund += Number(r.refund_amount || 0);
         if (r.direction === "in") t.total_in += Number(r.total_amount || 0);
         else t.total_out += Number(r.total_amount || 0);
@@ -814,7 +836,7 @@ const DailyReport = () => {
       drawUserBanner(
         user,
         rows.length,
-        `Net: ${net.toFixed(0)}  •  In: ${uTotals.total_in.toFixed(0)}  •  Out: ${Math.abs(uTotals.total_out).toFixed(0)}`
+        `Net: ${net.toFixed(0)}  •  In: ${uTotals.total_in.toFixed(0)}  •  Out: ${Math.abs(uTotals.total_out).toFixed(0)}  •  Credit Dues: ${uTotals.credit_due.toFixed(0)}  •  Debit Dues: ${uTotals.debit_due.toFixed(0)}`
       );
       drawColumnHeader();
       doc.setFont("helvetica", "normal");
@@ -842,17 +864,18 @@ const DailyReport = () => {
       y += 14;
 
       const sumCols: { key: string; label: string; w: number; align?: "left" | "right" }[] = [
-        { key: "user", label: "User", w: 50 },
-        { key: "txns", label: "Txns", w: 16, align: "right" },
-        { key: "cash", label: "Cash", w: 22, align: "right" },
-        { key: "gpay", label: "GPay", w: 22, align: "right" },
-        { key: "paytm", label: "Paytm", w: 22, align: "right" },
-        { key: "neft", label: "NEFT", w: 22, align: "right" },
-        { key: "cc", label: "CC", w: 22, align: "right" },
-        { key: "in", label: "Total In", w: 26, align: "right" },
-        { key: "out", label: "Refund/Out", w: 26, align: "right" },
-        { key: "due", label: "Due", w: 22, align: "right" },
-        { key: "net", label: "Net Collection", w: 30, align: "right" },
+        { key: "user", label: "User", w: 40 },
+        { key: "txns", label: "Txns", w: 14, align: "right" },
+        { key: "cash", label: "Cash", w: 20, align: "right" },
+        { key: "gpay", label: "GPay", w: 20, align: "right" },
+        { key: "paytm", label: "Paytm", w: 20, align: "right" },
+        { key: "neft", label: "NEFT", w: 20, align: "right" },
+        { key: "cc", label: "CC", w: 20, align: "right" },
+        { key: "in", label: "Total In", w: 24, align: "right" },
+        { key: "out", label: "Refund/Out", w: 24, align: "right" },
+        { key: "credit_due", label: "Credit Dues", w: 24, align: "right" },
+        { key: "debit_due", label: "Debit Dues", w: 24, align: "right" },
+        { key: "net", label: "Net Collection", w: 28, align: "right" },
       ];
       const sumW = sumCols.reduce((s, c) => s + c.w, 0);
       const sumX = margin + (pageW - 2 * margin - sumW) / 2;
@@ -884,7 +907,8 @@ const DailyReport = () => {
             cc: t.credit_card,
             in: t.total_in,
             out: Math.abs(t.total_out),
-            due: t.due,
+            credit_due: t.credit_due,
+            debit_due: t.debit_due,
             net: t.total_in + t.total_out,
           };
         })
@@ -917,7 +941,9 @@ const DailyReport = () => {
           }
           doc.setTextColor(20, 20, 20);
           if (c.key === "out" && row.out > 0) doc.setTextColor(180, 0, 0);
-          if (c.key === "due" && row.due > 0) doc.setTextColor(180, 0, 0);
+          if ((c.key === "credit_due" && row.credit_due > 0) || (c.key === "debit_due" && row.debit_due > 0)) {
+            doc.setTextColor(180, 80, 0);
+          }
           if (c.key === "net") doc.setFont("helvetica", "bold");
           else doc.setFont("helvetica", "normal");
           const tx = c.align === "right" ? cx2 + c.w - 1.5 : cx2 + 1.5;
@@ -940,10 +966,11 @@ const DailyReport = () => {
           cc: a.cc + r.cc,
           in: a.in + r.in,
           out: a.out + r.out,
-          due: a.due + r.due,
+          credit_due: a.credit_due + r.credit_due,
+          debit_due: a.debit_due + r.debit_due,
           net: a.net + r.net,
         }),
-        { txns: 0, cash: 0, gpay: 0, paytm: 0, neft: 0, cc: 0, in: 0, out: 0, due: 0, net: 0 }
+        { txns: 0, cash: 0, gpay: 0, paytm: 0, neft: 0, cc: 0, in: 0, out: 0, credit_due: 0, debit_due: 0, net: 0 }
       );
       if (y + sumRowH > pageH - 8) { doc.addPage(); y = margin; }
       doc.setFillColor(220, 230, 245);
@@ -1110,6 +1137,20 @@ const DailyReport = () => {
           </Badge>
         </div>
       )}
+
+      {/* Credit / Debit Dues — top summary */}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="rounded-lg border border-amber-200 bg-amber-50/60 p-4 text-center">
+          <p className="text-xs font-medium text-amber-800/80 uppercase tracking-wide">Credit Dues</p>
+          <p className="text-2xl font-bold text-amber-900 mt-1">₹{totals.credit_due.toFixed(2)}</p>
+          <p className="text-[11px] text-muted-foreground mt-1">Pickup / channel credit billing</p>
+        </div>
+        <div className="rounded-lg border border-orange-200 bg-orange-50/60 p-4 text-center">
+          <p className="text-xs font-medium text-orange-800/80 uppercase tracking-wide">Debit Dues</p>
+          <p className="text-2xl font-bold text-orange-900 mt-1">₹{totals.debit_due.toFixed(2)}</p>
+          <p className="text-[11px] text-muted-foreground mt-1">Patient / walk-in unpaid dues</p>
+        </div>
+      </div>
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
