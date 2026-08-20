@@ -168,13 +168,27 @@ const DailyReport = () => {
   /**
    * Due-collection rows are logged as money deltas with paid_amount=0 (to avoid double-counting
    * the cumulative registration snapshot). Show the amount received in Paid via total_amount.
+   * Refund rows store paid_amount=0 and a positive refund_amount; mode/total_amount are already
+   * signed negative. Expose that signed outflow in Paid so Paid totals match Net Collection.
    */
   const getRowPaid = (r: any): number => {
     const type = r.transaction_type;
     if (type === "due_collection" || type === "old_due_recovered") {
       return Number(r.total_amount || 0);
     }
+    if (type === "refund" || type === "old_bill_refund") {
+      const signedTotal = Number(r.total_amount || 0);
+      if (signedTotal !== 0) return signedTotal;
+      const refundAmt = Number(r.refund_amount || 0);
+      return refundAmt ? -Math.abs(refundAmt) : 0;
+    }
     return Number(r.paid_amount || 0);
+  };
+
+  const formatSignedRupee = (v: number): { text: string; negative: boolean } => {
+    if (v === 0) return { text: "₹0", negative: false };
+    if (v < 0) return { text: `-₹${Math.abs(v)}`, negative: true };
+    return { text: `₹${v}`, negative: false };
   };
 
 
@@ -1196,7 +1210,15 @@ const DailyReport = () => {
                   <TableCell className="text-right text-sm">₹{getRowGross(r)}</TableCell>
                   <TableCell className="text-right text-sm">₹{Number(r.discount_amount || 0)}</TableCell>
                   <TableCell className="text-right text-sm font-medium">₹{Number(r.final_amount || 0)}</TableCell>
-                  <TableCell className="text-right text-sm">₹{getRowPaid(r)}</TableCell>
+                  {(() => {
+                    const paid = getRowPaid(r);
+                    const shown = formatSignedRupee(paid);
+                    return (
+                      <TableCell className={`text-right text-sm ${shown.negative ? "text-destructive font-medium" : ""}`}>
+                        {shown.text}
+                      </TableCell>
+                    );
+                  })()}
                   <TableCell className="text-right text-sm">{Number(r.due_amount || 0) > 0 ? <span className="text-destructive">₹{Number(r.due_amount)}</span> : "₹0"}</TableCell>
                   {(["cash_amount","gpay_amount","paytm_amount","neft_amount","credit_card_amount"] as const).map((k) => {
                     const v = Number(r[k] || 0);
@@ -1219,7 +1241,9 @@ const DailyReport = () => {
                 <TableCell className="text-right">₹{totals.gross.toFixed(2)}</TableCell>
                 <TableCell className="text-right">₹{totals.discount.toFixed(2)}</TableCell>
                 <TableCell className="text-right">₹{totals.final.toFixed(2)}</TableCell>
-                <TableCell className="text-right">₹{totals.paid.toFixed(2)}</TableCell>
+                <TableCell className={`text-right ${totals.paid < 0 ? "text-destructive" : ""}`}>
+                  {totals.paid < 0 ? `-₹${Math.abs(totals.paid).toFixed(2)}` : `₹${totals.paid.toFixed(2)}`}
+                </TableCell>
                 <TableCell className="text-right">₹{totals.due.toFixed(2)}</TableCell>
                 <TableCell className="text-right">₹{totals.cash.toFixed(2)}</TableCell>
                 <TableCell className="text-right">₹{totals.gpay.toFixed(2)}</TableCell>
