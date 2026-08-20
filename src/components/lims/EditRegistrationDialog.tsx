@@ -113,14 +113,27 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
       const existing = Array.isArray(reg.cancelled_tests) ? reg.cancelled_tests : [];
       setCancelledTestIds(new Set(existing.map((t: any) => t.test_id || t)));
       setRefundMode("Cash");
-      // Populate tests for discount editing
+      // Populate tests for discount editing — seed ₹ individual discounts from frozen
+      // registration line amounts so round-up / backfilled bills still show the given discount.
       const regTests: any[] = Array.isArray(reg.tests) ? reg.tests : [];
-      setEditTests(regTests.map((t: any) => ({
-        ...t,
-        individual_discount_type: t.individual_discount_type || null,
-        individual_discount_value: Number(t.individual_discount_value || 0),
-        discount_applicable: t.discount_applicable !== false,
-      })));
+      setEditTests(regTests.map((t: any) => {
+        const price = Number(t.price || 0);
+        const storedDisc = Number(t.discount || 0)
+          || Math.max(0, price - Number(t.discounted_price ?? price));
+        const hasIndividual = t.individual_discount_type && Number(t.individual_discount_value || 0) > 0;
+        return {
+          ...t,
+          discount: storedDisc,
+          discounted_price: t.discounted_price != null ? Number(t.discounted_price) : Math.max(0, price - storedDisc),
+          individual_discount_type: hasIndividual
+            ? t.individual_discount_type
+            : (storedDisc > 0 ? "amount" : null),
+          individual_discount_value: hasIndividual
+            ? Number(t.individual_discount_value || 0)
+            : (storedDisc > 0 ? storedDisc : 0),
+          discount_applicable: t.discount_applicable !== false,
+        };
+      }));
       const gType = ((reg.global_discount_type as "percent" | "amount") || "percent");
       const gVal = Number(reg.global_discount_value || 0);
       setGlobalDiscountType(gType);
@@ -211,9 +224,10 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
       const price = Number(t.price || 0);
       totalAmount += price;
       let discount = 0;
-      const discountOk = !!t.discount_applicable || allowIneligibleDiscount;
+      const discountOk = t.discount_applicable !== false || allowIneligibleDiscount;
       const hasIndividual = t.individual_discount_type && t.individual_discount_value > 0 && discountOk;
-      const storedLineDiscount = Number(t.discount || 0);
+      const storedLineDiscount = Number(t.discount || 0)
+        || Math.max(0, price - Number(t.discounted_price ?? price));
       if (hasIndividual) {
         discount = t.individual_discount_type === "percent"
           ? Math.round((price * t.individual_discount_value) / 100)
@@ -955,9 +969,19 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
                       )}
                       <span className="flex-1 text-sm">{t.test_name}</span>
                       <span className="text-sm text-muted-foreground">₹{t.price}</span>
-                      {!isCancelled && (
-                        <span className="text-sm font-medium">₹{discountCalc.updatedTests.find((u: any) => u.test_id === t.test_id)?.discounted_price ?? t.price}</span>
-                      )}
+                      {!isCancelled && (() => {
+                        const updated = discountCalc.updatedTests.find((u: any) => u.test_id === t.test_id);
+                        const lineDisc = Number(updated?.discount ?? t.discount ?? 0);
+                        const net = updated?.discounted_price ?? Math.max(0, Number(t.price || 0) - lineDisc);
+                        return (
+                          <>
+                            {lineDisc > 0 && (
+                              <span className="text-sm text-green-600 font-medium">-₹{lineDisc}</span>
+                            )}
+                            <span className="text-sm font-medium">₹{net}</span>
+                          </>
+                        );
+                      })()}
                       {isCancelled && <Badge variant="destructive" className="text-xs">Cancelled</Badge>}
                     </div>
                     {/* Individual discount controls */}
@@ -973,6 +997,11 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
                             value={t.individual_discount_value || ""}
                             onChange={e => updateTestDiscount(t.test_id, "individual_discount_value", parseFloat(e.target.value) || 0)}
                             placeholder="Value" />
+                        )}
+                        {!t.individual_discount_type && Number(discountCalc.updatedTests.find((u: any) => u.test_id === t.test_id)?.discount || t.discount || 0) > 0 && (
+                          <span className="text-xs text-green-600">
+                            -₹{Number(discountCalc.updatedTests.find((u: any) => u.test_id === t.test_id)?.discount || t.discount || 0)}
+                          </span>
                         )}
                       </div>
                     )}
