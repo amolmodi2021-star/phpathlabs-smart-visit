@@ -154,7 +154,9 @@ function buildFullDispatchEntry(
         : null,
     });
 
-    const snipUrls = snip && snip.result_mode === "snip" && Array.isArray(snip.snip_image_urls) ? snip.snip_image_urls : [];
+    const snipUrls = snip && Array.isArray(snip.snip_image_urls) && snip.snip_image_urls.filter(Boolean).length > 0
+      ? snip.snip_image_urls.filter(Boolean)
+      : (snip?.result_mode === "snip" && snip?.snip_image_url ? [snip.snip_image_url] : []);
     const approvedResults = testResults.filter((r: any) => r.status === "approved");
 
     const collectedAt = tube?.collected_at || null;
