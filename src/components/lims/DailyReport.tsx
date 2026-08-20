@@ -15,6 +15,7 @@ import DeletePasswordDialog from "@/components/DeletePasswordDialog";
 import * as XLSX from "@e965/xlsx";
 import jsPDF from "jspdf";
 import { patientDisplayName } from "@/lib/patientDisplayName";
+import { isHiddenDailyReportType, paymentRowGross, paymentRowPaid } from "@/lib/dailyReportMetrics";
 
 const TRANSACTION_LABELS: Record<string, string> = {
   registration_payment: "Registration",
@@ -114,6 +115,13 @@ const DailyReport = () => {
   const regMap = useMemo(() => Object.fromEntries(regLookup.map((r: any) => [r.id, r])), [regLookup]);
   const channelMap = useMemo(() => Object.fromEntries(channelsLookup.map((c: any) => [c.id, c])), [channelsLookup]);
   const pickupMap = useMemo(() => Object.fromEntries(pickupsLookup.map((p: any) => [p.id, p])), [pickupsLookup]);
+  const hvcByRegId = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const r of regLookup as any[]) {
+      m[r.id] = Number(r.home_visit_charges || 0);
+    }
+    return m;
+  }, [regLookup]);
 
   const visitTypeLabel = (v?: string) => {
     if (v === "lab_visit") return "Lab Visit";
@@ -149,41 +157,9 @@ const DailyReport = () => {
     return { visit, source, billing };
   };
 
-  /**
-   * Gross on payment_transactions is tests-only. Include home visit charges so Daily Report
-   * matches invoice/Dashboard (Final = Gross − Discount, with HVC inside Gross).
-   * Bill-cancellation markers already bake HVC into gross_amount — do not add again.
-   */
-  const getRowGross = (r: any): number => {
-    const base = Number(r.gross_amount || 0);
-    const type = r.transaction_type;
-    if (type === "bill_cancellation" || type === "old_bill_cancellation") return base;
-    if (type === "registration_payment" || type === "discount_applied") {
-      const hvc = Number(regMap[r.registration_id]?.home_visit_charges || 0);
-      return base + hvc;
-    }
-    return base;
-  };
+  const getRowGross = (r: any): number => paymentRowGross(r, hvcByRegId);
 
-  /**
-   * Due-collection rows are logged as money deltas with paid_amount=0 (to avoid double-counting
-   * the cumulative registration snapshot). Show the amount received in Paid via total_amount.
-   * Refund rows store paid_amount=0 and a positive refund_amount; mode/total_amount are already
-   * signed negative. Expose that signed outflow in Paid so Paid totals match Net Collection.
-   */
-  const getRowPaid = (r: any): number => {
-    const type = r.transaction_type;
-    if (type === "due_collection" || type === "old_due_recovered") {
-      return Number(r.total_amount || 0);
-    }
-    if (type === "refund" || type === "old_bill_refund") {
-      const signedTotal = Number(r.total_amount || 0);
-      if (signedTotal !== 0) return signedTotal;
-      const refundAmt = Number(r.refund_amount || 0);
-      return refundAmt ? -Math.abs(refundAmt) : 0;
-    }
-    return Number(r.paid_amount || 0);
-  };
+  const getRowPaid = (r: any): number => paymentRowPaid(r);
 
   const formatSignedRupee = (v: number): { text: string; negative: boolean } => {
     if (v === 0) return { text: "₹0", negative: false };
@@ -220,7 +196,7 @@ const DailyReport = () => {
   const filtered = useMemo(() => {
     const rows = transactions.filter((t: any) => {
       // Hide cross-day cancellation marker rows; the paired old_bill_refund row carries the cash impact
-      if (t.transaction_type === "old_bill_cancellation") return false;
+      if (isHiddenDailyReportType(t.transaction_type)) return false;
       if (userFilter !== "ALL" && t.performed_by !== userFilter) return false;
       if (typeFilter !== "ALL" && t.transaction_type !== typeFilter) return false;
       if (modeFilter !== "ALL") {

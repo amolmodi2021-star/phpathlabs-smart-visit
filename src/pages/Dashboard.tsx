@@ -21,20 +21,21 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFoo
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Loader2, Users, IndianRupee, Percent, RotateCcw, Wallet, HandCoins, CreditCard } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  isHiddenDailyReportType,
+  paymentRowGross,
+  paymentRowPaid,
+} from "@/lib/dailyReportMetrics";
 
 type RegRow = {
   id: string;
   created_at: string;
-  gross_amount: number | null;
-  discount_amount: number | null;
-  refund_amount: number | null;
   home_visit_charges: number | null;
-  net_amount: number | null;
-  final_amount: number | null;
-  paid_amount: number | null;
   due_amount: number | null;
   bill_cancelled: boolean | null;
-  payments: any;
+  visit_type: string | null;
+  channel_id: string | null;
+  pickup_point_id: string | null;
   tests: any;
   cancelled_tests: any;
 };
@@ -58,38 +59,6 @@ function isPackageItem(t: any, packageIds?: Set<string>): boolean {
   if (String(t?.item_type || "").toLowerCase() === "package") return true;
   const id = String(t?.test_id || "");
   return !!(id && packageIds?.has(id));
-}
-
-/** Gross = list prices of active + cancelled tests + home visit charges (even if bill cancelled). */
-function registrationGross(r: RegRow): number {
-  const tests = Array.isArray(r.tests) ? r.tests : [];
-  const cancelled = Array.isArray(r.cancelled_tests) ? r.cancelled_tests : [];
-  const testIds = new Set(tests.map((t: any) => t.test_id).filter(Boolean));
-
-  let gross = tests.reduce((s: number, t: any) => s + listPrice(t), 0);
-  for (const c of cancelled) {
-    const id = c.test_id || c.id;
-    if (id && testIds.has(id)) continue; // already counted in tests
-    // cancelled_tests may only store refund_amount (discounted); prefer price when present
-    gross += Number(c.price ?? c.refund_amount ?? 0);
-  }
-
-  // Prefer reconstructed gross when tests JSON is present; fall back to stored columns
-  if (tests.length === 0 && cancelled.length === 0) {
-    gross = Number(r.gross_amount || 0);
-  }
-
-  return gross + Number(r.home_visit_charges || 0);
-}
-
-function accumulateModes(target: ModeTotals, payments: any) {
-  if (!Array.isArray(payments)) return;
-  for (const p of payments) {
-    const mode = String(p?.mode || "Other").trim() || "Other";
-    const amt = Number(p?.amount || 0);
-    if (!amt) continue;
-    target[mode] = (target[mode] || 0) + amt;
-  }
 }
 
 const Dashboard = () => {
@@ -140,57 +109,180 @@ const Dashboard = () => {
 
   const packageIdSet = useMemo(() => new Set(packageIds), [packageIds]);
 
-  const { data: registrations = [], isLoading, isFetching } = useQuery({
-    queryKey: ["business_dashboard_regs", dateFrom, dateTo],
+  // Same source as Daily Report — payment_transactions in the date range
+  const { data: transactions = [], isLoading: txsLoading, isFetching: txsFetching } = useQuery({
+    queryKey: ["business_dashboard_txs", dateFrom, dateTo],
     queryFn: async () => {
       const from = startOfDay(parseISO(dateFrom)).toISOString();
       const to = endOfDay(parseISO(dateTo)).toISOString();
       const pageSize = 1000;
       let fromIdx = 0;
-      const all: RegRow[] = [];
+      const all: any[] = [];
       for (;;) {
         const { data, error } = await supabase
-          .from("patient_registrations")
-          .select(
-            "id, created_at, gross_amount, discount_amount, refund_amount, home_visit_charges, net_amount, final_amount, paid_amount, due_amount, bill_cancelled, payments, tests, cancelled_tests",
-          )
-          .gte("created_at", from)
-          .lte("created_at", to)
-          .order("created_at", { ascending: true })
+          .from("payment_transactions" as any)
+          .select("*")
+          .gte("transaction_date", from)
+          .lte("transaction_date", to)
+          .order("transaction_date", { ascending: true })
           .range(fromIdx, fromIdx + pageSize - 1);
         if (error) throw error;
-        const rows = (data || []) as RegRow[];
+        const rows = (data || []) as any[];
         all.push(...rows);
         if (rows.length < pageSize) break;
         fromIdx += pageSize;
+      }
+      return all.filter((t) => !isHiddenDailyReportType(t.transaction_type));
+    },
+  });
+
+  const registrationIds = useMemo(() => {
+    const set = new Set<string>();
+    transactions.forEach((t: any) => {
+      if (t.registration_id) set.add(t.registration_id);
+    });
+    return Array.from(set);
+  }, [transactions]);
+
+  const { data: registrations = [], isLoading: regsLoading, isFetching: regsFetching } = useQuery({
+    queryKey: ["business_dashboard_regs", registrationIds],
+    enabled: registrationIds.length > 0,
+    queryFn: async () => {
+      const pageSize = 200;
+      const all: RegRow[] = [];
+      for (let i = 0; i < registrationIds.length; i += pageSize) {
+        const chunk = registrationIds.slice(i, i + pageSize);
+        const { data, error } = await supabase
+          .from("patient_registrations")
+          .select(
+            "id, created_at, home_visit_charges, due_amount, bill_cancelled, visit_type, channel_id, pickup_point_id, tests, cancelled_tests",
+          )
+          .in("id", chunk);
+        if (error) throw error;
+        all.push(...((data || []) as RegRow[]));
       }
       return all;
     },
   });
 
+  const { data: channelsLookup = [] } = useQuery({
+    queryKey: ["dashboard_channels"],
+    queryFn: async () => {
+      const { data } = await supabase.from("channels").select("id, billing_type");
+      return (data || []) as any[];
+    },
+    staleTime: 5 * 60_000,
+  });
+
+  const { data: pickupsLookup = [] } = useQuery({
+    queryKey: ["dashboard_pickups"],
+    queryFn: async () => {
+      const { data } = await supabase.from("pickup_points").select("id, billing_type");
+      return (data || []) as any[];
+    },
+    staleTime: 5 * 60_000,
+  });
+
+  const isLoading = txsLoading || (registrationIds.length > 0 && regsLoading);
+  const isFetching = txsFetching || regsFetching;
+
+  const regMap = useMemo(
+    () => Object.fromEntries(registrations.map((r) => [r.id, r])),
+    [registrations],
+  );
+  const channelMap = useMemo(
+    () => Object.fromEntries(channelsLookup.map((c: any) => [c.id, c])),
+    [channelsLookup],
+  );
+  const pickupMap = useMemo(
+    () => Object.fromEntries(pickupsLookup.map((p: any) => [p.id, p])),
+    [pickupsLookup],
+  );
+  const hvcByRegId = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const r of registrations) m[r.id] = Number(r.home_visit_charges || 0);
+    return m;
+  }, [registrations]);
+
+  const billingForReg = (regId?: string | null): "credit" | "debit" => {
+    if (!regId) return "debit";
+    const r = regMap[regId];
+    if (!r) return "debit";
+    if (r.visit_type === "pickup_point" && r.pickup_point_id) {
+      return pickupMap[r.pickup_point_id]?.billing_type === "credit" ? "credit" : "debit";
+    }
+    if (r.channel_id) {
+      return channelMap[r.channel_id]?.billing_type === "credit" ? "credit" : "debit";
+    }
+    return "debit";
+  };
+
   const summary = useMemo(() => {
-    let patients = 0;
     let gross = 0;
     let discount = 0;
     let refund = 0;
-    let due = 0;
+    let finalAmt = 0;
     let received = 0;
-    const modes: ModeTotals = {};
+    let totalIn = 0;
+    let totalOut = 0;
+    const modes: ModeTotals = {
+      Cash: 0,
+      GPay: 0,
+      Paytm: 0,
+      NEFT: 0,
+      "Credit Card": 0,
+    };
+    const registeredIds = new Set<string>();
 
-    for (const r of registrations) {
-      patients += 1;
-      gross += registrationGross(r);
-      discount += Number(r.discount_amount || 0);
-      refund += Number(r.refund_amount || 0);
-      due += Number(r.due_amount || 0);
-      // Original collections ≈ current paid + refunds already issued
-      received += Number(r.paid_amount || 0) + Number(r.refund_amount || 0);
-      accumulateModes(modes, r.payments);
+    for (const t of transactions) {
+      gross += paymentRowGross(t, hvcByRegId);
+      discount += Number(t.discount_amount || 0);
+      refund += Number(t.refund_amount || 0);
+      finalAmt += Number(t.final_amount || 0);
+      received += paymentRowPaid(t);
+      if (t.direction === "in") totalIn += Number(t.total_amount || 0);
+      else totalOut += Number(t.total_amount || 0);
+
+      modes.Cash += Number(t.cash_amount || 0);
+      modes.GPay += Number(t.gpay_amount || 0);
+      modes.Paytm += Number(t.paytm_amount || 0);
+      modes.NEFT += Number(t.neft_amount || 0);
+      modes["Credit Card"] += Number(t.credit_card_amount || 0);
+
+      if (t.transaction_type === "registration_payment" && t.registration_id) {
+        registeredIds.add(t.registration_id);
+      }
+    }
+
+    let creditDue = 0;
+    let debitDue = 0;
+    for (const regId of registeredIds) {
+      const reg = regMap[regId];
+      if (!reg || reg.bill_cancelled) continue;
+      const liveDue = Math.max(0, Number(reg.due_amount || 0));
+      if (liveDue <= 0.01) continue;
+      if (billingForReg(regId) === "credit") creditDue += liveDue;
+      else debitDue += liveDue;
     }
 
     const netRevenue = gross - discount - refund;
-    return { patients, gross, discount, refund, due, received, netRevenue, modes };
-  }, [registrations]);
+    return {
+      patients: registeredIds.size,
+      gross,
+      discount,
+      refund,
+      finalAmt,
+      received,
+      totalIn,
+      totalOut,
+      netCollection: totalIn + totalOut,
+      netRevenue,
+      due: creditDue + debitDue,
+      creditDue,
+      debitDue,
+      modes,
+    };
+  }, [transactions, hvcByRegId, regMap, channelMap, pickupMap]);
 
   const healthCheckups = useMemo(() => {
     const map = new Map<string, { name: string; count: number; netAmount: number }>();
@@ -223,23 +315,24 @@ const Dashboard = () => {
   const healthCheckupTotalNet = healthCheckups.reduce((s, h) => s + h.netAmount, 0);
 
   const modeRows = Object.entries(summary.modes)
-    .filter(([, v]) => v > 0)
-    .sort((a, b) => b[1] - a[1]);
+    .filter(([, v]) => Math.abs(v) > 0.009)
+    .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]));
 
   const kpiCards = [
-    { key: "patients", label: "Patients", value: String(summary.patients), icon: Users, accent: "text-sky-700 bg-sky-50 border-sky-100" },
-    { key: "gross", label: "Total Gross Amount", value: money(summary.gross), icon: IndianRupee, accent: "text-slate-700 bg-slate-50 border-slate-100", hint: "Incl. HVC, cancelled tests & cancelled bills" },
-    { key: "discount", label: "Discount Amount", value: money(summary.discount), icon: Percent, accent: "text-amber-700 bg-amber-50 border-amber-100" },
-    { key: "refund", label: "Refund Amount", value: money(summary.refund), icon: RotateCcw, accent: "text-rose-700 bg-rose-50 border-rose-100" },
+    { key: "patients", label: "Patients", value: String(summary.patients), icon: Users, accent: "text-sky-700 bg-sky-50 border-sky-100", hint: "Registrations in Daily Report period" },
+    { key: "gross", label: "Total Gross Amount", value: money(summary.gross), icon: IndianRupee, accent: "text-slate-700 bg-slate-50 border-slate-100", hint: "Matches Daily Report Gross" },
+    { key: "discount", label: "Discount Amount", value: money(summary.discount), icon: Percent, accent: "text-amber-700 bg-amber-50 border-amber-100", hint: "Matches Daily Report Discount" },
+    { key: "refund", label: "Refund Amount", value: money(summary.refund), icon: RotateCcw, accent: "text-rose-700 bg-rose-50 border-rose-100", hint: "Matches Daily Report Refund" },
     { key: "net", label: "Net Revenue", value: money(summary.netRevenue), icon: Wallet, accent: "text-emerald-700 bg-emerald-50 border-emerald-100", hint: "Gross − Discount − Refund" },
-    { key: "due", label: "Due Amount", value: money(summary.due), icon: HandCoins, accent: "text-orange-700 bg-orange-50 border-orange-100" },
+    { key: "credit_due", label: "Credit Dues", value: money(summary.creditDue), icon: HandCoins, accent: "text-amber-800 bg-amber-50 border-amber-100", hint: "Still unpaid (live)" },
+    { key: "debit_due", label: "Debit Dues", value: money(summary.debitDue), icon: HandCoins, accent: "text-orange-700 bg-orange-50 border-orange-100", hint: "Still unpaid (live)" },
     {
       key: "received",
       label: "Received Amount",
       value: money(summary.received),
       icon: CreditCard,
       accent: "text-indigo-700 bg-indigo-50 border-indigo-100",
-      hint: "Click for payment mode split",
+      hint: "Matches Daily Report Paid / Net Collection — click for modes",
       clickable: true,
     },
   ] as const;
@@ -250,7 +343,7 @@ const Dashboard = () => {
         <div>
           <h1 className="text-xl font-bold tracking-tight">Dashboard</h1>
           <p className="text-sm text-muted-foreground">
-            Registration revenue for {format(parseISO(dateFrom), "dd MMM yyyy")}
+            Same totals as Daily Report for {format(parseISO(dateFrom), "dd MMM yyyy")}
             {dateFrom !== dateTo ? ` – ${format(parseISO(dateTo), "dd MMM yyyy")}` : ""}
             {(isLoading || isFetching) && (
               <Loader2 className="inline h-3.5 w-3.5 ml-2 animate-spin text-muted-foreground" />
@@ -372,7 +465,7 @@ const Dashboard = () => {
             <DialogTitle>Received Amount — Payment Modes</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            Split from registration payment modes for bills created in the selected dates.
+            Same mode totals as Daily Report for the selected dates (refunds reduce the mode).
           </p>
           {modeRows.length === 0 ? (
             <p className="text-sm text-muted-foreground py-4 text-center">No payment mode data.</p>
@@ -389,7 +482,9 @@ const Dashboard = () => {
                   {modeRows.map(([mode, amt]) => (
                     <TableRow key={mode}>
                       <TableCell>{mode}</TableCell>
-                      <TableCell className="text-right tabular-nums">{money(amt)}</TableCell>
+                      <TableCell className={`text-right tabular-nums ${amt < 0 ? "text-destructive" : ""}`}>
+                        {amt < 0 ? `−${money(Math.abs(amt))}` : money(amt)}
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -405,7 +500,7 @@ const Dashboard = () => {
             </div>
           )}
           <p className="text-xs text-muted-foreground">
-            KPI received ({money(summary.received)}) uses paid + refunds. Mode table uses stored payment lines and may differ slightly after later adjustments.
+            Received KPI ({money(summary.received)}) matches Daily Report Paid / Net Collection.
           </p>
         </DialogContent>
       </Dialog>
