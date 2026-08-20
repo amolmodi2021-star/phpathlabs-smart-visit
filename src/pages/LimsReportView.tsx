@@ -347,6 +347,96 @@ function pagesFingerprint(pages: PageContent[]): string {
     .join("|");
 }
 
+function snipPageToContent(
+  snip: SnipPage,
+  fallback?: { departmentName?: string; testName?: string; collectionDateIso?: string | null },
+): PageContent {
+  return {
+    type: "snip",
+    departmentName: snip.departmentName || fallback?.departmentName || "Results",
+    snipImage: snip.imageUrl,
+    snipTestId: snip.testId,
+    snipTestName: snip.testName || fallback?.testName,
+    snipScalePct: snip.scalePct,
+    snipTopMarginPct: snip.topMarginPct,
+    snipFullBleed: !!snip.fullBleed,
+    sampleCollectionDate: fallback?.collectionDateIso || null,
+  };
+}
+
+/**
+ * Dense-pack structured pages, then attach each test's crop/snip pages after the
+ * structured page that contains that test (histogram after CBC if enabled).
+ * `orderedTestIds` keeps snip-only tests in department/test hierarchy after structured packing.
+ */
+function assembleReportPages(
+  structuredPages: PageContent[],
+  snipsByTest: Map<string, SnipPage[]>,
+  opts: {
+    enableHistograms: boolean;
+    analyzerHistograms: AnalyzerHistogram[];
+    orderedTestIds?: string[];
+  },
+): PageContent[] {
+  const remaining = new Map<string, SnipPage[]>();
+  snipsByTest.forEach((list, key) => {
+    remaining.set(key, [...list]);
+  });
+  const out: PageContent[] = [];
+  let histogramPageInserted = false;
+
+  for (const page of structuredPages) {
+    out.push(page);
+    if (
+      opts.enableHistograms
+      && !histogramPageInserted
+      && page.type === "structured"
+      && pageHasCbcTest(page.testBlocks)
+      && hasRenderableHistograms(opts.analyzerHistograms)
+    ) {
+      out.push({
+        type: "histogram",
+        departmentName: page.departmentName || "Haematology",
+        histograms: opts.analyzerHistograms,
+        approvers: page.approvers,
+        sampleCollectionDate: page.sampleCollectionDate,
+      });
+      histogramPageInserted = true;
+    }
+    for (const block of page.testBlocks || []) {
+      const snips = remaining.get(block.testId);
+      if (!snips?.length) continue;
+      remaining.delete(block.testId);
+      for (const snip of snips) {
+        out.push(snipPageToContent(snip, {
+          departmentName: block.departmentName,
+          testName: block.testName,
+          collectionDateIso: block.collectionDateIso,
+        }));
+      }
+    }
+  }
+
+  const emitRemainingFor = (testId: string) => {
+    const snips = remaining.get(testId);
+    if (!snips?.length) return;
+    remaining.delete(testId);
+    for (const snip of snips) out.push(snipPageToContent(snip));
+  };
+
+  for (const testId of opts.orderedTestIds || []) {
+    emitRemainingFor(testId);
+  }
+  for (const testId of [...remaining.keys()]) {
+    if (testId === "__orphan__") continue;
+    emitRemainingFor(testId);
+  }
+  for (const snip of remaining.get("__orphan__") || []) {
+    out.push(snipPageToContent(snip));
+  }
+  return out;
+}
+
 interface TestResultEntry {
   test_id: string;
   test_name: string;
@@ -409,6 +499,7 @@ interface PageContent {
   departmentName?: string;
   testBlocks?: TestBlock[];
   snipImage?: string;
+  snipTestId?: string;
   snipTestName?: string;
   snipScalePct?: number;
   snipTopMarginPct?: number;
@@ -1168,63 +1259,16 @@ const LimsReportView = () => {
       }
     }
 
-    const pagesWithHistograms: PageContent[] = [];
-    let histogramPageInserted = false;
-    for (const testId of mergedIds) {
-      const block = blockById.get(testId);
-      if (block) {
-        const structuredPages = packStructuredTestBlocks(
-          [block],
-          (blk, isFirst) => blk.estimatedHeightMm + (isFirst ? 0 : INTER_PROFILE_GAP_MM),
-          usableHeight - FIT_TOLERANCE_MM,
-        );
-        for (const page of structuredPages) {
-          pagesWithHistograms.push(page);
-          if (
-            enableHistograms
-            && !histogramPageInserted
-            && page.type === "structured"
-            && pageHasCbcTest(page.testBlocks)
-            && hasRenderableHistograms(analyzerHistograms)
-          ) {
-            pagesWithHistograms.push({
-              type: "histogram",
-              departmentName: page.departmentName || "Haematology",
-              histograms: analyzerHistograms,
-              approvers: page.approvers,
-              sampleCollectionDate: page.sampleCollectionDate,
-            });
-            histogramPageInserted = true;
-          }
-        }
-      }
-      for (const snip of snipsByTest.get(testId) || []) {
-        const testInfo = testsMap[testId];
-        const deptId = testInfo?.department_id || null;
-        const deptFromTest = deptId ? (deptNameMap[deptId] || null) : null;
-        pagesWithHistograms.push({
-          type: "snip",
-          departmentName: snip.departmentName || block?.departmentName || deptFromTest || "Results",
-          snipImage: snip.imageUrl,
-          snipTestName: snip.testName || block?.testName,
-          snipScalePct: snip.scalePct,
-          snipTopMarginPct: snip.topMarginPct,
-          snipFullBleed: !!snip.fullBleed,
-          sampleCollectionDate: block?.collectionDateIso || null,
-        });
-      }
-    }
-    for (const snip of snipsByTest.get("__orphan__") || []) {
-      pagesWithHistograms.push({
-        type: "snip",
-        departmentName: snip.departmentName || "Results",
-        snipImage: snip.imageUrl,
-        snipTestName: snip.testName,
-        snipScalePct: snip.scalePct,
-        snipTopMarginPct: snip.topMarginPct,
-        snipFullBleed: !!snip.fullBleed,
-      });
-    }
+    const structuredPages = packStructuredTestBlocks(
+      testBlocks,
+      (blk, isFirst) => blk.estimatedHeightMm + (isFirst ? 0 : INTER_PROFILE_GAP_MM),
+      usableHeight - FIT_TOLERANCE_MM,
+    );
+    const pagesWithHistograms = assembleReportPages(structuredPages, snipsByTest, {
+      enableHistograms,
+      analyzerHistograms,
+      orderedTestIds: mergedIds,
+    });
 
     return {
       pages: pagesWithHistograms,
@@ -1351,49 +1395,48 @@ const LimsReportView = () => {
         return base + bump + (isFirst ? 0 : INTER_PROFILE_GAP_MM);
       };
 
-      const nextPages: PageContent[] = [];
-      let histogramPageInserted = false;
-      // Preserve first-pass order: each test's structured block(s), then its snip pages.
+      // Source of truth: re-pack ALL structured blocks with measured heights (fills whitespace),
+      // then re-attach snip/crop pages from the current plan.
+      const snipsMap = new Map<string, SnipPage[]>();
+      const orderedTestIds: string[] = [];
+      const seenTests = new Set<string>();
+      for (const b of packPlan.sortedTestBlocks) {
+        orderedTestIds.push(b.testId);
+        seenTests.add(b.testId);
+      }
       for (const pg of packPlan.pages) {
-        if (pg.type === "snip") {
-          nextPages.push(pg);
-          continue;
-        }
-        if (pg.type === "histogram") {
-          // Re-insert after CBC structured page below.
-          continue;
-        }
-        if (pg.type === "structured" && pg.testBlocks && pg.testBlocks.length > 0) {
-          const blocks = pg.testBlocks
-            .map((b) => packPlan.sortedTestBlocks.find((x) => x.testId === b.testId) || b)
-            .filter(Boolean) as TestBlock[];
-          const structured = packStructuredTestBlocks(
-            blocks,
-            getHeight,
-            Math.max(40, usableMm),
-            deptHeaderMm,
-          );
-          for (const page of structured) {
-            nextPages.push(page);
-            if (
-              enableHistograms &&
-              !histogramPageInserted &&
-              page.type === "structured" &&
-              pageHasCbcTest(page.testBlocks) &&
-              hasRenderableHistograms(analyzerHistograms)
-            ) {
-              nextPages.push({
-                type: "histogram",
-                departmentName: page.departmentName || "Haematology",
-                histograms: analyzerHistograms,
-                approvers: page.approvers,
-                sampleCollectionDate: page.sampleCollectionDate,
-              });
-              histogramPageInserted = true;
-            }
-          }
+        if (pg.type !== "snip" || !pg.snipImage) continue;
+        const key = pg.snipTestId
+          || packPlan.sortedTestBlocks.find((b) => b.testName === pg.snipTestName)?.testId
+          || "__orphan__";
+        const list = snipsMap.get(key) || [];
+        list.push({
+          imageUrl: pg.snipImage,
+          testId: key === "__orphan__" ? undefined : key,
+          testName: pg.snipTestName,
+          departmentName: pg.departmentName,
+          scalePct: pg.snipScalePct,
+          topMarginPct: pg.snipTopMarginPct,
+          fullBleed: pg.snipFullBleed,
+        });
+        snipsMap.set(key, list);
+        if (key !== "__orphan__" && !seenTests.has(key)) {
+          orderedTestIds.push(key);
+          seenTests.add(key);
         }
       }
+
+      const structured = packStructuredTestBlocks(
+        packPlan.sortedTestBlocks,
+        getHeight,
+        Math.max(40, usableMm),
+        deptHeaderMm,
+      );
+      const nextPages = assembleReportPages(structured, snipsMap, {
+        enableHistograms,
+        analyzerHistograms,
+        orderedTestIds,
+      });
 
       measurePassRef.current += 1;
       if (pagesFingerprint(nextPages) !== pagesFingerprint(pages)) {
