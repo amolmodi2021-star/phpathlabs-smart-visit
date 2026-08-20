@@ -886,6 +886,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
   }, [editedValues, editedUnits, editedRefRanges, editedFlags, testParamsMap, qc, resolveNormalRange, existingSnips, existingResults]);
 
   // Save high-res lab PDF crops (no letterhead) → Verification; chrome applied on report.
+  // Also persist any typed parameter values entered on the same screen.
   const saveComposedPdf = useCallback(async (
     regId: string,
     testId: string,
@@ -896,6 +897,8 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
       cropRegions: any[];
       snipImageUrls: string[];
     },
+    outsourcedParamIds?: string[],
+    reg?: any,
   ) => {
     const key = `${regId}||${testId}`;
     setSavingKey(key);
@@ -903,11 +906,91 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
       const existing = getSnip(regId, testId);
       const urls = payload.snipImageUrls.filter(Boolean);
       if (urls.length === 0) throw new Error("No crop images to save");
+
+      // Persist typed results so provisional/final reports show params + crop.
+      const params = testParamsMap[testId] || [];
+      const upserts: any[] = [];
+      for (const tp of params) {
+        if (tp.is_subheader) continue;
+        const p = tp.report_test_parameters;
+        if (!p) continue;
+        if (outsourcedParamIds && outsourcedParamIds.length > 0 && !outsourcedParamIds.includes(p.id)) continue;
+        const valKey = `${regId}||${p.id}`;
+        const existingRow = findPatientResultRow(existingResults, regId, testId, p.id);
+        const value = editedValues[valKey] !== undefined ? editedValues[valKey] : (existingRow?.result_value || "");
+        if (!value || !String(value).trim()) continue;
+        const resolved = reg ? resolveNormalRange(p.id, reg) : {
+          text: "", low: null as number | null, high: null as number | null,
+          rangeType: "numeric", descriptiveOptions: [] as string[], expectedValue: "", normalFindings: "",
+        };
+        const rangeLow = resolved.low ?? p.normal_range_low;
+        const rangeHigh = resolved.high ?? p.normal_range_high;
+        const masterRef = resolved.text || p.normal_range_text || (rangeLow != null && rangeHigh != null ? `${rangeLow} - ${rangeHigh}` : "");
+        const unit = resolveOutsourcedUnit({
+          isOutsourced: true,
+          editedUnit: editedUnits[valKey],
+          savedUnit: existingRow?.unit,
+          masterUnit: p.unit || "",
+        });
+        const refRange = resolveOutsourcedRefRange({
+          isOutsourced: true,
+          editedRef: editedRefRanges[valKey],
+          savedRef: existingRow?.reference_range,
+          masterRef,
+          rangeType: resolved.rangeType,
+          normalRangeText: resolved.text || p.normal_range_text,
+        });
+        const autoFlag = calculateResultFlag({
+          value,
+          low: rangeLow,
+          high: rangeHigh,
+          rangeType: resolved.rangeType,
+          expectedValue: resolved.expectedValue,
+          descriptiveOptions: resolved.descriptiveOptions,
+          normalRangeText: resolved.text || p.normal_range_text,
+          normalFindings: resolved.normalFindings,
+          unit,
+        });
+        const flag = resolveOutsourcedFlag({
+          isOutsourced: true,
+          editedFlag: editedFlags[valKey],
+          savedFlag: existingRow?.flag,
+          autoFlag,
+          currentValue: value,
+          savedValue: existingRow?.result_value,
+        });
+        upserts.push({
+          registration_id: regId, test_id: testId, parameter_id: p.id,
+          param_code: p.param_code, parameter_name: p.parameter_name,
+          result_value: value, unit,
+          reference_range: refRange,
+          normal_range_low: rangeLow, normal_range_high: rangeHigh,
+          flag: flag || null,
+          status: "entered",
+          entered_at: new Date().toISOString(),
+          entered_by: getCurrentUserName(),
+          is_calculated: false, is_from_interface: false,
+        });
+      }
+      if (upserts.length > 0) {
+        const paramIdsToReplace = upserts.map((u) => u.parameter_id);
+        const { error: delErr } = await supabase
+          .from("patient_results")
+          .delete()
+          .eq("registration_id", regId)
+          .eq("test_id", testId)
+          .in("parameter_id", paramIdsToReplace)
+          .in("status", ["pending", "entered", "results_entered"]);
+        if (delErr) throw delErr;
+        const { error: insErr } = await supabase.from("patient_results").insert(upserts as any);
+        if (insErr) throw insErr;
+      }
+
       const { error } = await supabase.from("outsourced_test_snips").upsert({
         registration_id: regId,
         test_id: testId,
         outsourced_lab_name: (existing as any)?.outsourced_lab_name || null,
-        outsourced_parameter_ids: (existing as any)?.outsourced_parameter_ids || null,
+        outsourced_parameter_ids: (existing as any)?.outsourced_parameter_ids || outsourcedParamIds || null,
         result_mode: "pdf",
         outsource_status: "results_entered",
         source_pdf_url: payload.sourcePdfUrl,
@@ -922,18 +1005,23 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
       } as any, { onConflict: "registration_id,test_id" });
       if (error) throw error;
       await recalculateRegistrationStatus(regId);
-      toast.success(`Crops saved — ${testName} moved to Verification`);
+      toast.success(
+        upserts.length > 0
+          ? `Crops + ${upserts.length} parameter(s) saved — ${testName} moved to Verification`
+          : `Crops saved — ${testName} moved to Verification`,
+      );
       qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
       qc.invalidateQueries({ queryKey: ["outsourced_pending_ids"] });
       qc.invalidateQueries({ queryKey: ["verification_pending_ids"] });
       qc.invalidateQueries({ queryKey: ["verification_outsourced"] });
       qc.invalidateQueries({ queryKey: ["outsourced_manual_results"] });
+      qc.invalidateQueries({ queryKey: ["patient_results_existing"] });
     } catch (err: any) {
       toast.error(err.message || "Failed to save crops");
     } finally {
       setSavingKey(null);
     }
-  }, [qc, existingSnips]);
+  }, [qc, existingSnips, existingResults, editedValues, editedUnits, editedRefRanges, editedFlags, testParamsMap, resolveNormalRange]);
   const saveEditLabName = async () => {
     if (!editLabKey || !editLabName.trim()) return;
     setSavingEditLab(true);
@@ -1336,7 +1424,14 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
                   existingSnipUrls={Array.isArray((snip as any)?.snip_image_urls) ? (snip as any).snip_image_urls : []}
                   isSaving={savingKey === `${regId}||${testId}`}
                   onSaved={async (payload) => {
-                    await saveComposedPdf(regId, testId, test.testName, payload);
+                    await saveComposedPdf(
+                      regId,
+                      testId,
+                      test.testName,
+                      payload,
+                      test.outsourcedParameterIds,
+                      entry.registration,
+                    );
                   }}
                 />
                 {Array.isArray((snip as any)?.snip_image_urls) && (snip as any).snip_image_urls[0] && (

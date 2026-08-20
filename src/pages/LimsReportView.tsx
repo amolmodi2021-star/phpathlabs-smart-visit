@@ -396,6 +396,8 @@ interface TestBlock {
 interface SnipPage {
   imageUrl: string;
   testId?: string;
+  testName?: string;
+  departmentName?: string;
   scalePct?: number;
   topMarginPct?: number;
   /** Composed lab PDF page — already has letterhead + demographics; full-bleed. */
@@ -407,6 +409,7 @@ interface PageContent {
   departmentName?: string;
   testBlocks?: TestBlock[];
   snipImage?: string;
+  snipTestName?: string;
   snipScalePct?: number;
   snipTopMarginPct?: number;
   snipFullBleed?: boolean;
@@ -584,7 +587,7 @@ const LimsReportView = () => {
         .from("patient_results")
         .select("test_id, parameter_id, param_code, parameter_name, result_value, unit, reference_range, normal_range_low, normal_range_high, flag, is_calculated, note, test_note, status")
         .eq("registration_id", registrationId)
-        .in("status", ["entered", "pending", "verified", "approved", "dispatched"]);
+        .in("status", ["entered", "pending", "results_entered", "verified", "approved", "dispatched"]);
       // Pull test_name for each test_id from the loaded tests master
       const testNameById: Record<string, string> = {};
       (allTests || []).forEach((t: any) => { testNameById[t.id] = t.test_name; });
@@ -851,9 +854,16 @@ const LimsReportView = () => {
             ? u
             : await withTimeout(urlToDataUrl(u, cacheKey), 30_000, "snip image download");
           if (dataUrl) {
+            const testInfo = tMap[s.test_id];
+            const deptId = testInfo?.department_id || null;
+            const deptName = deptId
+              ? ((depts || []).find((d: any) => d.id === deptId)?.department_name || "Other")
+              : "Other";
             snipPages.push({
               imageUrl: dataUrl,
               testId: s.test_id,
+              testName: testInfo?.display_name || testInfo?.test_name || "Outsourced",
+              departmentName: deptName,
               scalePct: 100,
               topMarginPct: 0,
               fullBleed: legacyFullBleed,
@@ -886,9 +896,12 @@ const LimsReportView = () => {
 
     // Fetch test_parameters for hierarchy
     let computedTpMap: Record<string, any[]> = {};
-    const uniqueTestIds: string[] = [...new Set(filteredReports.flatMap((r: any) =>
-      ((r.test_results || []) as TestResultEntry[]).map(tr => tr.test_id)
-    ))] as string[];
+    const uniqueTestIds: string[] = [...new Set([
+      ...filteredReports.flatMap((r: any) =>
+        ((r.test_results || []) as TestResultEntry[]).map(tr => tr.test_id).filter(Boolean),
+      ),
+      ...snipPages.map((s) => s.testId).filter(Boolean) as string[],
+    ])] as string[];
     if (uniqueTestIds.length > 0) {
       const { data: tpData } = await supabase
         .from("test_parameters")
@@ -1188,17 +1201,22 @@ const LimsReportView = () => {
       for (const snip of snipsByTest.get(testId) || []) {
         pagesWithHistograms.push({
           type: "snip",
+          departmentName: snip.departmentName || block?.departmentName,
           snipImage: snip.imageUrl,
+          snipTestName: snip.testName || block?.testName,
           snipScalePct: snip.scalePct,
           snipTopMarginPct: snip.topMarginPct,
           snipFullBleed: !!snip.fullBleed,
+          sampleCollectionDate: block?.collectionDateIso || null,
         });
       }
     }
     for (const snip of snipsByTest.get("__orphan__") || []) {
       pagesWithHistograms.push({
         type: "snip",
+        departmentName: snip.departmentName,
         snipImage: snip.imageUrl,
+        snipTestName: snip.testName,
         snipScalePct: snip.scalePct,
         snipTopMarginPct: snip.topMarginPct,
         snipFullBleed: !!snip.fullBleed,
@@ -1993,6 +2011,7 @@ const LimsReportView = () => {
                     - SIGNATURE_HEIGHT_MM
                     - PAGE_NUM_HEIGHT_MM
                     - footerNoteMm
+                    - (page.snipFullBleed ? 0 : (DEPT_HEADER_MM + TEST_HEADER_MM + 4))
                     - 2;
                   if (page.snipFullBleed) {
                     return (
@@ -2014,25 +2033,38 @@ const LimsReportView = () => {
                   }
                   // Fit crop/snip into the band between demographics and signature:
                   // enlarge small images / shrink large ones; CSS only (no re-encode).
+                  // Keep department → test hierarchy above the crop (continuation page).
                   return (
-                    <div
-                      className="w-full overflow-hidden flex items-start justify-center"
-                      style={{
-                        height: `${Math.max(40, availableHeightMm)}mm`,
-                        maxHeight: `${Math.max(40, availableHeightMm)}mm`,
-                      }}
-                    >
-                      <img
-                        data-snip-image="true"
-                        src={page.snipImage}
-                        alt="Outsourced Report"
-                        style={{
-                          width: "100%",
-                          height: "100%",
-                          objectFit: "contain",
-                          objectPosition: "top center",
-                        }}
-                      />
+                    <div className="w-full flex flex-col min-h-0" style={{ height: `${Math.max(40, availableHeightMm + DEPT_HEADER_MM + TEST_HEADER_MM)}mm` }}>
+                      {(page.departmentName || page.snipTestName) && (
+                        <div className="shrink-0 mb-1">
+                          {page.departmentName && (
+                            <div data-report-dept-header className="font-bold uppercase tracking-wide text-primary border-b border-primary/30 pb-0.5 mb-1" style={{ fontSize: "15px" }}>
+                              {page.departmentName}
+                            </div>
+                          )}
+                          {page.snipTestName && (
+                            <div className="font-semibold" style={{ fontSize: "14px" }}>
+                              {page.snipTestName}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      <div
+                        className="w-full flex-1 min-h-0 overflow-hidden flex items-start justify-center"
+                      >
+                        <img
+                          data-snip-image="true"
+                          src={page.snipImage}
+                          alt="Outsourced Report"
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            objectFit: "contain",
+                            objectPosition: "top center",
+                          }}
+                        />
+                      </div>
                     </div>
                   );
                 })()}

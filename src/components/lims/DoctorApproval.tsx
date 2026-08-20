@@ -1103,23 +1103,62 @@ const DoctorApproval = () => {
                   setActionKey(`${testKey}||approve`);
                   try {
                     await supabase.from("outsourced_test_snips").update({ outsource_status: "approved", approved_at: new Date().toISOString(), approved_by: snipApproverChoice.pathologistName } as any).eq("registration_id", reg.id).eq("test_id", st.testId).eq("outsource_status", "verified");
+                    // Promote any typed results for this test into approved + snapshot (params then crop).
+                    const { data: liveTyped } = await supabase
+                      .from("patient_results")
+                      .select("test_id, parameter_id, param_code, parameter_name, result_value, unit, reference_range, normal_range_low, normal_range_high, flag, is_calculated, note, test_note, status")
+                      .eq("registration_id", reg.id)
+                      .eq("test_id", st.testId)
+                      .in("status", ["verified", "entered", "results_entered", "approved"]);
+                    const typedWithValues = (liveTyped || []).filter((r: any) => r.result_value && String(r.result_value).trim());
+                    if (typedWithValues.length > 0) {
+                      await supabase.from("patient_results").update({
+                        status: "approved",
+                        approved_at: new Date().toISOString(),
+                        approved_by: snipApproverChoice.pathologistName,
+                      } as any).eq("registration_id", reg.id).eq("test_id", st.testId).in("status", ["verified", "entered", "results_entered"]);
+                    }
                     const { data: tubesForColSnip } = await supabase.from("sample_tubes").select("collected_at").eq("registration_id", reg.id).not("collected_at", "is", null);
                     const firstCollectedAtSnip = tubesForColSnip?.length ? (tubesForColSnip.map((t: any) => t.collected_at).sort()[0] as string) : null;
                     const approvalAtSnip = new Date().toISOString();
+                    const incoming = typedWithValues.length > 0
+                      ? typedWithValues.map((u: any) => ({
+                          test_id: u.test_id,
+                          test_name: st.testName,
+                          parameter_id: u.parameter_id,
+                          param_code: u.param_code,
+                          parameter_name: u.parameter_name,
+                          result_value: u.result_value,
+                          unit: u.unit,
+                          reference_range: u.reference_range,
+                          normal_range_low: u.normal_range_low,
+                          normal_range_high: u.normal_range_high,
+                          flag: u.flag,
+                          is_calculated: u.is_calculated,
+                          is_outsourced: true,
+                          outsource_lab_name: st.labName,
+                          approved_by: snipApproverChoice.pathologistName,
+                          approved_by_qualification: snipApproverChoice.qualification,
+                          approved_by_designation: snipApproverChoice.designation,
+                          approved_by_signature_url: snipApproverChoice.signatureUrl,
+                          note: u.note || null,
+                          test_note: u.test_note || null,
+                        }))
+                      : [{
+                          test_id: st.testId,
+                          test_name: st.testName,
+                          is_outsourced: true,
+                          outsource_lab_name: st.labName,
+                          approved_by: snipApproverChoice.pathologistName,
+                          approved_by_qualification: snipApproverChoice.qualification,
+                          approved_by_designation: snipApproverChoice.designation,
+                          approved_by_signature_url: snipApproverChoice.signatureUrl,
+                        }];
                     await mergeApprovedReportSnapshot({
                       registrationId: reg.id,
                       removeTestIds: [st.testId],
                       snipUrls: st.snipUrls || [],
-                      incoming: [{
-                        test_id: st.testId,
-                        test_name: st.testName,
-                        is_outsourced: true,
-                        outsource_lab_name: st.labName,
-                        approved_by: snipApproverChoice.pathologistName,
-                        approved_by_qualification: snipApproverChoice.qualification,
-                        approved_by_designation: snipApproverChoice.designation,
-                        approved_by_signature_url: snipApproverChoice.signatureUrl,
-                      }],
+                      incoming,
                       header: approvedReportHeaderFromReg(reg, {
                         approvedBy: snipApproverChoice.pathologistName,
                         approvalAt: approvalAtSnip,
