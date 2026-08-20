@@ -972,20 +972,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
         if (snip && ["results_entered", "entered", "verified", "approved"].includes(snip.outsource_status)) continue;
 
         const s = getTestStatus(e.registration.id, t.testId);
-        // Skip tests that have all results filled and verified
-        if (s === "results_saved") {
-          const testResults = existingResults.filter((r: any) => r.registration_id === e.registration.id && r.test_id === t.testId);
-          // If any row is back at pending/entered (send-back from Verification),
-          // count it as still "Results Saved" — it needs the user's attention.
-          const hasOpenRow = testResults.some((r: any) => r.status === "pending" || r.status === "entered");
-          const hasParams = enterableParamsForTest(t.testId, t.outsourcedParameterIds).length > 0;
-          const paramsIncomplete = hasParams && !hasAllResultsFilled(e.registration.id, t.testId, t.outsourcedParameterIds);
-          if (!hasOpenRow && !paramsIncomplete) {
-            // Snip-only (or params fully typed): no longer pending in Outsourced
-            if (getSnipImageUrls(e.registration.id, t.testId).length > 0) continue;
-            if (hasAllResultsFilled(e.registration.id, t.testId, t.outsourcedParameterIds)) continue;
-          }
-        }
+        // results_saved always counts — draft or Verification send-back
         if (s === "not_sent") notSent++;
         else if (s === "awaiting_results") awaiting++;
         else if (s === "results_saved") resultsSaved++;
@@ -1350,31 +1337,10 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
             // Filter out tests where all results are already filled AND finalised
             const visibleTests = entry.outsourcedTests.filter(t => {
               const status = getTestStatus(reg.id, t.testId);
-              // Hide tests that have progressed past results stage
+              // Hide only after transfer to Verification (or later stages).
+              // results_saved must stay visible — that is the Outsourced draft /
+              // Verification send-back state (params and/or snips ready to edit).
               if (status === "completed") return false;
-              if (status === "results_saved") {
-                const testResults = existingResults.filter(
-                  (r: any) => r.registration_id === reg.id && r.test_id === t.testId
-                );
-                // If any saved row is back at pending/entered (e.g. pushed back
-                // from Verification), keep the test visible so the user can
-                // re-edit and re-save. Without this, send-back silently hides
-                // the test and there is no way to act on it.
-                const hasOpenRow = testResults.some(
-                  (r: any) => r.status === "pending" || r.status === "entered"
-                );
-                if (hasOpenRow) return true;
-                // Dual-mode: snip images alone are not "done" when typed params
-                // still need entry (e.g. HB Electrophoresis with snips + empty params).
-                const hasParams = enterableParamsForTest(t.testId, t.outsourcedParameterIds).length > 0;
-                if (hasParams && !hasAllResultsFilled(reg.id, t.testId, t.outsourcedParameterIds)) {
-                  return true;
-                }
-                // Snip-only (or params complete): hide once images exist
-                if (getSnipImageUrls(reg.id, t.testId).length > 0) return false;
-                // Manual / typed-only: hide when all params filled
-                return !hasAllResultsFilled(reg.id, t.testId, t.outsourcedParameterIds);
-              }
               return true;
             });
             if (visibleTests.length === 0) return null;

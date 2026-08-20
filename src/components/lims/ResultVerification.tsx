@@ -1089,12 +1089,17 @@ const ResultVerification = () => {
     }
   };
 
-  // Send back to Results Entry — persist edits FIRST, then flip status to pending
+  // Send back to Outsourced (or Results Entry for in-house) — persist edits FIRST, then flip status
   const sendBackTest = async (regId: string, testId: string, testName: string) => {
     try {
       // Find the patient entry + parameters for this (regId, testId)
       const entry = patientEntries.find(e => e.registration.id === regId);
       const testParams = entry ? entry.parameters.filter(p => p.testId === testId) : [];
+      const snipDetail = outsourcedSnipDetails[`${regId}||${testId}`];
+      const isOutsourcedTest =
+        !!snipDetail ||
+        testParams.some((p) => p.isOutsourced) ||
+        entry?.snipOnlyTests.some((s) => s.testId === testId);
 
       // Build upserts that include verifier's edits, with status = "pending"
       const upserts: any[] = [];
@@ -1148,16 +1153,17 @@ const ResultVerification = () => {
           .eq("registration_id", regId)
           .eq("test_id", testId)
           .in("parameter_id", paramIds)
-          .in("status", ["entered", "pending"]);
+          .in("status", ["entered", "pending", "results_entered"]);
         await supabase.from("patient_results").insert(upserts as any);
       } else {
         // Fallback (e.g. snip-only tests with no params) — keep prior behavior
-        await supabase.from("patient_results").update({ status: "pending" } as any).eq("registration_id", regId).eq("test_id", testId).eq("status", "entered");
+        await supabase.from("patient_results").update({ status: "pending" } as any).eq("registration_id", regId).eq("test_id", testId).in("status", ["entered", "results_entered"]);
       }
 
-      await supabase.from("outsourced_test_snips").update({ outsource_status: "results_saved" } as any).eq("registration_id", regId).eq("test_id", testId).in("outsource_status", ["results_entered", "entered"]);
+      // Return outsourced work to Outsourced queue (results_saved = editable draft)
+      await supabase.from("outsourced_test_snips").update({ outsource_status: "results_saved" } as any).eq("registration_id", regId).eq("test_id", testId).in("outsource_status", ["results_entered", "entered", "verified"]);
 
-      // Recompute the parent registration status so Results Entry sees this test as pending again
+      // Recompute the parent registration status so queues see this test as pending again
       await recalculateRegistrationStatus(regId);
 
       // Clear local edits for parameters belonging to this test (so re-entry shows freshly persisted DB values)
@@ -1179,9 +1185,14 @@ const ResultVerification = () => {
       setEditedTestNotes((prev) => { const next = { ...prev }; delete next[`${regId}||${testId}`]; return next; });
 
       await propagateRegistrationChange(qc, regId, ["verification", "results"], {
-        extraKeys: ["outsourced_manual_results", "outsourced_snips"],
+        extraKeys: ["outsourced_manual_results", "outsourced_snips", "outsourced_pending_ids", "outsourced_accepted_regs"],
+        skipRecalc: true,
       });
-      toast.success(`${testName} sent back to Results Entry`);
+      toast.success(
+        isOutsourcedTest
+          ? `${testName} sent back to Outsourced`
+          : `${testName} sent back to Results Entry`,
+      );
     } catch (err: any) {
       toast.error(err.message || "Failed");
     }
