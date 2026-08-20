@@ -19,7 +19,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Loader2, Users, IndianRupee, Percent, RotateCcw, Wallet, HandCoins, CreditCard } from "lucide-react";
+import { Loader2, Users, IndianRupee, Percent, Wallet, HandCoins, CreditCard } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   isHiddenDailyReportType,
@@ -132,9 +132,14 @@ const Dashboard = () => {
         if (rows.length < pageSize) break;
         fromIdx += pageSize;
       }
-      return all.filter((t) => !isHiddenDailyReportType(t.transaction_type));
+      return all;
     },
   });
+
+  const reportTransactions = useMemo(
+    () => transactions.filter((t: any) => !isHiddenDailyReportType(t.transaction_type)),
+    [transactions],
+  );
 
   const registrationIds = useMemo(() => {
     const set = new Set<string>();
@@ -220,7 +225,6 @@ const Dashboard = () => {
   const summary = useMemo(() => {
     let gross = 0;
     let discount = 0;
-    let refund = 0;
     let finalAmt = 0;
     let received = 0;
     let totalIn = 0;
@@ -234,10 +238,9 @@ const Dashboard = () => {
     };
     const registeredIds = new Set<string>();
 
-    for (const t of transactions) {
+    for (const t of reportTransactions) {
       gross += paymentRowGross(t, hvcByRegId);
       discount += Number(t.discount_amount || 0);
-      refund += Number(t.refund_amount || 0);
       finalAmt += Number(t.final_amount || 0);
       received += paymentRowPaid(t);
       if (t.direction === "in") totalIn += Number(t.total_amount || 0);
@@ -265,24 +268,75 @@ const Dashboard = () => {
       else debitDue += liveDue;
     }
 
-    const netRevenue = gross - discount - refund;
     return {
       patients: registeredIds.size,
       gross,
       discount,
-      refund,
       finalAmt,
       received,
       totalIn,
       totalOut,
       netCollection: totalIn + totalOut,
-      netRevenue,
       due: creditDue + debitDue,
       creditDue,
       debitDue,
       modes,
     };
-  }, [transactions, hvcByRegId, regMap, channelMap, pickupMap]);
+  }, [reportTransactions, hvcByRegId, regMap, channelMap, pickupMap]);
+
+  /** Entire bills cancelled in this date range (same-day + old-bill markers). */
+  const cancelledBills = useMemo(() => {
+    const cancelRefundByReg = new Map<string, number>();
+    for (const t of transactions) {
+      if (t.transaction_type !== "refund" && t.transaction_type !== "old_bill_refund") continue;
+      const remarks = String(t.remarks || "").toLowerCase();
+      if (!remarks.includes("cancelled invoice") && !remarks.includes("bill cancelled")) continue;
+      const regId = t.registration_id || t.invoice_number || "";
+      if (!regId) continue;
+      cancelRefundByReg.set(
+        regId,
+        (cancelRefundByReg.get(regId) || 0) + Number(t.refund_amount || 0),
+      );
+    }
+
+    const rows = transactions
+      .filter(
+        (t: any) =>
+          t.transaction_type === "bill_cancellation" || t.transaction_type === "old_bill_cancellation",
+      )
+      .map((t: any) => {
+        const regId = t.registration_id || "";
+        const refund = Math.max(
+          0,
+          cancelRefundByReg.get(regId) || cancelRefundByReg.get(t.invoice_number) || 0,
+        );
+        return {
+          id: t.id,
+          invoice_number: t.invoice_number || "—",
+          patient_name: t.patient_name || "—",
+          transaction_date: t.transaction_date,
+          gross: Math.abs(Number(t.gross_amount || 0)),
+          discount: Math.abs(Number(t.discount_amount || 0)),
+          final: Math.abs(Number(t.final_amount || 0)),
+          paid: refund,
+          refund,
+        };
+      })
+      .sort((a, b) => String(b.invoice_number).localeCompare(String(a.invoice_number)));
+
+    const totals = rows.reduce(
+      (a, r) => ({
+        gross: a.gross + r.gross,
+        discount: a.discount + r.discount,
+        final: a.final + r.final,
+        paid: a.paid + r.paid,
+        refund: a.refund + r.refund,
+      }),
+      { gross: 0, discount: 0, final: 0, paid: 0, refund: 0 },
+    );
+
+    return { rows, totals };
+  }, [transactions]);
 
   const healthCheckups = useMemo(() => {
     const map = new Map<string, { name: string; count: number; netAmount: number }>();
@@ -322,8 +376,7 @@ const Dashboard = () => {
     { key: "patients", label: "Patients", value: String(summary.patients), icon: Users, accent: "text-sky-700 bg-sky-50 border-sky-100", hint: "Registrations in Daily Report period" },
     { key: "gross", label: "Total Gross Amount", value: money(summary.gross), icon: IndianRupee, accent: "text-slate-700 bg-slate-50 border-slate-100", hint: "Matches Daily Report Gross" },
     { key: "discount", label: "Discount Amount", value: money(summary.discount), icon: Percent, accent: "text-amber-700 bg-amber-50 border-amber-100", hint: "Matches Daily Report Discount" },
-    { key: "refund", label: "Refund Amount", value: money(summary.refund), icon: RotateCcw, accent: "text-rose-700 bg-rose-50 border-rose-100", hint: "Matches Daily Report Refund" },
-    { key: "net", label: "Net Revenue", value: money(summary.netRevenue), icon: Wallet, accent: "text-emerald-700 bg-emerald-50 border-emerald-100", hint: "Gross − Discount − Refund" },
+    { key: "final", label: "Final Amount", value: money(summary.finalAmt), icon: Wallet, accent: "text-emerald-700 bg-emerald-50 border-emerald-100", hint: "Matches Daily Report Final" },
     { key: "credit_due", label: "Credit Dues", value: money(summary.creditDue), icon: HandCoins, accent: "text-amber-800 bg-amber-50 border-amber-100", hint: "Still unpaid (live)" },
     { key: "debit_due", label: "Debit Dues", value: money(summary.debitDue), icon: HandCoins, accent: "text-orange-700 bg-orange-50 border-orange-100", hint: "Still unpaid (live)" },
     {
@@ -451,6 +504,68 @@ const Dashboard = () => {
                     <TableCell>Total</TableCell>
                     <TableCell className="text-right tabular-nums">{healthCheckupTotalCount}</TableCell>
                     <TableCell className="text-right tabular-nums">{money(healthCheckupTotalNet)}</TableCell>
+                  </TableRow>
+                </TableFooter>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">Cancelled Bills</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Entire bills cancelled in this date range ({cancelledBills.rows.length} bill
+            {cancelledBills.rows.length === 1 ? "" : "s"})
+          </p>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+          ) : cancelledBills.rows.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-6 text-center">No cancelled bills in this date range.</p>
+          ) : (
+            <div className="rounded-md border overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Invoice #</TableHead>
+                    <TableHead>Patient</TableHead>
+                    <TableHead>Cancelled On</TableHead>
+                    <TableHead className="text-right">Gross Amount</TableHead>
+                    <TableHead className="text-right">Discount Amount</TableHead>
+                    <TableHead className="text-right">Final Amount</TableHead>
+                    <TableHead className="text-right">Paid Amount</TableHead>
+                    <TableHead className="text-right">Refund Amount</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {cancelledBills.rows.map((r) => (
+                    <TableRow key={r.id}>
+                      <TableCell className="font-mono text-xs whitespace-nowrap">{r.invoice_number}</TableCell>
+                      <TableCell className="font-medium whitespace-nowrap">{r.patient_name}</TableCell>
+                      <TableCell className="text-xs whitespace-nowrap">
+                        {r.transaction_date
+                          ? format(parseISO(r.transaction_date), "dd-MM-yyyy hh:mm a")
+                          : "—"}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">{money(r.gross)}</TableCell>
+                      <TableCell className="text-right tabular-nums">{money(r.discount)}</TableCell>
+                      <TableCell className="text-right tabular-nums">{money(r.final)}</TableCell>
+                      <TableCell className="text-right tabular-nums">{money(r.paid)}</TableCell>
+                      <TableCell className="text-right tabular-nums text-destructive">{money(r.refund)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+                <TableFooter>
+                  <TableRow>
+                    <TableCell colSpan={3} className="text-right font-semibold">Totals</TableCell>
+                    <TableCell className="text-right tabular-nums font-semibold">{money(cancelledBills.totals.gross)}</TableCell>
+                    <TableCell className="text-right tabular-nums font-semibold">{money(cancelledBills.totals.discount)}</TableCell>
+                    <TableCell className="text-right tabular-nums font-semibold">{money(cancelledBills.totals.final)}</TableCell>
+                    <TableCell className="text-right tabular-nums font-semibold">{money(cancelledBills.totals.paid)}</TableCell>
+                    <TableCell className="text-right tabular-nums font-semibold text-destructive">{money(cancelledBills.totals.refund)}</TableCell>
                   </TableRow>
                 </TableFooter>
               </Table>
