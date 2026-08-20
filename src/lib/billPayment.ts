@@ -43,12 +43,50 @@ export function capAmountToRemaining(amount: number, paidSoFar: number, finalAmo
   return Math.min(n, remaining);
 }
 
+export const OVERPAYMENT_MESSAGE = "Collected amount is greater than total bill amount";
+
 export function paymentsExceedBill(
   payments: BillPaymentEntry[] | null | undefined,
   finalAmount: number,
   epsilon = 0.01,
 ): boolean {
   return sumPaymentEntries(payments) > Number(finalAmount || 0) + epsilon;
+}
+
+export function collectedExceedsBill(
+  collected: number,
+  billAmount: number,
+  epsilon = 0.009,
+): boolean {
+  return Number(collected || 0) > Number(billAmount || 0) + epsilon;
+}
+
+export function billAmountChanged(
+  previous: number,
+  next: number,
+  epsilon = 0.009,
+): boolean {
+  return Math.abs(Number(previous || 0) - Number(next || 0)) > epsilon;
+}
+
+export function paymentSelectionIsSet(
+  selectedModes: Set<string> | Iterable<string>,
+  modeAmounts: Record<string, number>,
+): boolean {
+  const modes = selectedModes instanceof Set ? selectedModes : new Set(selectedModes);
+  if (modes.size > 0) return true;
+  return Object.values(modeAmounts || {}).some((n) => Number(n || 0) !== 0);
+}
+
+export function isOverpaymentMessage(message: string | undefined | null): boolean {
+  const m = String(message || "");
+  return /greater than total bill|cannot exceed the (final amount|bill value|grand total)|cannot exceed grand total/i.test(m);
+}
+
+export function assertCollectedDoesNotExceedBill(collected: number, billAmount: number): void {
+  if (collectedExceedsBill(collected, billAmount)) {
+    throw new Error(OVERPAYMENT_MESSAGE);
+  }
 }
 
 /**

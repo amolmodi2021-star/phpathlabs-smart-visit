@@ -1,11 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
   capAmountToRemaining,
+  collectedExceedsBill,
+  billAmountChanged,
+  isOverpaymentMessage,
   mergeEditedRegistrationSplit,
+  OVERPAYMENT_MESSAGE,
+  paymentSelectionIsSet,
   paymentsExceedBill,
   remainingDue,
   splitRegistrationAndDuePayments,
   sumPaymentEntries,
+  assertCollectedDoesNotExceedBill,
 } from "@/lib/billPayment";
 
 describe("billPayment", () => {
@@ -54,5 +60,28 @@ describe("billPayment", () => {
       2230,
     );
     expect(merged).toEqual([{ mode: "GPay", amount: 500 }, dueGpay]);
+  });
+
+  it("detects a stale collected amount after the bill is discounted", () => {
+    expect(collectedExceedsBill(1000, 800)).toBe(true);
+    expect(collectedExceedsBill(800, 800)).toBe(false);
+    expect(collectedExceedsBill(0, 800)).toBe(false);
+    expect(() => assertCollectedDoesNotExceedBill(1000, 800)).toThrow(OVERPAYMENT_MESSAGE);
+    expect(() => assertCollectedDoesNotExceedBill(800, 800)).not.toThrow();
+  });
+
+  it("treats any bill-total change as a reason to clear payment modes", () => {
+    expect(billAmountChanged(1000, 800)).toBe(true);
+    expect(billAmountChanged(1000, 1200)).toBe(true);
+    expect(billAmountChanged(1000, 1000)).toBe(false);
+    expect(paymentSelectionIsSet(new Set(["Cash", "GPay"]), { Cash: 400, GPay: 600 })).toBe(true);
+    expect(paymentSelectionIsSet(new Set(), {})).toBe(false);
+  });
+
+  it("recognizes overpayment errors from client and database messages", () => {
+    expect(isOverpaymentMessage(OVERPAYMENT_MESSAGE)).toBe(true);
+    expect(isOverpaymentMessage("Payment (₹1200) cannot exceed the bill value (₹800)")).toBe(true);
+    expect(isOverpaymentMessage("Payment cannot exceed grand total")).toBe(true);
+    expect(isOverpaymentMessage("Valid mobile number required")).toBe(false);
   });
 });

@@ -2,6 +2,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { splitPaymentModes } from "@/lib/paymentTransactions";
 import { getCurrentUser } from "@/lib/auth";
 import type { TubeGroup } from "@/lib/sampleTubeGrouping";
+import {
+  assertCollectedDoesNotExceedBill,
+  sumPaymentEntries,
+} from "@/lib/billPayment";
 
 export interface AtomicRegistrationInput {
   registration: Record<string, any>;
@@ -70,6 +74,14 @@ function paymentToJson(
  * Rolls back all writes if any step fails.
  */
 export async function registerPatientAtomic(input: AtomicRegistrationInput): Promise<any> {
+  const finalAmt = Number(input.payment?.final_amount ?? input.registration?.final_amount ?? 0);
+  const paidAmt = Number(input.payment?.paid_amount ?? input.registration?.paid_amount ?? 0);
+  assertCollectedDoesNotExceedBill(paidAmt, finalAmt);
+  assertCollectedDoesNotExceedBill(
+    sumPaymentEntries(input.payment?.payments ?? input.registration?.payments),
+    finalAmt,
+  );
+
   const { data, error } = await (supabase as any).rpc("register_patient_atomic", {
     p_registration: input.registration,
     p_tubes: tubesToJson(input.tubes),
