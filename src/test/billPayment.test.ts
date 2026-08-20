@@ -14,6 +14,7 @@ import {
   paymentSelectionIsSet,
   paymentsExceedBill,
   remainingDue,
+  maxAmountForModeSplit,
   splitRegistrationAndDuePayments,
   sumPaymentEntries,
   assertCollectedDoesNotExceedBill,
@@ -41,6 +42,12 @@ describe("billPayment", () => {
     expect(capAmountToRemaining(1730, 1730, 1730)).toBe(0);
     expect(capAmountToRemaining(500, 1000, 1730)).toBe(500);
     expect(capAmountToRemaining(900, 1000, 1730)).toBe(730);
+  });
+
+  it("caps each mode to remaining split total like new registration", () => {
+    expect(maxAmountForModeSplit(500, { Cash: 200 }, ["Cash", "GPay", "Credit Card"], "GPay")).toBe(300);
+    expect(maxAmountForModeSplit(500, { Cash: 200, GPay: 100 }, ["Cash", "GPay", "Credit Card"], "Credit Card")).toBe(200);
+    expect(maxAmountForModeSplit(500, { Cash: 200 }, ["Cash", "GPay"], "Cash")).toBe(500);
   });
 
   it("rejects inventing a registration GPay after due was already collected", () => {

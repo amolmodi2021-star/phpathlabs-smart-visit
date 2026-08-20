@@ -36,6 +36,22 @@ export function remainingDue(finalAmount: number, paidAmount: number): number {
   return Math.max(0, Number(finalAmount || 0) - Number(paidAmount || 0));
 }
 
+/**
+ * Max amount allowed for one mode in a multi-mode split, given the locked total
+ * and amounts already entered on the other selected modes (same as new registration).
+ */
+export function maxAmountForModeSplit(
+  lockedTotal: number,
+  modeAmounts: Record<string, number> | undefined,
+  selectedModes: Iterable<string>,
+  currentMode: string,
+): number {
+  const others = [...selectedModes]
+    .filter((m) => m !== currentMode)
+    .reduce((sum, m) => sum + Number(modeAmounts?.[m] || 0), 0);
+  return Math.max(0, Number(lockedTotal || 0) - others);
+}
+
 export function capAmountToRemaining(amount: number, paidSoFar: number, finalAmount: number): number {
   const remaining = remainingDue(finalAmount, paidSoFar);
   const n = Number(amount || 0);

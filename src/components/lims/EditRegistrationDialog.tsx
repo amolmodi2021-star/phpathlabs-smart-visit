@@ -24,6 +24,7 @@ import {
   rebuildPaymentsForPaidCap,
   splitRegistrationAndDuePayments,
   sumPaymentEntries,
+  maxAmountForModeSplit,
   type DueCollectionGroupEdit,
 } from "@/lib/billPayment";
 import { syncPatientDemographicsByUmr, invalidatePatientCaches } from "@/lib/syncPatientDemographics";
@@ -262,14 +263,6 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
       }
       return { ...g, selectedModes, modeAmounts: nextAmounts };
     }));
-  };
-
-  const setDueGroupModeAmount = (groupIdx: number, mode: string, amount: number) => {
-    setDueGroupEdits((prev) =>
-      prev.map((g, i) =>
-        i === groupIdx ? { ...g, modeAmounts: { ...g.modeAmounts, [mode]: amount } } : g,
-      ),
-    );
   };
 
   // Auto-fill when single mode selected — only the original registration payment,
@@ -1003,16 +996,40 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
                       >{mode}</Button>
                     ))}
                   </div>
-                  {Array.from(selectedModes).map(mode => (
-                    <div key={mode} className="flex items-center gap-2 mt-2">
-                      <Label className="w-28 text-sm">{mode}:</Label>
-                      <Input type="number" min={0} className="w-32"
-                        value={modeAmounts[mode] || ""}
-                        onChange={e => setModeAmounts(prev => ({ ...prev, [mode]: Number(e.target.value) || 0 }))}
-                        placeholder="₹ Amount"
-                        readOnly={selectedModes.size === 1} />
-                    </div>
-                  ))}
+                  {Array.from(selectedModes).map(mode => {
+                    const maxForThisMode = maxAmountForModeSplit(
+                      originalRegPaid,
+                      modeAmounts,
+                      selectedModes,
+                      mode,
+                    );
+                    return (
+                      <div key={mode} className="flex items-center gap-2 mt-2">
+                        <Label className="w-28 text-sm">{mode}:</Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          max={maxForThisMode}
+                          className="w-32"
+                          value={modeAmounts[mode] || ""}
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value) || 0;
+                            setModeAmounts((prev) => {
+                              const max = maxAmountForModeSplit(
+                                originalRegPaid,
+                                prev,
+                                selectedModes,
+                                mode,
+                              );
+                              return { ...prev, [mode]: Math.min(val, max) };
+                            });
+                          }}
+                          placeholder="₹ Amount"
+                          readOnly={selectedModes.size === 1}
+                        />
+                      </div>
+                    );
+                  })}
                   {selectedModes.size > 1 && (
                     <div className="text-sm space-y-1 pt-1">
                       <div className="flex justify-between"><span>Allocated:</span><span className={`font-medium ${paymentModesMismatch ? "text-destructive" : ""}`}>₹{editPaidAmount} / ₹{originalRegPaid}</span></div>
@@ -1083,20 +1100,49 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
                             </Button>
                           ))}
                         </div>
-                        {Array.from(selected).map((mode) => (
-                          <div key={mode} className="flex items-center gap-2">
-                            <Label className="w-28 text-sm">{mode}:</Label>
-                            <Input
-                              type="number"
-                              min={0}
-                              className="w-32"
-                              value={group.modeAmounts[mode] || ""}
-                              onChange={(e) => setDueGroupModeAmount(groupIdx, mode, Number(e.target.value) || 0)}
-                              placeholder="₹ Amount"
-                              readOnly={selected.size === 1}
-                            />
-                          </div>
-                        ))}
+                        {Array.from(selected).map((mode) => {
+                          const maxForThisMode = maxAmountForModeSplit(
+                            group.total,
+                            group.modeAmounts,
+                            selected,
+                            mode,
+                          );
+                          return (
+                            <div key={mode} className="flex items-center gap-2">
+                              <Label className="w-28 text-sm">{mode}:</Label>
+                              <Input
+                                type="number"
+                                min={0}
+                                max={maxForThisMode}
+                                className="w-32"
+                                value={group.modeAmounts[mode] || ""}
+                                onChange={(e) => {
+                                  const val = parseFloat(e.target.value) || 0;
+                                  setDueGroupEdits((prev) =>
+                                    prev.map((g, i) => {
+                                      if (i !== groupIdx) return g;
+                                      const max = maxAmountForModeSplit(
+                                        g.total,
+                                        g.modeAmounts,
+                                        g.selectedModes || [],
+                                        mode,
+                                      );
+                                      return {
+                                        ...g,
+                                        modeAmounts: {
+                                          ...g.modeAmounts,
+                                          [mode]: Math.min(val, max),
+                                        },
+                                      };
+                                    }),
+                                  );
+                                }}
+                                placeholder="₹ Amount"
+                                readOnly={selected.size === 1}
+                              />
+                            </div>
+                          );
+                        })}
                         {selected.size > 1 && (
                           <div className="text-sm space-y-1 pt-1">
                             <div className="flex justify-between">
