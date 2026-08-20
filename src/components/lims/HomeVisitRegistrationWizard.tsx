@@ -1,4 +1,4 @@
-import { useMemo, useState, useRef, useCallback } from "react";
+import { useMemo, useState, useRef, useCallback, useEffect } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,7 @@ import PatientRegistration, {
   type RegistrationSessionDraft,
 } from "@/components/lims/PatientRegistration";
 import InvoicePreview from "@/components/lims/InvoicePreview";
+import { applyRoundUpToNextTen, withEffectiveDiscountPct } from "@/lib/roundUpDiscount";
 
 const PAYMENT_MODES = ["Cash", "GPay", "Paytm", "Credit Card", "NEFT"];
 
@@ -74,6 +75,7 @@ const HomeVisitRegistrationWizard = ({ visit, open, onClose }: Props) => {
   const [step, setStep] = useState<Step>("form");
   const [formKey, setFormKey] = useState(0);
   const [session, setSession] = useState<RegistrationSessionDraft[]>([]);
+  const [roundUpSelected, setRoundUpSelected] = useState(false);
   const [addingExtra, setAddingExtra] = useState(false);
   const [selectedModes, setSelectedModes] = useState<Set<string>>(new Set());
   const [modeAmounts, setModeAmounts] = useState<Record<string, number>>({});
@@ -102,10 +104,94 @@ const HomeVisitRegistrationWizard = ({ visit, open, onClose }: Props) => {
     });
   }, [visit, addingExtra, lockedUserName, primaryMobile, session]);
 
-  const grandTotal = useMemo(
+  const baseGrandTotal = useMemo(
     () => session.reduce((s, p) => s + Number(p.calculations.finalAmount || 0), 0),
     [session],
   );
+  const baseGrandDiscount = useMemo(
+    () => session.reduce((s, p) => s + Number(p.calculations.totalDiscount || 0), 0),
+    [session],
+  );
+
+  /** Apply ₹10 round-up across all patients' discounted tests (HV charges included). */
+  const billedSession = useMemo(() => {
+    if (!roundUpSelected || !(baseGrandDiscount > 0) || session.length === 0) {
+      return session.map((p) => ({
+        ...p,
+        calculations: {
+          ...p.calculations,
+          testDetails: withEffectiveDiscountPct(p.calculations.testDetails || []),
+        },
+      }));
+    }
+    type Flat = {
+      price: number;
+      discount: number;
+      _pi: number;
+      _ti: number;
+      [k: string]: any;
+    };
+    const flat: Flat[] = [];
+    session.forEach((p, pi) => {
+      (p.calculations.testDetails || []).forEach((t: any, ti: number) => {
+        flat.push({ ...t, price: Number(t.price) || 0, discount: Number(t.discount) || 0, _pi: pi, _ti: ti });
+      });
+    });
+    const hvc = session.reduce((s, p) => s + Number(p.calculations.homeVisitCharges || 0), 0);
+    const adj = applyRoundUpToNextTen(flat, hvc);
+    if (!adj) {
+      return session.map((p) => ({
+        ...p,
+        calculations: {
+          ...p.calculations,
+          testDetails: withEffectiveDiscountPct(p.calculations.testDetails || []),
+        },
+      }));
+    }
+    return session.map((p, pi) => {
+      const lines = adj.testDetails.filter((t) => (t as Flat)._pi === pi);
+      const totalDiscount = lines.reduce((s, t) => s + t.discount, 0);
+      const totalAmount = Number(p.calculations.totalAmount) || 0;
+      const homeVisitCharges = Number(p.calculations.homeVisitCharges) || 0;
+      const finalAmount = Math.round(totalAmount - totalDiscount + homeVisitCharges);
+      return {
+        ...p,
+        calculations: {
+          ...p.calculations,
+          totalDiscount,
+          finalAmount,
+          testDetails: lines.map(({ _pi, _ti, ...rest }) => rest),
+        },
+      };
+    });
+  }, [session, roundUpSelected, baseGrandDiscount]);
+
+  const grandTotal = useMemo(
+    () => billedSession.reduce((s, p) => s + Number(p.calculations.finalAmount || 0), 0),
+    [billedSession],
+  );
+  const roundUpTarget = useMemo(() => {
+    if (!(baseGrandDiscount > 0)) return null;
+    const flat = session.flatMap((p) =>
+      (p.calculations.testDetails || []).map((t: any) => ({
+        price: Number(t.price) || 0,
+        discount: Number(t.discount) || 0,
+      })),
+    );
+    const hvc = session.reduce((s, p) => s + Number(p.calculations.homeVisitCharges || 0), 0);
+    return applyRoundUpToNextTen(flat, hvc)?.finalAmount ?? null;
+  }, [session, baseGrandDiscount]);
+
+  useEffect(() => {
+    setRoundUpSelected(false);
+  }, [baseGrandTotal, baseGrandDiscount, session.length]);
+
+  useEffect(() => {
+    if (!roundUpSelected || roundUpTarget == null) return;
+    if (selectedModes.size !== 1) return;
+    const mode = Array.from(selectedModes)[0];
+    setModeAmounts({ [mode]: roundUpTarget });
+  }, [roundUpSelected, roundUpTarget, selectedModes.size]);
 
   const paidAmount = useMemo(
     () => Array.from(selectedModes).reduce((sum, m) => sum + (modeAmounts[m] || 0), 0),
@@ -165,14 +251,14 @@ const HomeVisitRegistrationWizard = ({ visit, open, onClose }: Props) => {
 
   const registerMutation = useMutation({
     mutationFn: async () => {
-      if (session.length === 0) throw new Error("Add at least one patient");
+      if (billedSession.length === 0) throw new Error("Add at least one patient");
       if (paidAmount > grandTotal) throw new Error("Payment cannot exceed grand total");
       const stampedBy = getCurrentUserName();
       if (!stampedBy) throw new Error("Please sign in again before saving");
       const phlebo = lockedUserName || stampedBy;
       if (!phlebo) throw new Error("Signed-in user name required for Completed by (Phlebo)");
 
-      const finals = session.map((p) => Number(p.calculations.finalAmount || 0));
+      const finals = billedSession.map((p) => Number(p.calculations.finalAmount || 0));
       const paidPerPatient = distributePayments(paidAmount, finals);
 
       const modeEntries = Array.from(selectedModes)
@@ -181,8 +267,8 @@ const HomeVisitRegistrationWizard = ({ visit, open, onClose }: Props) => {
 
       const registered: any[] = [];
 
-      for (let i = 0; i < session.length; i++) {
-        const draft = session[i];
+      for (let i = 0; i < billedSession.length; i++) {
+        const draft = billedSession[i];
         const patientPaid = paidPerPatient[i] || 0;
         const patientDue = Math.max(0, finals[i] - patientPaid);
 
@@ -465,8 +551,8 @@ const HomeVisitRegistrationWizard = ({ visit, open, onClose }: Props) => {
           {step === "payment" && (
             <div className="space-y-4">
               <div className="space-y-2">
-                {session.map((p, idx) => {
-                  const finals = session.map((x) => Number(x.calculations.finalAmount || 0));
+                {billedSession.map((p, idx) => {
+                  const finals = billedSession.map((x) => Number(x.calculations.finalAmount || 0));
                   const shares = distributePayments(paidAmount, finals);
                   const share = shares[idx] || 0;
                   const dueShare = Math.max(0, Number(p.calculations.finalAmount || 0) - share);
@@ -482,6 +568,16 @@ const HomeVisitRegistrationWizard = ({ visit, open, onClose }: Props) => {
                           Paid share ₹{share} · Due ₹{dueShare}
                         </p>
                       )}
+                      {(p.calculations.testDetails || []).some((t: any) => t.discount > 0) && (
+                        <div className="mt-1 space-y-0.5">
+                          {(p.calculations.testDetails || []).filter((t: any) => t.discount > 0).map((t: any) => (
+                            <p key={t.test_id} className="text-[10px] text-primary">
+                              {t.test_name}: −₹{t.discount}
+                              {t.effectiveDiscountPct != null ? ` (${t.effectiveDiscountPct}%)` : ""}
+                            </p>
+                          ))}
+                        </div>
+                      )}
                     </div>
                     <p className="font-semibold">₹{p.calculations.finalAmount}</p>
                   </div>
@@ -492,6 +588,25 @@ const HomeVisitRegistrationWizard = ({ visit, open, onClose }: Props) => {
                 <span>Cumulative total</span>
                 <span>₹{grandTotal}</span>
               </div>
+              {roundUpTarget != null && baseGrandDiscount > 0 && (
+                <div className="flex flex-wrap items-center gap-2 text-sm">
+                  <span className="text-xs text-muted-foreground">Round collect:</span>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={roundUpSelected ? "default" : "outline"}
+                    className="h-7 text-xs"
+                    onClick={() => setRoundUpSelected((v) => !v)}
+                  >
+                    {roundUpSelected ? `Using ₹${grandTotal}` : `Collect ₹${roundUpTarget}`}
+                  </Button>
+                  {roundUpSelected && (
+                    <span className="text-[10px] text-muted-foreground">
+                      Exact was ₹{baseGrandTotal} — discount reduced across tests so payable is a ₹10 multiple
+                    </span>
+                  )}
+                </div>
+              )}
               {session.length > 1 && (
                 <p className="text-xs text-muted-foreground">
                   Partial payments split equally (no decimals). Primary gets any odd remainder; unpaid stays due per patient.
@@ -538,13 +653,18 @@ const HomeVisitRegistrationWizard = ({ visit, open, onClose }: Props) => {
                     })}
                   </div>
                 )}
-                <div className="mt-2 flex gap-4 text-sm">
+                <div className="mt-2 flex flex-wrap items-center gap-3 text-sm">
                   <span>
                     Paid: <strong>₹{paidAmount}</strong>
                   </span>
                   {dueAmount > 0 && (
-                    <span className="text-destructive">
+                    <span className="text-destructive flex items-center gap-2">
                       Due: <strong>₹{dueAmount}</strong>
+                      {roundUpTarget != null && !roundUpSelected && baseGrandDiscount > 0 && (
+                        <Button type="button" size="sm" variant="outline" className="h-6 text-[11px]" onClick={() => setRoundUpSelected(true)}>
+                          Collect ₹{roundUpTarget}
+                        </Button>
+                      )}
                     </span>
                   )}
                 </div>

@@ -28,6 +28,10 @@ import {
   saveRegistrationDraft,
   type RegistrationDraft,
 } from "@/lib/registrationDraft";
+import {
+  applyRoundUpToNextTen,
+  withEffectiveDiscountPct,
+} from "@/lib/roundUpDiscount";
 
 const TITLES = [...PATIENT_TITLES];
 const PAYMENT_MODES = ["Cash", "GPay", "Paytm", "Credit Card", "NEFT"];
@@ -183,6 +187,7 @@ const PatientRegistration = ({
   const [globalDiscountValue, setGlobalDiscountValue] = useState(d?.globalDiscountValue ?? 0);
   /** When on, discount applies even to tests/packages marked not discount-eligible. */
   const [allowIneligibleDiscount, setAllowIneligibleDiscount] = useState(d?.allowIneligibleDiscount ?? false);
+  const [roundUpSelected, setRoundUpSelected] = useState(false);
   const allowHvCharges = !homeVisitOnly || homeVisitPrefill?.allowHomeVisitCharges !== false;
   const [homeVisitCharges, setHomeVisitCharges] = useState(
     allowHvCharges ? (d?.homeVisitCharges ?? 0) : 0,
@@ -567,11 +572,50 @@ const PatientRegistration = ({
     });
   };
 
+  const roundUpOffer = useMemo(() => {
+    if (!(calculations.totalDiscount > 0)) return null;
+    return applyRoundUpToNextTen(calculations.testDetails, calculations.homeVisitCharges);
+  }, [calculations]);
+
+  useEffect(() => {
+    setRoundUpSelected(false);
+  }, [calculations.finalAmount, calculations.totalDiscount, calculations.homeVisitCharges, selectedTests.length]);
+
+  const billing = useMemo(() => {
+    if (roundUpSelected && roundUpOffer) {
+      return {
+        totalAmount: calculations.totalAmount,
+        totalDiscount: roundUpOffer.totalDiscount,
+        finalAmount: roundUpOffer.finalAmount,
+        homeVisitCharges: calculations.homeVisitCharges,
+        testDetails: roundUpOffer.testDetails,
+        roundUpApplied: true as const,
+        roundUpTarget: roundUpOffer.finalAmount,
+      };
+    }
+    return {
+      totalAmount: calculations.totalAmount,
+      totalDiscount: calculations.totalDiscount,
+      finalAmount: calculations.finalAmount,
+      homeVisitCharges: calculations.homeVisitCharges,
+      testDetails: withEffectiveDiscountPct(calculations.testDetails),
+      roundUpApplied: false as const,
+      roundUpTarget: roundUpOffer?.finalAmount ?? null,
+    };
+  }, [calculations, roundUpSelected, roundUpOffer]);
+
   const paidAmount = useMemo(() =>
     Array.from(selectedModes).reduce((sum, mode) => sum + (modeAmounts[mode] || 0), 0),
     [selectedModes, modeAmounts]
   );
-  const dueAmount = Math.max(0, calculations.finalAmount - paidAmount);
+  const dueAmount = Math.max(0, billing.finalAmount - paidAmount);
+
+  useEffect(() => {
+    if (!roundUpSelected || !roundUpOffer) return;
+    if (selectedModes.size !== 1) return;
+    const mode = Array.from(selectedModes)[0];
+    setModeAmounts({ [mode]: roundUpOffer.finalAmount });
+  }, [roundUpSelected, roundUpOffer?.finalAmount, selectedModes.size]);
 
   const buildSessionDraft = (): RegistrationSessionDraft => ({
     mobile: mobileNumber.replace(/\D/g, "").slice(-10),
@@ -595,13 +639,13 @@ const PatientRegistration = ({
       ? (getCurrentUserName()?.trim() || completingPhleboName.trim() || null)
       : (completingPhleboName.trim() || null),
     calculations: {
-      totalAmount: calculations.totalAmount,
-      totalDiscount: calculations.totalDiscount,
-      homeVisitCharges: allowHvCharges ? calculations.homeVisitCharges : 0,
+      totalAmount: billing.totalAmount,
+      totalDiscount: billing.totalDiscount,
+      homeVisitCharges: allowHvCharges ? billing.homeVisitCharges : 0,
       finalAmount: allowHvCharges
-        ? calculations.finalAmount
-        : calculations.totalAmount - calculations.totalDiscount,
-      testDetails: calculations.testDetails,
+        ? billing.finalAmount
+        : billing.totalAmount - billing.totalDiscount,
+      testDetails: billing.testDetails,
     },
   });
 
@@ -618,7 +662,7 @@ const PatientRegistration = ({
     if (homeVisitOnly && !(getCurrentUserName()?.trim() || completingPhleboName.trim())) {
       throw new Error("Signed-in user name required for Completed by (Phlebo)");
     }
-    if (!deferPayment && paidAmount > calculations.finalAmount) {
+    if (!deferPayment && paidAmount > billing.finalAmount) {
       throw new Error("Payment amount cannot exceed the final amount");
     }
   };
@@ -639,7 +683,7 @@ const PatientRegistration = ({
     mutationFn: async () => {
       validateBeforeSave();
       const cleanMobile = mobileNumber.replace(/\D/g, "").slice(-10);
-      if (!deferPayment && paidAmount > calculations.finalAmount) throw new Error("Payment amount cannot exceed the final amount");
+      if (!deferPayment && paidAmount > billing.finalAmount) throw new Error("Payment amount cannot exceed the final amount");
 
       const stampedBy = getCurrentUserName();
       if (!stampedBy) throw new Error("Please sign in again before saving the registration");
@@ -656,8 +700,8 @@ const PatientRegistration = ({
         .filter(m => (modeAmounts[m] || 0) > 0)
         .map(m => ({ mode: m, amount: modeAmounts[m] || 0 }));
 
-      const hvc = allowHvCharges ? calculations.homeVisitCharges : 0;
-      const finalAmt = calculations.totalAmount - calculations.totalDiscount + hvc;
+      const hvc = allowHvCharges ? billing.homeVisitCharges : 0;
+      const finalAmt = billing.totalAmount - billing.totalDiscount + hvc;
 
       const regData = {
         mobile_number: cleanMobile,
@@ -673,15 +717,15 @@ const PatientRegistration = ({
         visit_type: homeVisitOnly ? "home_visit" : visitType,
         pickup_point_id: visitType === "pickup_point" ? pickupPointId : null,
         channel_id: channelId || null,
-        tests: calculations.testDetails.map(t => ({
+        tests: billing.testDetails.map(t => ({
           test_id: t.test_id, test_name: t.test_name, price: t.price,
           discount: t.discount, discounted_price: t.discountedPrice,
           fasting_required: t.fasting_required,
           item_type: t.item_type || "test",
         })),
-        gross_amount: calculations.totalAmount,
-        discount_amount: calculations.totalDiscount,
-        net_amount: calculations.totalAmount - calculations.totalDiscount,
+        gross_amount: billing.totalAmount,
+        discount_amount: billing.totalDiscount,
+        net_amount: billing.totalAmount - billing.totalDiscount,
         home_visit_charges: hvc,
         final_amount: finalAmt,
         payments,
@@ -700,7 +744,7 @@ const PatientRegistration = ({
       };
 
       const tubeGroups = await buildSampleTubeGroups(
-        calculations.testDetails.map((t: any) => ({
+        billing.testDetails.map((t: any) => ({
           test_id: t.test_id,
           test_name: t.test_name,
           item_type: t.item_type || "test",
@@ -713,8 +757,8 @@ const PatientRegistration = ({
         payment: {
           payments,
           total_amount: regData.paid_amount,
-          gross_amount: calculations.totalAmount,
-          discount_amount: calculations.totalDiscount,
+          gross_amount: billing.totalAmount,
+          discount_amount: billing.totalDiscount,
           final_amount: finalAmt,
           paid_amount: regData.paid_amount,
           due_amount: regData.due_amount,
@@ -798,8 +842,8 @@ const PatientRegistration = ({
       toast.success(`Registration saved! Invoice: ${reg.invoice_number}`);
       setInvoiceData({
         ...reg,
-        tests: calculations.testDetails,
-        calculations,
+        tests: billing.testDetails,
+        calculations: billing,
       });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -1228,6 +1272,15 @@ const PatientRegistration = ({
                       {t.test_name}
                     </span>
                     <span className={`text-sm ${conflicted ? "text-destructive/80" : "text-muted-foreground"}`}>₹{t.price}</span>
+                    {(() => {
+                      const row = billing.testDetails.find((d: any) => d.test_id === t.test_id);
+                      if (!row || !(row.discount > 0)) return null;
+                      return (
+                        <span className="text-[10px] text-primary whitespace-nowrap">
+                          −₹{row.discount} ({row.effectiveDiscountPct}%)
+                        </span>
+                      );
+                    })()}
                     {conflicted && (
                       <span className="text-[10px] font-semibold uppercase tracking-wide text-destructive">
                         Duplicate params
@@ -1330,10 +1383,29 @@ const PatientRegistration = ({
           {/* Summary */}
           {selectedTests.length > 0 && (
             <div className="rounded-lg bg-muted p-4 space-y-1 text-sm">
-              <div className="flex justify-between"><span>Gross Amount</span><span className="font-medium">₹{calculations.totalAmount}</span></div>
-              {calculations.totalDiscount > 0 && <div className="flex justify-between text-primary"><span>Discount</span><span>-₹{calculations.totalDiscount}</span></div>}
-              {calculations.homeVisitCharges > 0 && <div className="flex justify-between"><span>Home Visit</span><span>+₹{calculations.homeVisitCharges}</span></div>}
-              <div className="flex justify-between border-t pt-1 font-bold"><span>Final Amount</span><span>₹{calculations.finalAmount}</span></div>
+              <div className="flex justify-between"><span>Gross Amount</span><span className="font-medium">₹{billing.totalAmount}</span></div>
+              {billing.totalDiscount > 0 && <div className="flex justify-between text-primary"><span>Discount</span><span>-₹{billing.totalDiscount}</span></div>}
+              {billing.homeVisitCharges > 0 && <div className="flex justify-between"><span>Home Visit</span><span>+₹{billing.homeVisitCharges}</span></div>}
+              <div className="flex justify-between border-t pt-1 font-bold"><span>Final Amount</span><span>₹{billing.finalAmount}</span></div>
+              {billing.roundUpTarget != null && calculations.totalDiscount > 0 && (
+                <div className="flex flex-wrap items-center gap-2 pt-2 border-t mt-1">
+                  <span className="text-xs text-muted-foreground">Round collect:</span>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={billing.roundUpApplied ? "default" : "outline"}
+                    className="h-7 text-xs"
+                    onClick={() => setRoundUpSelected((v) => !v)}
+                  >
+                    {billing.roundUpApplied ? `Using ₹${billing.finalAmount}` : `Collect ₹${billing.roundUpTarget}`}
+                  </Button>
+                  {billing.roundUpApplied && (
+                    <span className="text-[10px] text-muted-foreground">
+                      Exact was ₹{calculations.finalAmount} — discount reduced so payable is a ₹10 multiple
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
@@ -1355,7 +1427,7 @@ const PatientRegistration = ({
                     const otherModesTotal = Array.from(selectedModes)
                       .filter(m => m !== mode)
                       .reduce((sum, m) => sum + (modeAmounts[m] || 0), 0);
-                    const maxForThisMode = Math.max(0, calculations.finalAmount - otherModesTotal);
+                    const maxForThisMode = Math.max(0, billing.finalAmount - otherModesTotal);
                     return (
                       <div key={mode}>
                         <Label className="text-xs">{mode} Amount</Label>
@@ -1374,9 +1446,18 @@ const PatientRegistration = ({
                   })}
                 </div>
               )}
-              <div className="flex gap-4 text-sm">
+              <div className="flex flex-wrap items-center gap-3 text-sm">
                 <span>Paid: <strong>₹{paidAmount}</strong></span>
-                {dueAmount > 0 && <span className="text-destructive">Due: <strong>₹{dueAmount}</strong></span>}
+                {dueAmount > 0 && (
+                  <span className="text-destructive flex items-center gap-2">
+                    Due: <strong>₹{dueAmount}</strong>
+                    {billing.roundUpTarget != null && !billing.roundUpApplied && calculations.totalDiscount > 0 && (
+                      <Button type="button" size="sm" variant="outline" className="h-6 text-[11px]" onClick={() => setRoundUpSelected(true)}>
+                        Collect ₹{billing.roundUpTarget}
+                      </Button>
+                    )}
+                  </span>
+                )}
               </div>
             </div>
           )}
