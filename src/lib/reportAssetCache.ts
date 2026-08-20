@@ -129,12 +129,77 @@ export async function invalidateBucket(bucket: ReportAssetBucket | string): Prom
   }
 }
 
+/** Sniff JPEG/PNG/GIF/WEBP magic when Storage serves application/octet-stream. */
+function sniffImageMime(bytes: Uint8Array): string | null {
+  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
+    return "image/jpeg";
+  }
+  if (
+    bytes.length >= 8
+    && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47
+    && bytes[4] === 0x0d && bytes[5] === 0x0a && bytes[6] === 0x1a && bytes[7] === 0x0a
+  ) {
+    return "image/png";
+  }
+  if (bytes.length >= 6 && bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46) {
+    return "image/gif";
+  }
+  // RIFF....WEBP
+  if (
+    bytes.length >= 12
+    && bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46
+    && bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50
+  ) {
+    return "image/webp";
+  }
+  return null;
+}
+
+/**
+ * Rewrite `data:application/octet-stream;base64,…` (and other non-image MIME)
+ * to a real image MIME so <img> + html-to-image PDF capture do not hang.
+ */
+export function normalizeImageDataUrl(dataUrl: string | null | undefined): string | null {
+  if (!dataUrl || typeof dataUrl !== "string") return null;
+  if (!dataUrl.startsWith("data:")) return dataUrl;
+  const comma = dataUrl.indexOf(",");
+  if (comma < 0) return dataUrl;
+  const meta = dataUrl.slice(0, comma);
+  const payload = dataUrl.slice(comma + 1);
+  if (/^data:image\/(png|jpe?g|gif|webp|svg\+xml)/i.test(meta)) return dataUrl;
+  if (!/;base64/i.test(meta) || !payload) return dataUrl;
+  try {
+    const headB64 = payload.slice(0, 64);
+    const bin = atob(headB64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const mime = sniffImageMime(bytes);
+    if (!mime) return dataUrl;
+    return `data:${mime};base64,${payload}`;
+  } catch {
+    return dataUrl;
+  }
+}
+
+async function ensureImageTypedBlob(blob: Blob): Promise<Blob> {
+  if (blob.type && /^image\//i.test(blob.type)) return blob;
+  try {
+    const head = new Uint8Array(await blob.slice(0, 16).arrayBuffer());
+    const mime = sniffImageMime(head);
+    if (mime && mime !== blob.type) return new Blob([blob], { type: mime });
+  } catch {
+    // keep original
+  }
+  return blob;
+}
+
 async function blobToDataUrl(blob: Blob): Promise<string> {
+  const typed = await ensureImageTypedBlob(blob);
   return await new Promise((resolve, reject) => {
     const r = new FileReader();
-    r.onloadend = () => resolve(String(r.result || ""));
+    r.onloadend = () => resolve(normalizeImageDataUrl(String(r.result || "")) || String(r.result || ""));
     r.onerror = () => reject(r.error || new Error("read_failed"));
-    r.readAsDataURL(blob);
+    r.readAsDataURL(typed);
   });
 }
 
@@ -147,10 +212,15 @@ export async function getOrFetchUrlAsDataUrl(
   cacheKey?: string | null,
 ): Promise<string | null> {
   if (!url) return null;
-  if (url.startsWith("data:")) return url;
+  if (url.startsWith("data:")) return normalizeImageDataUrl(url) || url;
   if (cacheKey) {
     const hit = await getCachedDataUrl(cacheKey);
-    if (hit) return hit;
+    if (hit) {
+      const fixed = normalizeImageDataUrl(hit) || hit;
+      // Rewrite stale IndexedDB rows that were cached as octet-stream
+      if (fixed !== hit) void setCachedDataUrl(cacheKey, fixed);
+      return fixed;
+    }
   }
   try {
     const res = await fetch(url, { mode: "cors" });

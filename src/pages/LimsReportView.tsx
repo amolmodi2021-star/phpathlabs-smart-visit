@@ -27,6 +27,7 @@ import {
   getCachedLetterheadPng,
   getCachedSignatureDataUrl,
   getOrFetchUrlAsDataUrl,
+  normalizeImageDataUrl,
   reportAssetCacheKey,
 } from "@/lib/reportAssetCache";
 import { isSnipResultRow, snipImageUrlsFromRow, composedPdfUrlFromRow } from "@/lib/outsourcedResultMode";
@@ -596,8 +597,17 @@ const LimsReportView = () => {
   const invoiceNumberForBarcode =
     approvedReports[0]?.invoice_number || registration?.invoice_number || "";
   const [invoiceBarcodePng, setInvoiceBarcodePng] = useState<string | null>(null);
+  /** True once barcode render attempted (success or fail) so queueWa cannot stall forever. */
+  const [invoiceBarcodeReady, setInvoiceBarcodeReady] = useState(false);
   useEffect(() => {
+    if (!invoiceNumberForBarcode) {
+      setInvoiceBarcodePng(null);
+      setInvoiceBarcodeReady(true);
+      return;
+    }
+    setInvoiceBarcodeReady(false);
     setInvoiceBarcodePng(renderCode128Png(invoiceNumberForBarcode));
+    setInvoiceBarcodeReady(true);
   }, [invoiceNumberForBarcode]);
 
   useEffect(() => { if (registrationId) loadAllData(); }, [registrationId]);
@@ -966,21 +976,30 @@ const LimsReportView = () => {
         }
       }
     }
-    // Inline snapshot signature URLs embedded in approved_reports.test_results JSONB
+    // Inline / normalize snapshot signature URLs in approved_reports.test_results.
+    // Rows are flat param snapshots (not nested `.parameters`); Storage often serves
+    // JPEGs as application/octet-stream which hangs html-to-image PDF capture.
+    const inlineSignatureUrl = async (raw: unknown): Promise<string | null> => {
+      if (typeof raw !== "string" || !raw.trim()) return null;
+      if (raw.startsWith("data:")) return normalizeImageDataUrl(raw) || raw;
+      const marker = "/signatures/";
+      const idx = raw.indexOf(marker);
+      const sigPath = idx >= 0 ? decodeURIComponent(raw.slice(idx + marker.length).split("?")[0] || "") : "";
+      const cacheKey = sigPath ? reportAssetCacheKey("signatures", sigPath) : `url:${raw}`;
+      return (await urlToDataUrl(raw, cacheKey)) || null;
+    };
     for (const r of filteredReports) {
       const trs = (r.test_results || []) as any[];
       for (const tr of trs) {
+        if (tr.approved_by_signature_url) {
+          const fixed = await inlineSignatureUrl(tr.approved_by_signature_url);
+          if (fixed) tr.approved_by_signature_url = fixed;
+        }
         const params = (tr.parameters || []) as any[];
         for (const p of params) {
-          if (p.approved_by_signature_url && typeof p.approved_by_signature_url === "string" && !p.approved_by_signature_url.startsWith("data:")) {
-            const sigUrl = String(p.approved_by_signature_url);
-            const marker = "/signatures/";
-            const idx = sigUrl.indexOf(marker);
-            const sigPath = idx >= 0 ? decodeURIComponent(sigUrl.slice(idx + marker.length).split("?")[0] || "") : "";
-            const cacheKey = sigPath ? reportAssetCacheKey("signatures", sigPath) : `url:${sigUrl}`;
-            const dataUrl = await urlToDataUrl(sigUrl, cacheKey);
-            if (dataUrl) p.approved_by_signature_url = dataUrl;
-          }
+          if (!p.approved_by_signature_url) continue;
+          const fixed = await inlineSignatureUrl(p.approved_by_signature_url);
+          if (fixed) p.approved_by_signature_url = fixed;
         }
       }
     }
@@ -1557,14 +1576,14 @@ const LimsReportView = () => {
     if (!isPublic) return;
     if (loading) return;
     if (pages.length === 0) return;
-    if (invoiceNumberForBarcode && !invoiceBarcodePng) return;
+    if (!invoiceBarcodeReady) return;
     if (autoDownloadStartedRef.current) return;
     autoDownloadStartedRef.current = true;
     // Small delay to let layout settle (images, fonts)
     const t = setTimeout(() => { handleDownloadPdf(); }, 600);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isPublic, loading, pages.length, invoiceBarcodePng]);
+  }, [isPublic, loading, pages.length, invoiceBarcodeReady, invoiceBarcodePng]);
 
   // ── Auto-share once PDF is ready (when share=1 in URL) ──
   useEffect(() => {
@@ -1590,7 +1609,7 @@ const LimsReportView = () => {
       notifyQueueWa(false, msg);
       return;
     }
-    if (invoiceNumberForBarcode && !invoiceBarcodePng) return;
+    if (!invoiceBarcodeReady) return;
     if (autoQueueWaStartedRef.current) return;
     autoQueueWaStartedRef.current = true;
     const t = setTimeout(async () => {
@@ -1655,14 +1674,14 @@ const LimsReportView = () => {
     }, 800);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [queueWaRequested, loading, pages.length, invoiceBarcodePng]);
+  }, [queueWaRequested, loading, pages.length, invoiceBarcodeReady, invoiceBarcodePng]);
 
   // ── Failed Console send: download PDF only (staff send manually) ──
   useEffect(() => {
     if (!manualWaRequested) return;
     if (loading) return;
     if (pages.length === 0) return;
-    if (invoiceNumberForBarcode && !invoiceBarcodePng) return;
+    if (!invoiceBarcodeReady) return;
     if (autoManualWaStartedRef.current) return;
     autoManualWaStartedRef.current = true;
     const t = setTimeout(async () => {
@@ -1689,7 +1708,7 @@ const LimsReportView = () => {
     }, 800);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [manualWaRequested, loading, pages.length, invoiceBarcodePng]);
+  }, [manualWaRequested, loading, pages.length, invoiceBarcodeReady, invoiceBarcodePng]);
 
   // ── Share on WhatsApp ──
   const handleShareWhatsApp = async () => {
@@ -2189,7 +2208,14 @@ const LimsReportView = () => {
                     <div className="flex justify-end items-start gap-6 flex-nowrap ml-auto">
                       {uniqueSigs.map((sig, idx) => (
                         <div key={idx} className="text-center" style={{ minWidth: 0, flexShrink: 0 }}>
-                          {sig.signatureUrl && <img src={sig.signatureUrl} crossOrigin="anonymous" alt="Signature" className="h-8 mx-auto mb-0" />}
+                          {sig.signatureUrl && (
+                            <img
+                              src={sig.signatureUrl}
+                              {...(sig.signatureUrl.startsWith("http") ? { crossOrigin: "anonymous" as const } : {})}
+                              alt="Signature"
+                              className="h-8 mx-auto mb-0"
+                            />
+                          )}
                           <p className="font-semibold text-[10px] leading-tight" style={{ whiteSpace: "nowrap" }}>{sig.pathologist_name}</p>
                           {sig.qualification && <p className="text-[9px] leading-tight" style={{ color: "hsl(var(--muted-foreground))", whiteSpace: "nowrap" }}>{sig.qualification}</p>}
                           {sig.designation && <p className="text-[9px] leading-tight" style={{ color: "hsl(var(--muted-foreground))", whiteSpace: "nowrap" }}>{sig.designation}</p>}

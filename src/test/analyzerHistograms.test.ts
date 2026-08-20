@@ -5,6 +5,7 @@ import {
   mergeHistogramSnapshots,
   normalizeHistogramRows,
 } from "@/lib/analyzerHistograms";
+import { normalizeImageDataUrl } from "@/lib/reportAssetCache";
 
 describe("analyzerHistograms", () => {
   it("ignores empty or short bin arrays", () => {
@@ -25,5 +26,21 @@ describe("analyzerHistograms", () => {
     expect(merged.map((h) => h.kind)).toEqual(["WBC", "RBC", "PLT"]);
     expect(merged[0].bins[0]).toBe(1);
     expect(hasRenderableHistograms(merged)).toBe(true);
+  });
+});
+
+describe("normalizeImageDataUrl", () => {
+  it("rewrites JPEG octet-stream data URLs to image/jpeg", () => {
+    const jpegHead = Buffer.from([
+      0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46,
+      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    ]).toString("base64");
+    const bad = "data:application/octet-stream;base64," + jpegHead;
+    expect(normalizeImageDataUrl(bad)?.startsWith("data:image/jpeg;base64,")).toBe(true);
+  });
+
+  it("leaves proper image data URLs unchanged", () => {
+    const ok = "data:image/jpeg;base64,/9j/4AAQ";
+    expect(normalizeImageDataUrl(ok)).toBe(ok);
   });
 });
