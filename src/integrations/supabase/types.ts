@@ -506,6 +506,7 @@ export type Database = {
           created_at: string
           id: string
           is_active: boolean
+          purpose: string
           updated_at: string
           upload_preset: string
         }
@@ -517,6 +518,7 @@ export type Database = {
           created_at?: string
           id?: string
           is_active?: boolean
+          purpose?: string
           updated_at?: string
           upload_preset: string
         }
@@ -528,6 +530,7 @@ export type Database = {
           created_at?: string
           id?: string
           is_active?: boolean
+          purpose?: string
           updated_at?: string
           upload_preset?: string
         }
@@ -1334,52 +1337,67 @@ export type Database = {
       }
       outsourced_test_snips: {
         Row: {
+          composed_pdf_public_id: string | null
+          composed_pdf_url: string | null
           created_at: string
           id: string
           notes: string | null
           outsource_status: string
           outsourced_lab_name: string | null
           outsourced_parameter_ids: Json | null
+          pdf_crop_regions: Json | null
           registration_id: string
           result_mode: string
           sent_at: string | null
           snip_image_url: string | null
           snip_image_urls: Json | null
           snip_page_scales: Json | null
+          source_pdf_public_id: string | null
+          source_pdf_url: string | null
           test_id: string
           top_margin_pct: number | null
           updated_at: string
         }
         Insert: {
+          composed_pdf_public_id?: string | null
+          composed_pdf_url?: string | null
           created_at?: string
           id?: string
           notes?: string | null
           outsource_status?: string
           outsourced_lab_name?: string | null
           outsourced_parameter_ids?: Json | null
+          pdf_crop_regions?: Json | null
           registration_id: string
           result_mode?: string
           sent_at?: string | null
           snip_image_url?: string | null
           snip_image_urls?: Json | null
           snip_page_scales?: Json | null
+          source_pdf_public_id?: string | null
+          source_pdf_url?: string | null
           test_id: string
           top_margin_pct?: number | null
           updated_at?: string
         }
         Update: {
+          composed_pdf_public_id?: string | null
+          composed_pdf_url?: string | null
           created_at?: string
           id?: string
           notes?: string | null
           outsource_status?: string
           outsourced_lab_name?: string | null
           outsourced_parameter_ids?: Json | null
+          pdf_crop_regions?: Json | null
           registration_id?: string
           result_mode?: string
           sent_at?: string | null
           snip_image_url?: string | null
           snip_image_urls?: Json | null
           snip_page_scales?: Json | null
+          source_pdf_public_id?: string | null
+          source_pdf_url?: string | null
           test_id?: string
           top_margin_pct?: number | null
           updated_at?: string

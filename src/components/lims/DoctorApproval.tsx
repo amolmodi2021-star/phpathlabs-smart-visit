@@ -85,6 +85,7 @@ interface SnipOnlyTest {
   testName: string;
   labName: string | null;
   snipUrls: string[];
+  composedPdfUrl?: string | null;
   outsourceStatus: string;
 }
 
@@ -283,7 +284,7 @@ const DoctorApproval = () => {
     queryFn: async () => {
       return await fetchAllByIds<any>(
         "outsourced_test_snips",
-        "id, registration_id, test_id, outsourced_parameter_ids, outsource_status, outsourced_lab_name, result_mode, snip_image_urls",
+        "id, registration_id, test_id, outsourced_parameter_ids, outsource_status, outsourced_lab_name, result_mode, snip_image_urls, composed_pdf_url",
         "registration_id",
         detailRegIds,
         { eq: { outsource_status: "verified" } },
@@ -293,11 +294,11 @@ const DoctorApproval = () => {
 
   const { transferredTestKeys, outsourcedParamSets, outsourcedSnipDetails } = useMemo(() => {
     const testKeys = new Set<string>(); const paramSets: Record<string, Set<string>> = {};
-    const details: Record<string, { status: string; labName: string | null; resultMode: string; snipImageUrls: string[] }> = {};
+    const details: Record<string, { status: string; labName: string | null; resultMode: string; snipImageUrls: string[]; composedPdfUrl?: string | null }> = {};
     outsourcedSnips.forEach((s: any) => {
       const key = `${s.registration_id}||${s.test_id}`;
       const urls = Array.isArray(s.snip_image_urls) ? s.snip_image_urls : [];
-      details[key] = { status: s.outsource_status || "pending", labName: s.outsourced_lab_name || null, resultMode: s.result_mode || "manual", snipImageUrls: urls };
+      details[key] = { status: s.outsource_status || "pending", labName: s.outsourced_lab_name || null, resultMode: s.result_mode || "manual", snipImageUrls: urls, composedPdfUrl: s.composed_pdf_url || null };
       const paramIds = Array.isArray(s.outsourced_parameter_ids) ? s.outsourced_parameter_ids : [];
       if (paramIds.length > 0) { if (!paramSets[key]) paramSets[key] = new Set(); paramIds.forEach((pid: string) => paramSets[key].add(pid)); }
       else testKeys.add(key);
@@ -392,18 +393,18 @@ const DoctorApproval = () => {
         const isParamLevel = !!(paramOutsourcedSet && paramOutsourcedSet.size > 0);
 
         if (isSnipResult && !isParamLevel && snipDetail.status === "verified") {
-          snipOnlyTests.push({ testId: t.test_id, testName: t.test_name || testInfo.test_name || "", labName: snipDetail.labName, snipUrls: snipDetail.snipImageUrls, outsourceStatus: snipDetail.status });
+          snipOnlyTests.push({ testId: t.test_id, testName: t.test_name || testInfo.test_name || "", labName: snipDetail.labName, snipUrls: snipDetail.snipImageUrls, composedPdfUrl: snipDetail.composedPdfUrl || null, outsourceStatus: snipDetail.status });
           if (validParams.length === 0) continue;
         }
 
         if (validParams.length === 0) {
-          if (snipDetail && snipDetail.snipImageUrls.length > 0 && snipDetail.status === "verified") {
-            snipOnlyTests.push({ testId: t.test_id, testName: t.test_name || testInfo.test_name || "", labName: snipDetail.labName, snipUrls: snipDetail.snipImageUrls, outsourceStatus: snipDetail.status });
+          if (snipDetail && (snipDetail.composedPdfUrl || snipDetail.snipImageUrls.length > 0) && snipDetail.status === "verified") {
+            snipOnlyTests.push({ testId: t.test_id, testName: t.test_name || testInfo.test_name || "", labName: snipDetail.labName, snipUrls: snipDetail.snipImageUrls, composedPdfUrl: snipDetail.composedPdfUrl || null, outsourceStatus: snipDetail.status });
           }
           continue;
         }
         if (isSnipResult && isParamLevel && snipDetail.status === "verified") {
-          snipOnlyTests.push({ testId: t.test_id, testName: t.test_name || testInfo.test_name || "", labName: snipDetail.labName, snipUrls: snipDetail.snipImageUrls, outsourceStatus: snipDetail.status });
+          snipOnlyTests.push({ testId: t.test_id, testName: t.test_name || testInfo.test_name || "", labName: snipDetail.labName, snipUrls: snipDetail.snipImageUrls, composedPdfUrl: snipDetail.composedPdfUrl || null, outsourceStatus: snipDetail.status });
         }
 
         const testVerifiedResults = existingResults.filter((r: any) => r.registration_id === reg.id && r.test_id === t.test_id);
@@ -1082,9 +1083,15 @@ const DoctorApproval = () => {
                 <Stethoscope className="h-4 w-4 text-blue-600 shrink-0" />
                 <span className="font-medium text-blue-800">{st.testName}</span>
                 {st.labName && <Badge variant="outline" className="text-[10px] text-green-600 border-green-300">{st.labName}</Badge>}
-                <Button size="sm" variant="ghost" className="h-5 px-1 text-xs text-blue-600 gap-0.5" onClick={() => setViewSnipImages(st.snipUrls)}>
-                  <Eye className="h-3 w-3" /> View Snip
-                </Button>
+                {st.composedPdfUrl ? (
+                  <Button size="sm" variant="ghost" className="h-5 px-1 text-xs text-blue-600 gap-0.5" onClick={() => window.open(st.composedPdfUrl!, "_blank")}>
+                    <Eye className="h-3 w-3" /> View PDF
+                  </Button>
+                ) : (
+                  <Button size="sm" variant="ghost" className="h-5 px-1 text-xs text-blue-600 gap-0.5" onClick={() => setViewSnipImages(st.snipUrls)}>
+                    <Eye className="h-3 w-3" /> View Snip
+                  </Button>
+                )}
               </div>
               <div className="flex items-center gap-1">
                 <Button size="sm" variant="ghost" className="h-6 text-[11px] gap-1 text-orange-600" disabled={isSendingBack} onClick={() => sendBackForVerification(reg.id, st.testId, st.testName)}>

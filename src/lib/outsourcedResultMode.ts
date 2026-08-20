@@ -1,9 +1,10 @@
 /**
- * Outsourced results may include typed parameter values and/or snipped images
- * on the same test. Tests without parameter setup remain snip-only by default.
+ * Outsourced results may include typed parameter values and/or a composed
+ * lab PDF (cropped regions on letterhead). Legacy snip images still render
+ * when present on older rows.
  */
 
-export type OutsourcedResultMode = "manual" | "snip";
+export type OutsourcedResultMode = "manual" | "snip" | "pdf";
 
 export function snipImageUrlsFromRow(snip: {
   snip_image_urls?: unknown;
@@ -17,6 +18,13 @@ export function snipImageUrlsFromRow(snip: {
   return [];
 }
 
+export function composedPdfUrlFromRow(snip: {
+  composed_pdf_url?: string | null;
+} | null | undefined): string | null {
+  const u = snip?.composed_pdf_url;
+  return typeof u === "string" && u.length > 0 ? u : null;
+}
+
 /** True when this outsourced row has at least one snipped image (any result_mode). */
 export function hasOutsourcedSnipImages(snip: {
   result_mode?: string | null;
@@ -26,24 +34,35 @@ export function hasOutsourcedSnipImages(snip: {
   return snipImageUrlsFromRow(snip).length > 0;
 }
 
+export function hasOutsourcedPdfArtifact(snip: {
+  composed_pdf_url?: string | null;
+  snip_image_urls?: unknown;
+  snip_image_url?: string | null;
+} | null | undefined): boolean {
+  return !!composedPdfUrlFromRow(snip) || hasOutsourcedSnipImages(snip);
+}
+
 /**
- * True when snipped images should appear on reports / snip cards.
- * Images win regardless of result_mode so manual+snip can coexist.
+ * True when outsourced visual artifact should appear on reports.
+ * Prefer composed PDF; fall back to legacy snip images.
  */
 export function isSnipResultRow(snip: {
   result_mode?: string | null;
   snip_image_urls?: unknown;
   snip_image_url?: string | null;
+  composed_pdf_url?: string | null;
 } | null | undefined): boolean {
-  return hasOutsourcedSnipImages(snip);
+  return hasOutsourcedPdfArtifact(snip);
 }
 
 /** UI/detail-map shape used by Results / Verification / Approval. */
 export function isSnipResultDetail(detail: {
   resultMode?: string | null;
   snipImageUrls?: unknown;
+  composedPdfUrl?: string | null;
 } | null | undefined): boolean {
   if (!detail) return false;
+  if (detail.composedPdfUrl) return true;
   return Array.isArray(detail.snipImageUrls) && detail.snipImageUrls.length > 0;
 }
 

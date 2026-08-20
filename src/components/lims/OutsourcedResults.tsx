@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
-import SnipOnLetterhead from "./SnipOnLetterhead";
+import OutsourcedPdfEditor from "./OutsourcedPdfEditor";
 import { useMasterLookup } from "@/hooks/useMasterLookup";
 
 import { expandRegistrationTests } from "@/lib/expandRegistrationTests";
@@ -36,7 +36,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { isSnipResultRow, snipImageUrlsFromRow } from "@/lib/outsourcedResultMode";
+import { isSnipResultRow, snipImageUrlsFromRow, composedPdfUrlFromRow } from "@/lib/outsourcedResultMode";
 import {
   loadOutsourcedRefRange,
   loadOutsourcedUnit,
@@ -464,14 +464,14 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
       return "completed" as any;
     }
     if (outsourceStatus === "results_saved") {
-      // Verify actual data exists — if snip was removed, status may be stale
+      // Verify actual data exists — if artifact was removed, status may be stale
       const snip = getSnip(regId, testId);
+      if (composedPdfUrlFromRow(snip as any)) return "results_saved";
       if (snip?.result_mode === "snip") {
         const imageUrls = getSnipImageUrls(regId, testId);
         if (imageUrls.length === 0) return "awaiting_results";
       }
-      if (snip?.result_mode === "manual" && !hasManualResults(regId, testId)) {
-        // Status says results_saved but no manual results exist
+      if (snip?.result_mode === "manual" && !hasManualResults(regId, testId) && !composedPdfUrlFromRow(snip as any)) {
         return "awaiting_results";
       }
       return "results_saved";
@@ -838,16 +838,22 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
       }
       const existingSnip = getSnip(regId, testId);
       const keepUrls = snipImageUrlsFromRow(existingSnip);
-      if (upserts.length === 0 && keepUrls.length === 0) {
-        toast.error("Enter parameter values and/or attach snip images before saving");
+      const composedUrl = composedPdfUrlFromRow(existingSnip as any);
+      if (upserts.length === 0 && keepUrls.length === 0 && !composedUrl) {
+        toast.error("Enter parameter values and/or upload a lab PDF before saving");
         return;
       }
       const { error: snipErr } = await supabase.from("outsourced_test_snips").upsert({
         registration_id: regId, test_id: testId,
-        result_mode: keepUrls.length > 0 ? "snip" : "manual",
+        result_mode: composedUrl ? "pdf" : keepUrls.length > 0 ? "snip" : "manual",
         outsource_status: "results_entered",
         snip_image_url: keepUrls[0] || null,
         snip_image_urls: keepUrls,
+        composed_pdf_url: (existingSnip as any)?.composed_pdf_url || null,
+        composed_pdf_public_id: (existingSnip as any)?.composed_pdf_public_id || null,
+        source_pdf_url: (existingSnip as any)?.source_pdf_url || null,
+        source_pdf_public_id: (existingSnip as any)?.source_pdf_public_id || null,
+        pdf_crop_regions: (existingSnip as any)?.pdf_crop_regions || null,
         entered_at: new Date().toISOString(),
         entered_by: getCurrentUserName(),
       } as any, { onConflict: "registration_id,test_id" });
@@ -879,10 +885,54 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
     }
   }, [editedValues, editedUnits, editedRefRanges, editedFlags, testParamsMap, qc, resolveNormalRange, existingSnips, existingResults]);
 
-  // Save snip results and transfer to Verification (also persists any typed values currently entered)
-  const saveSnipResults = useCallback(async (regId: string, testId: string, testName: string, outsourcedParamIds?: string[], reg?: any) => {
-    await saveManualResults(regId, testId, testName, outsourcedParamIds, reg);
-  }, [saveManualResults]);
+  // Save composed lab PDF → Verification
+  const saveComposedPdf = useCallback(async (
+    regId: string,
+    testId: string,
+    testName: string,
+    payload: {
+      sourcePdfUrl: string;
+      sourcePdfPublicId: string;
+      cropRegions: any[];
+      composedPdfUrl: string;
+      composedPdfPublicId: string;
+    },
+  ) => {
+    const key = `${regId}||${testId}`;
+    setSavingKey(key);
+    try {
+      const existing = getSnip(regId, testId);
+      const { error } = await supabase.from("outsourced_test_snips").upsert({
+        registration_id: regId,
+        test_id: testId,
+        outsourced_lab_name: (existing as any)?.outsourced_lab_name || null,
+        outsourced_parameter_ids: (existing as any)?.outsourced_parameter_ids || null,
+        result_mode: "pdf",
+        outsource_status: "results_entered",
+        source_pdf_url: payload.sourcePdfUrl,
+        source_pdf_public_id: payload.sourcePdfPublicId || null,
+        pdf_crop_regions: payload.cropRegions,
+        composed_pdf_url: payload.composedPdfUrl,
+        composed_pdf_public_id: payload.composedPdfPublicId || null,
+        snip_image_url: null,
+        snip_image_urls: [],
+        entered_at: new Date().toISOString(),
+        entered_by: getCurrentUserName(),
+      } as any, { onConflict: "registration_id,test_id" });
+      if (error) throw error;
+      await recalculateRegistrationStatus(regId);
+      toast.success(`PDF saved — ${testName} moved to Verification`);
+      qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
+      qc.invalidateQueries({ queryKey: ["outsourced_pending_ids"] });
+      qc.invalidateQueries({ queryKey: ["verification_pending_ids"] });
+      qc.invalidateQueries({ queryKey: ["verification_outsourced"] });
+      qc.invalidateQueries({ queryKey: ["outsourced_manual_results"] });
+    } catch (err: any) {
+      toast.error(err.message || "Failed to save PDF");
+    } finally {
+      setSavingKey(null);
+    }
+  }, [qc, existingSnips]);
   const saveEditLabName = async () => {
     if (!editLabKey || !editLabName.trim()) return;
     setSavingEditLab(true);
@@ -1261,26 +1311,41 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
 
             {(
               <div className="mt-2 space-y-3">
-                <SnipOnLetterhead
+                <OutsourcedPdfEditor
                   regId={regId}
                   testId={testId}
-                  imageUrls={getSnipImageUrls(regId, testId)}
-                  isUploading={isUploading}
-                  onPaste={handlePaste}
-                  onFileUpload={handleFileUpload}
-                  onDeletePage={deleteSnipPage}
-                  initialPageScales={(snip as any)?.snip_page_scales}
-                  initialTopMarginPct={(snip as any)?.top_margin_pct}
+                  testName={test.testName}
+                  patientMeta={{
+                    patientName: entry.registration.patient_name,
+                    title: entry.registration.title,
+                    gender: entry.registration.gender,
+                    dob: entry.registration.dob,
+                    ageText: entry.registration.age_text,
+                    umrNumber: entry.registration.umr_number,
+                    doctorName: entry.registration.doctor_name,
+                    mobileNumber: entry.registration.mobile_number,
+                    invoiceNumber: entry.registration.invoice_number,
+                    registrationDate: entry.registration.created_at,
+                    visitType: entry.registration.visit_type,
+                    testName: test.testName,
+                  }}
+                  existingSourcePdfUrl={(snip as any)?.source_pdf_url}
+                  existingCrops={(snip as any)?.pdf_crop_regions}
+                  existingComposedPdfUrl={(snip as any)?.composed_pdf_url}
+                  isSaving={savingKey === `${regId}||${testId}`}
+                  onSaved={async (payload) => {
+                    await saveComposedPdf(regId, testId, test.testName, payload);
+                  }}
                 />
-                {getSnipImageUrls(regId, testId).length > 0 && (
+                {(snip as any)?.composed_pdf_url && (
                   <div className="flex justify-end">
                     <Button
                       size="sm"
-                      onClick={() => saveSnipResults(regId, testId, test.testName, test.outsourcedParameterIds, entry.registration)}
-                      disabled={savingKey === `${regId}||${testId}`}
+                      variant="outline"
+                      className="h-8 text-xs"
+                      onClick={() => window.open((snip as any).composed_pdf_url, "_blank")}
                     >
-                      {savingKey === `${regId}||${testId}` ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Save className="h-4 w-4 mr-1" />}
-                      Save Results
+                      <FileText className="h-3.5 w-3.5 mr-1" /> View Composed PDF
                     </Button>
                   </div>
                 )}

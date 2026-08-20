@@ -150,6 +150,7 @@ function buildFullDispatchEntry(
             outsource_status: snip.outsource_status,
             result_mode: snip.result_mode,
             snip_image_urls: snip.snip_image_urls,
+            composed_pdf_url: snip.composed_pdf_url,
           }
         : null,
     });
@@ -157,6 +158,7 @@ function buildFullDispatchEntry(
     const snipUrls = snip && Array.isArray(snip.snip_image_urls) && snip.snip_image_urls.filter(Boolean).length > 0
       ? snip.snip_image_urls.filter(Boolean)
       : (snip?.result_mode === "snip" && snip?.snip_image_url ? [snip.snip_image_url] : []);
+    const composedPdfUrl = typeof snip?.composed_pdf_url === "string" && snip.composed_pdf_url ? snip.composed_pdf_url : null;
     const approvedResults = testResults.filter((r: any) => r.status === "approved");
 
     const collectedAt = tube?.collected_at || null;
@@ -186,12 +188,13 @@ function buildFullDispatchEntry(
       const snipStatus = String(snip.outsource_status || "");
       const urls = Array.isArray(snip.snip_image_urls) ? snip.snip_image_urls.filter(Boolean) : [];
       const mode = String(snip.result_mode || "").toLowerCase();
-      const isSnipMode = mode === "snip" || mode === "image" || urls.length > 0;
-      const hasSnipImage = urls.length > 0;
+      const hasComposed = !!composedPdfUrl;
+      const isVisualMode = mode === "snip" || mode === "image" || mode === "pdf" || urls.length > 0 || hasComposed;
+      const hasVisual = urls.length > 0 || hasComposed;
       // "sent" / "pending" = transferred to lab only — NOT Results Entered.
       const snipEntered =
         ["results_entered", "results_saved", "verified", "approved", "dispatched"].includes(snipStatus) &&
-        (!isSnipMode || hasSnipImage || !!snip.entered_at);
+        (!isVisualMode || hasVisual || !!snip.entered_at);
 
       if (snipEntered) {
         enteredAt = enteredAt || snip.entered_at || snip.updated_at || null;
@@ -509,7 +512,7 @@ const Dispatch = () => {
     queryFn: async () => {
       const { data } = await supabase
         .from("outsourced_test_snips")
-        .select("id, registration_id, test_id, outsourced_parameter_ids, outsource_status, outsourced_lab_name, result_mode, snip_image_urls, updated_at, sent_at, entered_at, entered_by, verified_at, verified_by, approved_at, approved_by, dispatched_at, dispatched_by")
+        .select("id, registration_id, test_id, outsourced_parameter_ids, outsource_status, outsourced_lab_name, result_mode, snip_image_urls, composed_pdf_url, updated_at, sent_at, entered_at, entered_by, verified_at, verified_by, approved_at, approved_by, dispatched_at, dispatched_by")
         .eq("registration_id", selectedPatientId!);
       return (data || []) as any[];
     },

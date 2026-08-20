@@ -19,33 +19,56 @@ export type CloudinaryFailureReason =
   | "cloudinary_4xx"
   | "cloudinary_network";
 
+export type CloudinaryPurpose = "whatsapp" | "outsourced_pdf";
+
 interface ActiveAccount {
   cloudName: string;
   uploadPreset: string;
 }
 
-let cachedAccount: { value: ActiveAccount | null; ts: number } | null = null;
+let cachedAccounts: { value: Record<string, ActiveAccount | null>; ts: number } | null = null;
 const CACHE_MS = 60_000;
 
 export function invalidateCloudinaryAccountCache() {
-  cachedAccount = null;
+  cachedAccounts = null;
 }
 
-async function getActiveAccount(): Promise<ActiveAccount> {
+async function getActiveAccount(purpose: CloudinaryPurpose = "whatsapp"): Promise<ActiveAccount> {
   const now = Date.now();
-  if (cachedAccount && now - cachedAccount.ts < CACHE_MS && cachedAccount.value) {
-    return cachedAccount.value;
+  if (cachedAccounts && now - cachedAccounts.ts < CACHE_MS && cachedAccounts.value[purpose]) {
+    return cachedAccounts.value[purpose]!;
   }
   const { data, error } = await supabase
     .from("cloudinary_accounts")
-    .select("cloud_name, upload_preset")
+    .select("cloud_name, upload_preset, purpose")
     .eq("is_active", true)
+    .eq("purpose", purpose)
     .maybeSingle();
   if (error || !data) {
-    throw new Error("cloudinary_4xx: no active Cloudinary account configured");
+    // Fallback: legacy rows without purpose filter (pre-migration) for whatsapp only
+    if (purpose === "whatsapp") {
+      const legacy = await supabase
+        .from("cloudinary_accounts")
+        .select("cloud_name, upload_preset")
+        .eq("is_active", true)
+        .maybeSingle();
+      if (legacy.data) {
+        const value = { cloudName: legacy.data.cloud_name, uploadPreset: legacy.data.upload_preset };
+        cachedAccounts = { value: { ...(cachedAccounts?.value || {}), whatsapp: value }, ts: now };
+        return value;
+      }
+    }
+    throw new Error(
+      purpose === "outsourced_pdf"
+        ? "cloudinary_4xx: no active Outsourced PDF Cloudinary account — configure it in LIMS → Settings → Cloudinary"
+        : "cloudinary_4xx: no active Cloudinary account configured",
+    );
   }
   const value = { cloudName: data.cloud_name, uploadPreset: data.upload_preset };
-  cachedAccount = { value, ts: now };
+  cachedAccounts = {
+    value: { ...(cachedAccounts?.value || {}), [purpose]: value },
+    ts: now,
+  };
   return value;
 }
 
@@ -88,9 +111,11 @@ export async function uploadBlobToCloudinary(
     /** Optional stable public id (without extension). Nested ids like `invoices/x` are fine. */
     publicId?: string;
     filename?: string;
+    /** Defaults to WhatsApp media account. Use outsourced_pdf for lab PDFs. */
+    purpose?: CloudinaryPurpose;
   },
 ): Promise<CloudinaryUploadResult> {
-  const acct = await getActiveAccount();
+  const acct = await getActiveAccount(opts.purpose || "whatsapp");
   const resourceType = opts.resourceType;
   const url = `https://api.cloudinary.com/v1_1/${acct.cloudName}/${resourceType}/upload`;
   const fd = new FormData();

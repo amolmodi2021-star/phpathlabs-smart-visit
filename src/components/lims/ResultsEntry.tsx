@@ -45,7 +45,7 @@ import SyncingOverlay from "./SyncingOverlay";
 import NewBadge from "./NewBadge";
 import PatientTestPipelineHover from "./PatientTestPipelineHover";
 import OutsourcedResults from "./OutsourcedResults";
-import SnipOnLetterhead from "./SnipOnLetterhead";
+import OutsourcedPdfEditor from "./OutsourcedPdfEditor";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { formatDateDDMMYYYY } from "@/lib/utils";
@@ -121,6 +121,7 @@ interface SnipOnlyTest {
   testName: string;
   labName: string | null;
   snipUrls: string[];
+  composedPdfUrl?: string | null;
   outsourceStatus: string;
 }
 
@@ -491,7 +492,7 @@ const ResultsEntry = () => {
     queryKey: ["results_outsourced_snips", detailKey],
     enabled: detailEnabled,
     queryFn: async () => {
-      return await fetchAllByIds<any>("outsourced_test_snips", "registration_id, test_id, outsourced_parameter_ids, outsource_status, outsourced_lab_name, sent_at, result_mode, snip_image_urls", "registration_id", detailRegIds);
+      return await fetchAllByIds<any>("outsourced_test_snips", "registration_id, test_id, outsourced_parameter_ids, outsource_status, outsourced_lab_name, sent_at, result_mode, snip_image_urls, composed_pdf_url, source_pdf_url, pdf_crop_regions, snip_page_scales, top_margin_pct", "registration_id", detailRegIds);
     },
   });
 
@@ -499,7 +500,7 @@ const ResultsEntry = () => {
   const { transferredTestKeys, outsourcedParamSets, outsourcedSnipDetails } = useMemo(() => {
     const testKeys = new Set<string>();
     const paramSets: Record<string, Set<string>> = {};
-    const details: Record<string, { status: string; labName: string | null; sentAt: string | null; resultMode: string; snipImageUrls: string[]; snipPageScales?: unknown; topMarginPct?: number | null }> = {};
+    const details: Record<string, { status: string; labName: string | null; sentAt: string | null; resultMode: string; snipImageUrls: string[]; snipPageScales?: unknown; topMarginPct?: number | null; composedPdfUrl?: string | null; sourcePdfUrl?: string | null; pdfCropRegions?: unknown }> = {};
     outsourcedSnips.forEach((s: any) => {
       const key = `${s.registration_id}||${s.test_id}`;
       const urls = Array.isArray(s.snip_image_urls) ? s.snip_image_urls : (s.snip_image_url ? [s.snip_image_url] : []);
@@ -511,6 +512,9 @@ const ResultsEntry = () => {
         snipImageUrls: urls,
         snipPageScales: s.snip_page_scales,
         topMarginPct: s.top_margin_pct,
+        composedPdfUrl: s.composed_pdf_url || null,
+        sourcePdfUrl: s.source_pdf_url || null,
+        pdfCropRegions: s.pdf_crop_regions,
       };
       const paramIds = Array.isArray(s.outsourced_parameter_ids) ? s.outsourced_parameter_ids : [];
       if (paramIds.length > 0) {
@@ -912,23 +916,23 @@ const ResultsEntry = () => {
         const validParams = params.filter((tp: any) => !tp.is_subheader && tp.report_test_parameters);
         // Snip-only (no params): show snip card. With params, keep both snip card + typed rows.
         if (isSnipResult && !isParamLevel && validParams.length === 0 && !["results_entered", "verified", "approved", "dispatched"].includes(snipDetail.status)) {
-          snipOnlyTests.push({ testId: t.test_id, testName: t.test_name || testInfo.test_name || "", labName: snipDetail.labName, snipUrls: snipDetail.snipImageUrls, outsourceStatus: snipDetail.status });
+          snipOnlyTests.push({ testId: t.test_id, testName: t.test_name || testInfo.test_name || "", labName: snipDetail.labName, snipUrls: snipDetail.snipImageUrls, composedPdfUrl: snipDetail.composedPdfUrl || null, outsourceStatus: snipDetail.status });
           continue;
         }
         if (isSnipResult && !isParamLevel && validParams.length > 0 && !["results_entered", "verified", "approved", "dispatched"].includes(snipDetail.status)) {
-          snipOnlyTests.push({ testId: t.test_id, testName: t.test_name || testInfo.test_name || "", labName: snipDetail.labName, snipUrls: snipDetail.snipImageUrls, outsourceStatus: snipDetail.status });
+          snipOnlyTests.push({ testId: t.test_id, testName: t.test_name || testInfo.test_name || "", labName: snipDetail.labName, snipUrls: snipDetail.snipImageUrls, composedPdfUrl: snipDetail.composedPdfUrl || null, outsourceStatus: snipDetail.status });
         }
         if (validParams.length === 0) {
-          // Check if this is a snip-only outsourced test
-          if (snipDetail && snipDetail.snipImageUrls.length > 0 && !["results_entered", "verified", "approved", "dispatched"].includes(snipDetail.status)) {
-            snipOnlyTests.push({ testId: t.test_id, testName: t.test_name || testInfo.test_name || "", labName: snipDetail.labName, snipUrls: snipDetail.snipImageUrls, outsourceStatus: snipDetail.status });
-          } else if (!snipDetail || snipDetail.snipImageUrls.length === 0) {
+          // Check if this is a snip/PDF-only outsourced test
+          if (snipDetail && (snipDetail.composedPdfUrl || snipDetail.snipImageUrls.length > 0) && !["results_entered", "verified", "approved", "dispatched"].includes(snipDetail.status)) {
+            snipOnlyTests.push({ testId: t.test_id, testName: t.test_name || testInfo.test_name || "", labName: snipDetail.labName, snipUrls: snipDetail.snipImageUrls, composedPdfUrl: snipDetail.composedPdfUrl || null, outsourceStatus: snipDetail.status });
+          } else if (!snipDetail || (!snipDetail.composedPdfUrl && snipDetail.snipImageUrls.length === 0)) {
             incompleteTests.push({ testId: t.test_id, testName: t.test_name || testInfo.test_name || "" });
           }
           continue;
         }
         if (isSnipResult && isParamLevel && !["results_entered", "verified", "approved", "dispatched"].includes(snipDetail.status)) {
-          snipOnlyTests.push({ testId: t.test_id, testName: t.test_name || testInfo.test_name || "", labName: snipDetail.labName, snipUrls: snipDetail.snipImageUrls, outsourceStatus: snipDetail.status });
+          snipOnlyTests.push({ testId: t.test_id, testName: t.test_name || testInfo.test_name || "", labName: snipDetail.labName, snipUrls: snipDetail.snipImageUrls, composedPdfUrl: snipDetail.composedPdfUrl || null, outsourceStatus: snipDetail.status });
         }
         
         // Collect params for this test first to check if ALL are already entered
@@ -2014,9 +2018,15 @@ const ResultsEntry = () => {
                     <Package className="h-4 w-4 text-blue-600 shrink-0" />
                     <span className="font-medium text-blue-800">{st.testName}</span>
                     {st.labName && <Badge variant="outline" className="text-[10px] text-green-600 border-green-300">{st.labName}</Badge>}
-                    <Button size="sm" variant="ghost" className="h-5 px-1 text-xs text-blue-600 gap-0.5" onClick={() => { setViewSnipImages(st.snipUrls); setViewSnipContext({ regId: reg.id, testId: st.testId }); }}>
-                      <Eye className="h-3 w-3" /> View Snip ({st.snipUrls.length} page{st.snipUrls.length > 1 ? "s" : ""})
-                    </Button>
+                    {st.composedPdfUrl ? (
+                      <Button size="sm" variant="ghost" className="h-5 px-1 text-xs text-blue-600 gap-0.5" onClick={() => window.open(st.composedPdfUrl!, "_blank")}>
+                        <Eye className="h-3 w-3" /> View PDF
+                      </Button>
+                    ) : (
+                      <Button size="sm" variant="ghost" className="h-5 px-1 text-xs text-blue-600 gap-0.5" onClick={() => { setViewSnipImages(st.snipUrls); setViewSnipContext({ regId: reg.id, testId: st.testId }); }}>
+                        <Eye className="h-3 w-3" /> View Snip ({st.snipUrls.length} page{st.snipUrls.length > 1 ? "s" : ""})
+                      </Button>
+                    )}
                   </div>
                   <Button size="sm" variant="outline" className="h-6 text-[11px] gap-1" disabled={isTestSaving} onClick={() => handleSaveAndVerify(entry, st.testId, st.testName)}>
                     {isTestSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <SendHorizonal className="h-3 w-3" />}
@@ -2156,40 +2166,54 @@ const ResultsEntry = () => {
                   {isTestExpanded && isOutsourcedTest && (
                     <div className="mt-2 mx-1 rounded-md border border-blue-200 bg-blue-50/80 p-2 space-y-2" onClick={(e) => e.stopPropagation()}>
                       <div className="text-xs font-medium text-blue-900">
-                        Outsourced — enter parameters and/or attach snipped images. Both show on the report (parameters first).
+                        Outsourced — enter parameters and/or upload lab PDF (crop editor). Composed PDF shows on the report.
                       </div>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant={hasSnipImages ? "default" : "outline"}
-                        className="h-9 text-xs gap-1.5"
-                        onClick={() => beginSnipEntry(reg.id, tg.testId)}
-                      >
-                        <Image className="h-3.5 w-3.5" /> Add snipped image
-                      </Button>
-                      <SnipOnLetterhead
+                      <OutsourcedPdfEditor
                         regId={reg.id}
                         testId={tg.testId}
-                        imageUrls={testSnipDetail?.snipImageUrls || []}
-                        isUploading={uploadingSnipKey === testKey}
-                        onPaste={handlePatientSnipPaste}
-                        onFileUpload={handlePatientSnipUpload}
-                        onDeletePage={handlePatientSnipDeletePage}
-                        initialPageScales={testSnipDetail?.snipPageScales}
-                        initialTopMarginPct={testSnipDetail?.topMarginPct}
+                        testName={tg.testName}
+                        patientMeta={{
+                          patientName: reg.patient_name,
+                          title: reg.title,
+                          gender: reg.gender,
+                          dob: reg.dob,
+                          ageText: reg.age_text,
+                          umrNumber: reg.umr_number,
+                          doctorName: reg.doctor_name,
+                          mobileNumber: reg.mobile_number,
+                          invoiceNumber: reg.invoice_number,
+                          registrationDate: reg.created_at,
+                          visitType: reg.visit_type,
+                          testName: tg.testName,
+                        }}
+                        existingSourcePdfUrl={testSnipDetail?.sourcePdfUrl}
+                        existingCrops={testSnipDetail?.pdfCropRegions}
+                        existingComposedPdfUrl={testSnipDetail?.composedPdfUrl}
+                        isSaving={savingSnipKey === testKey}
+                        onSaved={async (payload) => {
+                          await supabase.from("outsourced_test_snips").upsert({
+                            registration_id: reg.id,
+                            test_id: tg.testId,
+                            result_mode: "pdf",
+                            outsource_status: "results_entered",
+                            source_pdf_url: payload.sourcePdfUrl,
+                            source_pdf_public_id: payload.sourcePdfPublicId || null,
+                            pdf_crop_regions: payload.cropRegions,
+                            composed_pdf_url: payload.composedPdfUrl,
+                            composed_pdf_public_id: payload.composedPdfPublicId || null,
+                            snip_image_url: null,
+                            snip_image_urls: [],
+                            entered_at: new Date().toISOString(),
+                            entered_by: getCurrentUserName(),
+                          } as any, { onConflict: "registration_id,test_id" });
+                          toast.success(`PDF saved — ${tg.testName} moved to Verification`);
+                          await Promise.all([
+                            qc.invalidateQueries({ queryKey: ["results_outsourced_snips"] }),
+                            qc.invalidateQueries({ queryKey: ["outsourced_snips"] }),
+                            qc.invalidateQueries({ queryKey: ["verification_pending_ids"] }),
+                          ]);
+                        }}
                       />
-                      {(testSnipDetail?.snipImageUrls?.length || 0) > 0 && (
-                        <div className="flex justify-end">
-                          <Button
-                            size="sm"
-                            onClick={() => savePatientSnipResults(reg.id, tg.testId, tg.testName)}
-                            disabled={savingSnipKey === testKey}
-                          >
-                            {savingSnipKey === testKey ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Save className="h-4 w-4 mr-1" />}
-                            Save Snipped Image
-                          </Button>
-                        </div>
-                      )}
                     </div>
                   )}
                   {isTestExpanded && (

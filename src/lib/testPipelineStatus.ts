@@ -68,12 +68,13 @@ export type SnipProgressInput = {
   outsource_status?: string | null;
   result_mode?: string | null;
   snip_image_urls?: unknown;
+  composed_pdf_url?: string | null;
 };
 
 /**
  * Snip/outsource progress.
  * - sent / pending → not "Entered" (waiting on lab)
- * - results_entered / results_saved → Entered only when snip image exists OR not snip-mode
+ * - results_entered / results_saved → Entered only when composed PDF / snip image exists OR not snip-mode
  */
 export function snipProgressStatus(snip: SnipProgressInput | null | undefined): PipelineTestStatus | null {
   if (!snip) return null;
@@ -83,13 +84,14 @@ export function snipProgressStatus(snip: SnipProgressInput | null | undefined): 
   if (v === "verified") return "verified";
 
   const urls = Array.isArray(snip.snip_image_urls) ? snip.snip_image_urls.filter(Boolean) : [];
+  const hasComposedPdf = typeof snip.composed_pdf_url === "string" && snip.composed_pdf_url.length > 0;
   const mode = String(snip.result_mode || "").toLowerCase();
-  const isSnipMode = mode === "snip" || mode === "image" || urls.length > 0;
-  const hasSnipImage = urls.length > 0;
+  const isVisualMode = mode === "snip" || mode === "image" || mode === "pdf" || urls.length > 0 || hasComposedPdf;
+  const hasVisualArtifact = urls.length > 0 || hasComposedPdf;
 
   if (v === "results_entered" || v === "results_saved") {
-    // Snip-mode without an image is still waiting — do not show Entered.
-    if (isSnipMode && !hasSnipImage) return "outsourced";
+    // Visual-mode without an artifact is still waiting — do not show Entered.
+    if (isVisualMode && !hasVisualArtifact) return "outsourced";
     return "results_entered";
   }
 
@@ -192,6 +194,7 @@ export type PipelineOverviewInput = {
     outsource_status?: string | null;
     result_mode?: string | null;
     snip_image_urls?: unknown;
+    composed_pdf_url?: string | null;
   }>;
   testsMap: Record<string, { test_name?: string | null; is_outsourced?: boolean | null }>;
   leafTests: Array<{ test_id: string; test_name?: string }>;

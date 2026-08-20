@@ -143,6 +143,7 @@ const WhatsAppSettings = () => {
       upload_preset: form.upload_preset.trim(),
       api_key: form.api_key.trim() || null,
       api_secret: form.api_secret.trim() || null,
+      purpose: "whatsapp",
     };
     const { error } = editing
       ? await supabase.from("cloudinary_accounts").update(payload).eq("id", editing.id)
@@ -158,8 +159,12 @@ const WhatsAppSettings = () => {
   };
 
   const activateAccount = async (id: string) => {
-    // Deactivate all, then activate the chosen one (avoids the unique-active index race)
-    const { error: e1 } = await supabase.from("cloudinary_accounts").update({ is_active: false }).neq("id", id);
+    // Deactivate other WhatsApp accounts only (do not touch outsourced_pdf purpose)
+    const { error: e1 } = await supabase
+      .from("cloudinary_accounts")
+      .update({ is_active: false })
+      .eq("purpose", "whatsapp")
+      .neq("id", id);
     if (e1) { toast({ title: "Activate failed", description: e1.message, variant: "destructive" }); return; }
     const { error: e2 } = await supabase.from("cloudinary_accounts").update({ is_active: true }).eq("id", id);
     if (e2) { toast({ title: "Activate failed", description: e2.message, variant: "destructive" }); return; }
