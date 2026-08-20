@@ -397,15 +397,19 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
   };
 
   // Check if a test has all results filled (no pending params)
-  const hasAllResultsFilled = (regId: string, testId: string, outsourcedParamIds?: string[]) => {
+  const enterableParamsForTest = (testId: string, outsourcedParamIds?: string[]) => {
     const params = testParamsMap[testId] || [];
-    const relevantParams = params.filter((tp: any) => {
+    return params.filter((tp: any) => {
       if (tp.is_subheader) return false;
       const p = tp.report_test_parameters;
       if (!p) return false;
       if (outsourcedParamIds && outsourcedParamIds.length > 0 && !outsourcedParamIds.includes(p.id)) return false;
       return true;
     });
+  };
+
+  const hasAllResultsFilled = (regId: string, testId: string, outsourcedParamIds?: string[]) => {
+    const relevantParams = enterableParamsForTest(testId, outsourcedParamIds);
     if (relevantParams.length === 0) return false;
     return relevantParams.every((tp: any) => {
       const p = tp.report_test_parameters;
@@ -917,10 +921,12 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
           // If any row is back at pending/entered (send-back from Verification),
           // count it as still "Results Saved" — it needs the user's attention.
           const hasOpenRow = testResults.some((r: any) => r.status === "pending" || r.status === "entered");
-          if (!hasOpenRow) {
-            if (snip?.result_mode === "snip") {
-              if (testResults.length > 0 && testResults.every((r: any) => r.status === "verified")) continue;
-            } else if (hasAllResultsFilled(e.registration.id, t.testId, t.outsourcedParameterIds)) continue;
+          const hasParams = enterableParamsForTest(t.testId, t.outsourcedParameterIds).length > 0;
+          const paramsIncomplete = hasParams && !hasAllResultsFilled(e.registration.id, t.testId, t.outsourcedParameterIds);
+          if (!hasOpenRow && !paramsIncomplete) {
+            // Snip-only (or params fully typed): no longer pending in Outsourced
+            if (getSnipImageUrls(e.registration.id, t.testId).length > 0) continue;
+            if (hasAllResultsFilled(e.registration.id, t.testId, t.outsourcedParameterIds)) continue;
           }
         }
         if (s === "not_sent") notSent++;
@@ -1233,7 +1239,6 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
               // Hide tests that have progressed past results stage
               if (status === "completed") return false;
               if (status === "results_saved") {
-                const snip = getSnip(reg.id, t.testId);
                 const testResults = existingResults.filter(
                   (r: any) => r.registration_id === reg.id && r.test_id === t.testId
                 );
@@ -1245,13 +1250,15 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
                   (r: any) => r.status === "pending" || r.status === "entered"
                 );
                 if (hasOpenRow) return true;
-                // For snip mode, results are complete — hide from pending list
-                if (snip?.result_mode === "snip") {
-                  const imageUrls = getSnipImageUrls(reg.id, t.testId);
-                  // Hide if snip images exist (results are done)
-                  if (imageUrls.length > 0) return false;
+                // Dual-mode: snip images alone are not "done" when typed params
+                // still need entry (e.g. HB Electrophoresis with snips + empty params).
+                const hasParams = enterableParamsForTest(t.testId, t.outsourcedParameterIds).length > 0;
+                if (hasParams && !hasAllResultsFilled(reg.id, t.testId, t.outsourcedParameterIds)) {
+                  return true;
                 }
-                // For manual mode, check if all params have results
+                // Snip-only (or params complete): hide once images exist
+                if (getSnipImageUrls(reg.id, t.testId).length > 0) return false;
+                // Manual / typed-only: hide when all params filled
                 return !hasAllResultsFilled(reg.id, t.testId, t.outsourcedParameterIds);
               }
               return true;
