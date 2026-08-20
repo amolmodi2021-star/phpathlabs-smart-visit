@@ -169,6 +169,19 @@ const ResultVerification = () => {
   const [activeNoteKey, setActiveNoteKey] = useState<string | null>(null);
   const [editedTestNotes, setEditedTestNotes] = useState<Record<string, string>>({});
   const [activeTestNoteKey, setActiveTestNoteKey] = useState<string | null>(null);
+  const verifyInFlightRef = useRef<Set<string>>(new Set());
+  const editedValuesRef = useRef(editedValues);
+  const editedUnitsRef = useRef(editedUnits);
+  const editedRefRangesRef = useRef(editedRefRanges);
+  const editedFlagsRef = useRef(editedFlags);
+  const editedNotesRef = useRef(editedNotes);
+  const editedTestNotesRef = useRef(editedTestNotes);
+  editedValuesRef.current = editedValues;
+  editedUnitsRef.current = editedUnits;
+  editedRefRangesRef.current = editedRefRanges;
+  editedFlagsRef.current = editedFlags;
+  editedNotesRef.current = editedNotes;
+  editedTestNotesRef.current = editedTestNotes;
   const [blankConfirmTestParams, setBlankConfirmTestParams] = useState<{ entry: PatientEntry; testId: string; testName: string } | null>(null);
   const [blankParamCount, setBlankParamCount] = useState(0);
   const [blankParamIds, setBlankParamIds] = useState<Set<string>>(new Set());
@@ -607,6 +620,8 @@ const ResultVerification = () => {
     }
     return map;
   }, [existingResults]);
+  const loadedTestNotesRef = useRef(loadedTestNotes);
+  loadedTestNotesRef.current = loadedTestNotes;
   const getTestNote = useCallback((regId: string, testId: string): string => {
     const k = `${regId}||${testId}`;
     if (editedTestNotes[k] !== undefined) return editedTestNotes[k];
@@ -697,6 +712,7 @@ const ResultVerification = () => {
         paramValues[p.parameterId] = calcResult;
       }
     }
+    editedValuesRef.current = newEdited;
     setEditedValues(newEdited);
     setEditedFlags((prev) => {
       if (prev[key] === undefined) return prev;
@@ -704,7 +720,145 @@ const ResultVerification = () => {
       delete next[key];
       return next;
     });
+    const testId = entry.parameters.find((p) => p.parameterId === paramId)?.testId;
+    if (testId) scheduleVerificationDraftSave(regId, testId, entry);
   };
+
+  /** Persist verification edits to DB (keep entered/results_entered) so View Report / reload see them. */
+  const clearVerificationDraftTimer = (regId: string, testId: string) => {
+    const key = `${regId}||${testId}`;
+    if (autoSaveTimers.current[key]) {
+      clearTimeout(autoSaveTimers.current[key]);
+      delete autoSaveTimers.current[key];
+    }
+  };
+
+  const autoSaveVerificationDraft = async (regId: string, testId: string, entry: PatientEntry) => {
+    const saveKey = `${regId}||${testId}`;
+    if (verifyInFlightRef.current.has(saveKey) || verifyInFlightRef.current.has(regId)) return;
+
+    const testParams = entry.parameters.filter((p) => p.testId === testId);
+    if (testParams.length === 0) return;
+
+    const edits = editedValuesRef.current;
+    const units = editedUnitsRef.current;
+    const refs = editedRefRangesRef.current;
+    const flags = editedFlagsRef.current;
+    const notes = editedNotesRef.current;
+    const testNotes = editedTestNotesRef.current;
+    const testNoteKey = `${regId}||${testId}`;
+    const testNote =
+      testNotes[testNoteKey] !== undefined
+        ? (testNotes[testNoteKey] || null)
+        : (loadedTestNotesRef.current[testNoteKey] || null);
+
+    try {
+      for (const p of testParams) {
+        const key = `${regId}||${p.parameterId}`;
+        const value = edits[key] !== undefined ? edits[key] : p.resultValue;
+        const autoFlag = calculateFlag(
+          value,
+          p.normalRangeLow,
+          p.normalRangeHigh,
+          p.rangeType,
+          p.expectedValue,
+          p.descriptiveOptions,
+          p.normalRangeText,
+          p.unit,
+          p.normalFindings,
+        );
+        const flag = resolveOutsourcedFlag({
+          isOutsourced: p.isOutsourced,
+          editedFlag: flags[key],
+          savedFlag: p.flag,
+          autoFlag,
+          currentValue: value,
+          savedValue: p.resultValue,
+        });
+        const unit = resolveOutsourcedUnit({
+          isOutsourced: p.isOutsourced,
+          editedUnit: units[key],
+          savedUnit: p.unit,
+          masterUnit: p.unit,
+        });
+        const refRange = resolveOutsourcedRefRange({
+          isOutsourced: p.isOutsourced,
+          editedRef: refs[key],
+          savedRef: p.referenceRange,
+          masterRef: p.referenceRange,
+          rangeType: p.rangeType,
+          normalRangeText: p.normalRangeText,
+        });
+        const note =
+          notes[key] !== undefined ? (notes[key] || null) : (p.note || null);
+
+        if (verifyInFlightRef.current.has(saveKey) || verifyInFlightRef.current.has(regId)) return;
+
+        const { error } = await supabase
+          .from("patient_results")
+          .update({
+            result_value: applyUnitSuffix(value, unit, p.rangeType) || null,
+            unit,
+            reference_range: refRange,
+            flag: flag || null,
+            note,
+            test_note: testNote,
+          } as any)
+          .eq("registration_id", regId)
+          .eq("test_id", testId)
+          .eq("parameter_id", p.parameterId)
+          .in("status", ["pending", "entered", "results_entered"]);
+        if (error) throw error;
+      }
+    } catch {
+      // silent draft auto-save failure — Verify still persists
+    }
+  };
+
+  const scheduleVerificationDraftSave = (regId: string, testId: string, entry: PatientEntry) => {
+    const autoKey = `${regId}||${testId}`;
+    if (autoSaveTimers.current[autoKey]) clearTimeout(autoSaveTimers.current[autoKey]);
+    autoSaveTimers.current[autoKey] = setTimeout(() => {
+      void autoSaveVerificationDraft(regId, testId, entry);
+      delete autoSaveTimers.current[autoKey];
+    }, 900);
+  };
+
+  const flushVerificationDraftSaves = async (regId: string, entry: PatientEntry) => {
+    const prefix = `${regId}||`;
+    const pendingKeys = Object.keys(autoSaveTimers.current).filter((k) => k.startsWith(prefix));
+    const testIds = new Set<string>();
+    for (const key of pendingKeys) {
+      clearTimeout(autoSaveTimers.current[key]);
+      delete autoSaveTimers.current[key];
+      const testId = key.slice(prefix.length);
+      if (testId) testIds.add(testId);
+    }
+    // Also flush tests that have local edits even if debounce already fired / never scheduled
+    for (const p of entry.parameters) {
+      const k = `${regId}||${p.parameterId}`;
+      if (
+        editedValuesRef.current[k] !== undefined
+        || editedUnitsRef.current[k] !== undefined
+        || editedRefRangesRef.current[k] !== undefined
+        || editedFlagsRef.current[k] !== undefined
+        || editedNotesRef.current[k] !== undefined
+        || editedTestNotesRef.current[`${regId}||${p.testId}`] !== undefined
+      ) {
+        testIds.add(p.testId);
+      }
+    }
+    for (const testId of testIds) {
+      await autoSaveVerificationDraft(regId, testId, entry);
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      Object.values(autoSaveTimers.current).forEach(clearTimeout);
+      autoSaveTimers.current = {};
+    };
+  }, []);
 
   // ─── Auto-evaluate calculated parameters whenever entries refresh ───
   const autoCalcSeenRef = useRef<Record<string, string>>({});
@@ -740,7 +894,20 @@ const ResultVerification = () => {
       }
     }
     if (Object.keys(updates).length === 0) return;
-    setEditedValues((prev) => ({ ...prev, ...updates }));
+    setEditedValues((prev) => {
+      const next = { ...prev, ...updates };
+      editedValuesRef.current = next;
+      return next;
+    });
+    // Persist recalculated values so provisional report stays in sync
+    for (const entry of patientEntries) {
+      const regId = entry.registration.id;
+      const touched = new Set<string>();
+      for (const p of entry.parameters) {
+        if (updates[`${regId}||${p.parameterId}`] !== undefined) touched.add(p.testId);
+      }
+      for (const testId of touched) scheduleVerificationDraftSave(regId, testId, entry);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [patientEntries]);
 
@@ -1063,6 +1230,8 @@ const ResultVerification = () => {
   const verifyTest = async (entry: PatientEntry, testId: string, testName: string) => {
     const reg = entry.registration;
     const key = `${reg.id}||${testId}`;
+    clearVerificationDraftTimer(reg.id, testId);
+    verifyInFlightRef.current.add(key);
     setVerifyingKey(key);
     try {
       const upserts = await buildVerifyUpserts(entry, testId);
@@ -1084,6 +1253,7 @@ const ResultVerification = () => {
     } catch (err: any) {
       toast.error(err.message || "Verification failed");
     } finally {
+      verifyInFlightRef.current.delete(key);
       setVerifyingKey(null);
     }
   };
@@ -1091,6 +1261,7 @@ const ResultVerification = () => {
   // Verify all tests for patient — uses the same hardened helpers per-test
   const verifyAllForPatient = async (entry: PatientEntry) => {
     const reg = entry.registration;
+    verifyInFlightRef.current.add(reg.id);
     setVerifyingKey(reg.id);
     try {
       // Union of (params-driven test ids) + (snip-only test ids)
@@ -1113,6 +1284,7 @@ const ResultVerification = () => {
     } catch (err: any) {
       toast.error(err.message || "Verification failed");
     } finally {
+      verifyInFlightRef.current.delete(reg.id);
       setVerifyingKey(null);
     }
   };
@@ -1285,7 +1457,7 @@ const ResultVerification = () => {
           </div>
           {activeNoteKey === key && (
             <div className="flex items-center gap-1 mt-1">
-              <Input value={editedNotes[key] ?? p.note ?? ""} onChange={e => setEditedNotes(prev => ({ ...prev, [key]: e.target.value }))} className="h-6 text-xs w-full" placeholder="Kindly correlate clinically" autoFocus onClick={e => e.stopPropagation()} />
+              <Input value={editedNotes[key] ?? p.note ?? ""} onChange={e => { const v = e.target.value; setEditedNotes(prev => { const n = { ...prev, [key]: v }; editedNotesRef.current = n; return n; }); scheduleVerificationDraftSave(regId, p.testId, entry); }} className="h-6 text-xs w-full" placeholder="Kindly correlate clinically" autoFocus onClick={e => e.stopPropagation()} />
               <Trash2 className="h-3.5 w-3.5 text-destructive cursor-pointer shrink-0" onClick={(e) => { e.stopPropagation(); setEditedNotes(prev => ({ ...prev, [key]: "" })); setActiveNoteKey(null); }} />
             </div>
           )}
@@ -1347,14 +1519,14 @@ const ResultVerification = () => {
         </TableCell>
         <TableCell className="py-1.5 text-xs text-muted-foreground">
           {p.isOutsourced && !p.isSnipMode ? (
-            <Input value={editedUnits[key] !== undefined ? editedUnits[key] : (p.unit || "")} onChange={e => setEditedUnits(prev => ({ ...prev, [key]: e.target.value }))} className="h-6 text-xs w-[70px]" placeholder="Unit" />
+            <Input value={editedUnits[key] !== undefined ? editedUnits[key] : (p.unit || "")} onChange={e => { const v = e.target.value; setEditedUnits(prev => { const n = { ...prev, [key]: v }; editedUnitsRef.current = n; return n; }); scheduleVerificationDraftSave(regId, p.testId, entry); }} className="h-6 text-xs w-[70px]" placeholder="Unit" />
           ) : p.unit}
         </TableCell>
         <TableCell className="py-1.5 text-xs text-muted-foreground">
           {p.isOutsourced && !p.isSnipMode ? (
             <Textarea
               value={editedRefRanges[key] !== undefined ? editedRefRanges[key] : (p.referenceRange || "")}
-              onChange={e => setEditedRefRanges(prev => ({ ...prev, [key]: e.target.value }))}
+              onChange={e => { const v = e.target.value; setEditedRefRanges(prev => { const n = { ...prev, [key]: v }; editedRefRangesRef.current = n; return n; }); scheduleVerificationDraftSave(regId, p.testId, entry); }}
               className="min-h-[4.5rem] text-xs w-[220px] max-w-[280px] whitespace-pre-wrap resize-y"
               placeholder="Normal / advisory range (paste as-is)"
             />
@@ -1364,7 +1536,7 @@ const ResultVerification = () => {
         </TableCell>
         <TableCell className="py-1.5 text-center">
           {p.isOutsourced && !p.isSnipMode ? (
-            <Select value={flag || "none"} onValueChange={(v) => setEditedFlags(prev => ({ ...prev, [key]: v === "none" ? "" : v }))}>
+            <Select value={flag || "none"} onValueChange={(v) => { const nv = v === "none" ? "" : v; setEditedFlags(prev => { const n = { ...prev, [key]: nv }; editedFlagsRef.current = n; return n; }); scheduleVerificationDraftSave(regId, p.testId, entry); }}>
               <SelectTrigger className="h-6 text-xs w-[80px]"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="none">—</SelectItem>
@@ -1536,7 +1708,7 @@ const ResultVerification = () => {
                     <>
                   {activeTestNoteKey === testKey && (
                     <div className="flex items-center gap-1 mt-1 px-1">
-                      <Input value={getTestNote(reg.id, tg.testId)} onChange={e => setEditedTestNotes(prev => ({ ...prev, [testKey]: e.target.value }))} className="h-6 text-xs w-full" placeholder="Kindly correlate clinically" autoFocus />
+                      <Input value={getTestNote(reg.id, tg.testId)} onChange={e => { const v = e.target.value; setEditedTestNotes(prev => { const n = { ...prev, [testKey]: v }; editedTestNotesRef.current = n; return n; }); scheduleVerificationDraftSave(reg.id, tg.testId, entry); }} className="h-6 text-xs w-full" placeholder="Kindly correlate clinically" autoFocus />
                       <Trash2 className="h-3.5 w-3.5 text-destructive cursor-pointer shrink-0" onClick={() => { setEditedTestNotes(prev => ({ ...prev, [testKey]: "" })); setActiveTestNoteKey(null); }} />
                     </div>
                   )}
@@ -1678,9 +1850,10 @@ const ResultVerification = () => {
                       variant="outline"
                       className="h-7 text-xs gap-1"
                       title="Preview provisional report"
-                      onClick={(e) => {
+                      onClick={async (e) => {
                         e.stopPropagation();
                         saveVerificationUiForReturn();
+                        await flushVerificationDraftSaves(reg.id, entry);
                         navigate(`/lims/report/${reg.id}?provisional=1`, {
                           state: { from: "verification" },
                         });
@@ -1797,14 +1970,14 @@ const ResultVerification = () => {
                           </TableCell>
                           <TableCell className="py-2 text-xs text-muted-foreground">
                             {p.isOutsourced ? (
-                              <Input value={editedUnits[key] !== undefined ? editedUnits[key] : (p.unit || "")} onChange={e => setEditedUnits(prev => ({ ...prev, [key]: e.target.value }))} className="h-6 text-xs w-[70px]" placeholder="Unit" />
+                              <Input value={editedUnits[key] !== undefined ? editedUnits[key] : (p.unit || "")} onChange={e => { const v = e.target.value; setEditedUnits(prev => { const n = { ...prev, [key]: v }; editedUnitsRef.current = n; return n; }); scheduleVerificationDraftSave(reg.id, p.testId, entry); }} className="h-6 text-xs w-[70px]" placeholder="Unit" />
                             ) : p.unit}
                           </TableCell>
                           <TableCell className="py-2 text-xs text-muted-foreground">
                             {p.isOutsourced ? (
                               <Textarea
                                 value={editedRefRanges[key] !== undefined ? editedRefRanges[key] : (p.referenceRange || "")}
-                                onChange={e => setEditedRefRanges(prev => ({ ...prev, [key]: e.target.value }))}
+                                onChange={e => { const v = e.target.value; setEditedRefRanges(prev => { const n = { ...prev, [key]: v }; editedRefRangesRef.current = n; return n; }); scheduleVerificationDraftSave(reg.id, p.testId, entry); }}
                                 className="min-h-[4.5rem] text-xs w-full whitespace-pre-wrap resize-y"
                                 placeholder="Normal / advisory range (paste as-is)"
                               />
