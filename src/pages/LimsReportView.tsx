@@ -30,7 +30,6 @@ import {
   reportAssetCacheKey,
 } from "@/lib/reportAssetCache";
 import { isSnipResultRow, snipImageUrlsFromRow, composedPdfUrlFromRow } from "@/lib/outsourcedResultMode";
-import { DEFAULT_SNIP_SCALE_PCT, DEFAULT_SNIP_TOP_MARGIN_PCT, parseSnipPageScales } from "@/lib/snipLayout";
 import { composedPdfPagesToPngs } from "@/lib/outsourcedPdfCompose";
 import { healApprovedReportSnapshotFromLive } from "@/lib/patientResultLookup";
 import {
@@ -836,11 +835,7 @@ const LimsReportView = () => {
         }
       }
       if (urls.length === 0) continue;
-      const scales = parseSnipPageScales(s.snip_page_scales, urls.length);
-      const margin = s.top_margin_pct != null && Number.isFinite(Number(s.top_margin_pct))
-        ? Number(s.top_margin_pct)
-        : DEFAULT_SNIP_TOP_MARGIN_PCT;
-      const legacyFullBleed = urls.length > 0 && snipImageUrlsFromRow(s).length === 0 && !!composedPdfUrlFromRow(s);
+      const legacyFullBleed = snipImageUrlsFromRow(s).length === 0 && !!composedPdfUrlFromRow(s);
       for (let i = 0; i < urls.length; i++) {
         const u = urls[i];
         const marker = "/outsourced-snips/";
@@ -859,8 +854,8 @@ const LimsReportView = () => {
             snipPages.push({
               imageUrl: dataUrl,
               testId: s.test_id,
-              scalePct: legacyFullBleed ? 100 : (scales[i] ?? DEFAULT_SNIP_SCALE_PCT),
-              topMarginPct: legacyFullBleed ? 0 : margin,
+              scalePct: 100,
+              topMarginPct: 0,
               fullBleed: legacyFullBleed,
             });
           }
@@ -1990,32 +1985,57 @@ const LimsReportView = () => {
                   <CbcHistogramCharts histograms={page.histograms || analyzerHistograms} />
                 )}
 
-                {page.type === "snip" && page.snipImage && (
-                  <div
-                    className="flex items-start justify-center h-full overflow-hidden"
-                    style={page.snipFullBleed ? undefined : {
-                      paddingTop: `${page.snipTopMarginPct ?? DEFAULT_SNIP_TOP_MARGIN_PCT}%`,
-                      paddingLeft: "4%",
-                      paddingRight: "4%",
-                    }}
-                  >
-                    <img
-                      data-snip-image="true"
-                      src={page.snipImage}
-                      alt="Outsourced Report"
-                      className={page.snipFullBleed ? "w-full h-full object-contain object-top" : "object-contain object-top"}
-                      style={page.snipFullBleed ? {
-                        maxHeight: `${PAGE_HEIGHT_MM - SIGNATURE_HEIGHT_MM - PAGE_NUM_HEIGHT_MM - (layoutSettings.bottom_margin_cm || 1.5) * 10}mm`,
-                        width: "100%",
-                        objectFit: "contain",
-                        objectPosition: "top center",
-                      } : {
-                        width: `${page.snipScalePct ?? DEFAULT_SNIP_SCALE_PCT}%`,
-                        maxHeight: `${PAGE_HEIGHT_MM - topMm - bottomMm - HEADER_HEIGHT_MM - SIGNATURE_HEIGHT_MM - PAGE_NUM_HEIGHT_MM - footerNoteMm - 6}mm`,
+                {page.type === "snip" && page.snipImage && (() => {
+                  const availableHeightMm = PAGE_HEIGHT_MM
+                    - topMm
+                    - bottomMm
+                    - HEADER_HEIGHT_MM
+                    - SIGNATURE_HEIGHT_MM
+                    - PAGE_NUM_HEIGHT_MM
+                    - footerNoteMm
+                    - 2;
+                  if (page.snipFullBleed) {
+                    return (
+                      <div className="flex items-start justify-center h-full overflow-hidden">
+                        <img
+                          data-snip-image="true"
+                          src={page.snipImage}
+                          alt="Outsourced Report"
+                          className="w-full h-full object-contain object-top"
+                          style={{
+                            maxHeight: `${PAGE_HEIGHT_MM - SIGNATURE_HEIGHT_MM - PAGE_NUM_HEIGHT_MM - (layoutSettings.bottom_margin_cm || 1.5) * 10}mm`,
+                            width: "100%",
+                            objectFit: "contain",
+                            objectPosition: "top center",
+                          }}
+                        />
+                      </div>
+                    );
+                  }
+                  // Fit crop/snip into the band between demographics and signature:
+                  // enlarge small images / shrink large ones; CSS only (no re-encode).
+                  return (
+                    <div
+                      className="w-full overflow-hidden flex items-start justify-center"
+                      style={{
+                        height: `${Math.max(40, availableHeightMm)}mm`,
+                        maxHeight: `${Math.max(40, availableHeightMm)}mm`,
                       }}
-                    />
-                  </div>
-                )}
+                    >
+                      <img
+                        data-snip-image="true"
+                        src={page.snipImage}
+                        alt="Outsourced Report"
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          objectFit: "contain",
+                          objectPosition: "top center",
+                        }}
+                      />
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Pickup point footer note (every page) */}
