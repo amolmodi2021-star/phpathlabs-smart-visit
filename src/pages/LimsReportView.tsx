@@ -814,35 +814,33 @@ const LimsReportView = () => {
       }
     }
 
-    // Outsourced visuals: prefer composed lab PDF pages (high-res); fall back to legacy snips.
+    // Outsourced visuals: store high-res crops only; letterhead + demographics from report shell.
     const snipPages: SnipPage[] = [];
     const snipIds = new Set<string>();
     for (const s of snips || []) {
       if (selectedTestIds && !selectedTestIds.has(s.test_id)) continue;
       if (!isSnipResultRow(s)) continue;
       snipIds.add(s.test_id);
-      const composedUrl = composedPdfUrlFromRow(s);
-      if (composedUrl) {
-        try {
-          const pngs = await withTimeout(composedPdfPagesToPngs(composedUrl, 2), 60_000, "composed pdf render");
-          pngs.forEach((url) => snipPages.push({
-            imageUrl: url,
-            testId: s.test_id,
-            scalePct: 100,
-            topMarginPct: 0,
-            fullBleed: true,
-          }));
-        } catch (e) {
-          console.error("Failed to render composed PDF:", composedUrl, e);
-          toast.error("Could not load composed outsourced PDF for report");
+      let urls = snipImageUrlsFromRow(s);
+      // Legacy: letterhead-baked composed PDF only when no crop images exist.
+      if (urls.length === 0) {
+        const composedUrl = composedPdfUrlFromRow(s);
+        if (composedUrl) {
+          try {
+            urls = await withTimeout(composedPdfPagesToPngs(composedUrl, 2), 60_000, "composed pdf render");
+          } catch (e) {
+            console.error("Failed to render composed PDF:", composedUrl, e);
+            toast.error("Could not load composed outsourced PDF for report");
+            continue;
+          }
         }
-        continue;
       }
-      const urls = snipImageUrlsFromRow(s);
+      if (urls.length === 0) continue;
       const scales = parseSnipPageScales(s.snip_page_scales, urls.length);
       const margin = s.top_margin_pct != null && Number.isFinite(Number(s.top_margin_pct))
         ? Number(s.top_margin_pct)
         : DEFAULT_SNIP_TOP_MARGIN_PCT;
+      const legacyFullBleed = urls.length > 0 && snipImageUrlsFromRow(s).length === 0 && !!composedPdfUrlFromRow(s);
       for (let i = 0; i < urls.length; i++) {
         const u = urls[i];
         const marker = "/outsourced-snips/";
@@ -854,13 +852,16 @@ const LimsReportView = () => {
           ? reportAssetCacheKey("outsourced-snips", path)
           : `url:${u}`;
         try {
-          const dataUrl = await withTimeout(urlToDataUrl(u, cacheKey), 30_000, "snip image download");
+          const dataUrl = u.startsWith("data:")
+            ? u
+            : await withTimeout(urlToDataUrl(u, cacheKey), 30_000, "snip image download");
           if (dataUrl) {
             snipPages.push({
               imageUrl: dataUrl,
               testId: s.test_id,
-              scalePct: scales[i] ?? DEFAULT_SNIP_SCALE_PCT,
-              topMarginPct: margin,
+              scalePct: legacyFullBleed ? 100 : (scales[i] ?? DEFAULT_SNIP_SCALE_PCT),
+              topMarginPct: legacyFullBleed ? 0 : margin,
+              fullBleed: legacyFullBleed,
             });
           }
         } catch (e) {

@@ -2018,15 +2018,15 @@ const ResultsEntry = () => {
                     <Package className="h-4 w-4 text-blue-600 shrink-0" />
                     <span className="font-medium text-blue-800">{st.testName}</span>
                     {st.labName && <Badge variant="outline" className="text-[10px] text-green-600 border-green-300">{st.labName}</Badge>}
-                    {st.composedPdfUrl ? (
+                    {st.snipUrls?.length ? (
+                      <Button size="sm" variant="ghost" className="h-5 px-1 text-xs text-blue-600 gap-0.5" onClick={() => { setViewSnipImages(st.snipUrls); setViewSnipContext({ regId: reg.id, testId: st.testId }); }}>
+                        <Eye className="h-3 w-3" /> View Crop ({st.snipUrls.length})
+                      </Button>
+                    ) : st.composedPdfUrl ? (
                       <Button size="sm" variant="ghost" className="h-5 px-1 text-xs text-blue-600 gap-0.5" onClick={() => window.open(st.composedPdfUrl!, "_blank")}>
                         <Eye className="h-3 w-3" /> View PDF
                       </Button>
-                    ) : (
-                      <Button size="sm" variant="ghost" className="h-5 px-1 text-xs text-blue-600 gap-0.5" onClick={() => { setViewSnipImages(st.snipUrls); setViewSnipContext({ regId: reg.id, testId: st.testId }); }}>
-                        <Eye className="h-3 w-3" /> View Snip ({st.snipUrls.length} page{st.snipUrls.length > 1 ? "s" : ""})
-                      </Button>
-                    )}
+                    ) : null}
                   </div>
                   <Button size="sm" variant="outline" className="h-6 text-[11px] gap-1" disabled={isTestSaving} onClick={() => handleSaveAndVerify(entry, st.testId, st.testName)}>
                     {isTestSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <SendHorizonal className="h-3 w-3" />}
@@ -2189,9 +2189,10 @@ const ResultsEntry = () => {
                         }}
                         existingSourcePdfUrl={testSnipDetail?.sourcePdfUrl}
                         existingCrops={testSnipDetail?.pdfCropRegions}
-                        existingComposedPdfUrl={testSnipDetail?.composedPdfUrl}
+                        existingSnipUrls={testSnipDetail?.snipImageUrls || []}
                         isSaving={savingSnipKey === testKey}
                         onSaved={async (payload) => {
+                          const urls = payload.snipImageUrls.filter(Boolean);
                           await supabase.from("outsourced_test_snips").upsert({
                             registration_id: reg.id,
                             test_id: tg.testId,
@@ -2200,14 +2201,14 @@ const ResultsEntry = () => {
                             source_pdf_url: payload.sourcePdfUrl,
                             source_pdf_public_id: payload.sourcePdfPublicId || null,
                             pdf_crop_regions: payload.cropRegions,
-                            composed_pdf_url: payload.composedPdfUrl,
-                            composed_pdf_public_id: payload.composedPdfPublicId || null,
-                            snip_image_url: null,
-                            snip_image_urls: [],
+                            composed_pdf_url: null,
+                            composed_pdf_public_id: null,
+                            snip_image_url: urls[0] || null,
+                            snip_image_urls: urls,
                             entered_at: new Date().toISOString(),
                             entered_by: getCurrentUserName(),
                           } as any, { onConflict: "registration_id,test_id" });
-                          toast.success(`PDF saved — ${tg.testName} moved to Verification`);
+                          toast.success(`Crops saved — ${tg.testName} moved to Verification`);
                           await Promise.all([
                             qc.invalidateQueries({ queryKey: ["results_outsourced_snips"] }),
                             qc.invalidateQueries({ queryKey: ["outsourced_snips"] }),

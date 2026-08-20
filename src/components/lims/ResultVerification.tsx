@@ -1446,15 +1446,15 @@ const ResultVerification = () => {
                 <FlaskConical className="h-4 w-4 text-blue-600 shrink-0" />
                 <span className="font-medium text-blue-800">{st.testName}</span>
                 {st.labName && <Badge variant="outline" className="text-[10px] text-green-600 border-green-300">{st.labName}</Badge>}
-                {st.composedPdfUrl ? (
+                {st.snipUrls?.length ? (
+                  <Button size="sm" variant="ghost" className="h-5 px-1 text-xs text-blue-600 gap-0.5" onClick={() => setViewSnipImages(st.snipUrls)}>
+                    <Eye className="h-3 w-3" /> View Crop ({st.snipUrls.length})
+                  </Button>
+                ) : st.composedPdfUrl ? (
                   <Button size="sm" variant="ghost" className="h-5 px-1 text-xs text-blue-600 gap-0.5" onClick={() => window.open(st.composedPdfUrl!, "_blank")}>
                     <Eye className="h-3 w-3" /> View PDF
                   </Button>
-                ) : (
-                  <Button size="sm" variant="ghost" className="h-5 px-1 text-xs text-blue-600 gap-0.5" onClick={() => setViewSnipImages(st.snipUrls)}>
-                    <Eye className="h-3 w-3" /> View Snip ({st.snipUrls.length} page{st.snipUrls.length > 1 ? "s" : ""})
-                  </Button>
-                )}
+                ) : null}
               </div>
               <div className="flex items-center gap-1">
                 <Button size="sm" variant="ghost" className="h-6 text-[11px] gap-1 text-orange-600" onClick={() => sendBackTest(reg.id, st.testId, st.testName)}>

@@ -466,8 +466,8 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
     if (outsourceStatus === "results_saved") {
       // Verify actual data exists — if artifact was removed, status may be stale
       const snip = getSnip(regId, testId);
-      if (composedPdfUrlFromRow(snip as any)) return "results_saved";
-      if (snip?.result_mode === "snip") {
+      if (composedPdfUrlFromRow(snip as any) || snipImageUrlsFromRow(snip as any).length > 0) return "results_saved";
+      if (snip?.result_mode === "snip" || snip?.result_mode === "pdf") {
         const imageUrls = getSnipImageUrls(regId, testId);
         if (imageUrls.length === 0) return "awaiting_results";
       }
@@ -845,12 +845,12 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
       }
       const { error: snipErr } = await supabase.from("outsourced_test_snips").upsert({
         registration_id: regId, test_id: testId,
-        result_mode: composedUrl ? "pdf" : keepUrls.length > 0 ? "snip" : "manual",
+        result_mode: keepUrls.length > 0 || composedUrl ? "pdf" : "manual",
         outsource_status: "results_entered",
         snip_image_url: keepUrls[0] || null,
         snip_image_urls: keepUrls,
-        composed_pdf_url: (existingSnip as any)?.composed_pdf_url || null,
-        composed_pdf_public_id: (existingSnip as any)?.composed_pdf_public_id || null,
+        composed_pdf_url: keepUrls.length > 0 ? null : ((existingSnip as any)?.composed_pdf_url || null),
+        composed_pdf_public_id: keepUrls.length > 0 ? null : ((existingSnip as any)?.composed_pdf_public_id || null),
         source_pdf_url: (existingSnip as any)?.source_pdf_url || null,
         source_pdf_public_id: (existingSnip as any)?.source_pdf_public_id || null,
         pdf_crop_regions: (existingSnip as any)?.pdf_crop_regions || null,
@@ -885,7 +885,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
     }
   }, [editedValues, editedUnits, editedRefRanges, editedFlags, testParamsMap, qc, resolveNormalRange, existingSnips, existingResults]);
 
-  // Save composed lab PDF → Verification
+  // Save high-res lab PDF crops (no letterhead) → Verification; chrome applied on report.
   const saveComposedPdf = useCallback(async (
     regId: string,
     testId: string,
@@ -894,14 +894,15 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
       sourcePdfUrl: string;
       sourcePdfPublicId: string;
       cropRegions: any[];
-      composedPdfUrl: string;
-      composedPdfPublicId: string;
+      snipImageUrls: string[];
     },
   ) => {
     const key = `${regId}||${testId}`;
     setSavingKey(key);
     try {
       const existing = getSnip(regId, testId);
+      const urls = payload.snipImageUrls.filter(Boolean);
+      if (urls.length === 0) throw new Error("No crop images to save");
       const { error } = await supabase.from("outsourced_test_snips").upsert({
         registration_id: regId,
         test_id: testId,
@@ -912,23 +913,23 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
         source_pdf_url: payload.sourcePdfUrl,
         source_pdf_public_id: payload.sourcePdfPublicId || null,
         pdf_crop_regions: payload.cropRegions,
-        composed_pdf_url: payload.composedPdfUrl,
-        composed_pdf_public_id: payload.composedPdfPublicId || null,
-        snip_image_url: null,
-        snip_image_urls: [],
+        composed_pdf_url: null,
+        composed_pdf_public_id: null,
+        snip_image_url: urls[0],
+        snip_image_urls: urls,
         entered_at: new Date().toISOString(),
         entered_by: getCurrentUserName(),
       } as any, { onConflict: "registration_id,test_id" });
       if (error) throw error;
       await recalculateRegistrationStatus(regId);
-      toast.success(`PDF saved — ${testName} moved to Verification`);
+      toast.success(`Crops saved — ${testName} moved to Verification`);
       qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
       qc.invalidateQueries({ queryKey: ["outsourced_pending_ids"] });
       qc.invalidateQueries({ queryKey: ["verification_pending_ids"] });
       qc.invalidateQueries({ queryKey: ["verification_outsourced"] });
       qc.invalidateQueries({ queryKey: ["outsourced_manual_results"] });
     } catch (err: any) {
-      toast.error(err.message || "Failed to save PDF");
+      toast.error(err.message || "Failed to save crops");
     } finally {
       setSavingKey(null);
     }
@@ -1332,21 +1333,21 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
                   }}
                   existingSourcePdfUrl={(snip as any)?.source_pdf_url}
                   existingCrops={(snip as any)?.pdf_crop_regions}
-                  existingComposedPdfUrl={(snip as any)?.composed_pdf_url}
+                  existingSnipUrls={Array.isArray((snip as any)?.snip_image_urls) ? (snip as any).snip_image_urls : []}
                   isSaving={savingKey === `${regId}||${testId}`}
                   onSaved={async (payload) => {
                     await saveComposedPdf(regId, testId, test.testName, payload);
                   }}
                 />
-                {(snip as any)?.composed_pdf_url && (
+                {Array.isArray((snip as any)?.snip_image_urls) && (snip as any).snip_image_urls[0] && (
                   <div className="flex justify-end">
                     <Button
                       size="sm"
                       variant="outline"
                       className="h-8 text-xs"
-                      onClick={() => window.open((snip as any).composed_pdf_url, "_blank")}
+                      onClick={() => window.open((snip as any).snip_image_urls[0], "_blank")}
                     >
-                      <FileText className="h-3.5 w-3.5 mr-1" /> View Composed PDF
+                      <FileText className="h-3.5 w-3.5 mr-1" /> View Crop
                     </Button>
                   </div>
                 )}

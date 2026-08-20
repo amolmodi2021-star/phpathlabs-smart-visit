@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as pdfjsLib from "pdfjs-dist";
 import { Button } from "@/components/ui/button";
-import { Loader2, Upload, Save, Trash2, FileText, ChevronLeft, ChevronRight } from "lucide-react";
+import { Loader2, Upload, Save, Trash2, FileText, ChevronLeft, ChevronRight, Image } from "lucide-react";
 import { toast } from "sonner";
 import { uploadBlobToCloudinary } from "@/lib/cardStorageCloudinary";
 import {
-  composeOutsourcedLetterheadPdf,
   parsePdfCropRegions,
+  renderCropToPng,
   type ComposePatientMeta,
   type PdfCropRegion,
 } from "@/lib/outsourcedPdfCompose";
@@ -22,21 +22,30 @@ type Props = {
   existingSourcePdfUrl?: string | null;
   existingCrops?: unknown;
   existingComposedPdfUrl?: string | null;
+  existingSnipUrls?: string[];
   isSaving?: boolean;
   onSaved: (payload: {
     sourcePdfUrl: string;
     sourcePdfPublicId: string;
     cropRegions: PdfCropRegion[];
-    composedPdfUrl: string;
-    composedPdfPublicId: string;
+    snipImageUrls: string[];
   }) => Promise<void>;
 };
 
 type DragBox = { x0: number; y0: number; x1: number; y1: number } | null;
 
+function dataUrlToBlob(dataUrl: string): Blob {
+  const [header, b64] = dataUrl.split(",");
+  const mime = /data:([^;]+)/.exec(header)?.[1] || "image/png";
+  const bin = atob(b64 || "");
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new Blob([bytes], { type: mime });
+}
+
 export default function OutsourcedPdfEditor({
-  regId, testId, testName, patientMeta,
-  existingSourcePdfUrl, existingCrops, existingComposedPdfUrl,
+  regId, testId, testName, patientMeta: _patientMeta,
+  existingSourcePdfUrl, existingCrops, existingSnipUrls,
   isSaving, onSaved,
 }: Props) {
   const [sourceUrl, setSourceUrl] = useState(existingSourcePdfUrl || "");
@@ -49,7 +58,7 @@ export default function OutsourcedPdfEditor({
   const [composing, setComposing] = useState(false);
   const [crops, setCrops] = useState<PdfCropRegion[]>(() => parsePdfCropRegions(existingCrops));
   const [drag, setDrag] = useState<DragBox>(null);
-  const [proofUrl, setProofUrl] = useState(existingComposedPdfUrl || "");
+  const [previewUrls, setPreviewUrls] = useState<string[]>(existingSnipUrls || []);
   const wrapRef = useRef<HTMLDivElement>(null);
 
   const renderPage = useCallback(async (url: string, idx: number) => {
@@ -96,7 +105,7 @@ export default function OutsourcedPdfEditor({
       setSourceUrl(uploaded.secure_url);
       setSourcePublicId(uploaded.public_id);
       setCrops([]);
-      setProofUrl("");
+      setPreviewUrls([]);
       setPageIndex(0);
       toast.success("PDF uploaded — select keep-regions on each page");
     } catch (e: any) {
@@ -144,27 +153,30 @@ export default function OutsourcedPdfEditor({
     if (crops.length === 0) { toast.error("Draw at least one keep-region on the PDF"); return; }
     setComposing(true);
     try {
-      const blob = await composeOutsourcedLetterheadPdf(sourceUrl, crops, {
-        ...patientMeta,
-        testName,
-      });
-      const uploaded = await uploadBlobToCloudinary(blob, {
-        resourceType: "auto",
-        purpose: "outsourced_pdf",
-        folder: "outsourced-composed",
-        publicId: `${regId}_${testId}_composed_${Date.now()}`,
-        filename: `${testName || "outsourced"}.pdf`,
-      });
-      setProofUrl(uploaded.secure_url);
+      const sorted = [...crops].sort((a, b) => a.pageIndex - b.pageIndex || a.y - b.y);
+      const urls: string[] = [];
+      for (let i = 0; i < sorted.length; i++) {
+        const region = sorted[i];
+        const pngDataUrl = await renderCropToPng(sourceUrl, region, 3);
+        const blob = dataUrlToBlob(pngDataUrl);
+        const uploaded = await uploadBlobToCloudinary(blob, {
+          resourceType: "image",
+          purpose: "outsourced_pdf",
+          folder: "outsourced-lab-crops",
+          publicId: `${regId}_${testId}_crop_${i}_${Date.now()}`,
+          filename: `${testName || "crop"}_${i + 1}.png`,
+        });
+        urls.push(uploaded.secure_url);
+      }
+      setPreviewUrls(urls);
       await onSaved({
         sourcePdfUrl: sourceUrl,
         sourcePdfPublicId: sourcePublicId,
         cropRegions: crops,
-        composedPdfUrl: uploaded.secure_url,
-        composedPdfPublicId: uploaded.public_id,
+        snipImageUrls: urls,
       });
     } catch (e: any) {
-      toast.error(e?.message || "Failed to compose / save PDF");
+      toast.error(e?.message || "Failed to save cropped regions");
     } finally {
       setComposing(false);
     }
@@ -182,7 +194,8 @@ export default function OutsourcedPdfEditor({
   return (
     <div className="space-y-3 rounded-md border border-blue-200 bg-blue-50/40 p-3">
       <div className="text-xs font-medium text-blue-900">
-        Upload lab PDF → select keep-areas on each page (high-res, not a screenshot) → Save to Verification
+        Upload lab PDF → select keep-areas (high-res crop, no letterhead) → Save to Verification.
+        Demographics and letterhead are applied on provisional / final report (toggle letterhead when printing).
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -200,7 +213,7 @@ export default function OutsourcedPdfEditor({
           <Button type="button" size="sm" variant="outline" asChild disabled={uploading}>
             <span>
               {uploading ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Upload className="h-3.5 w-3.5 mr-1" />}
-              {sourceUrl ? "Replace PDF" : "Upload Lab PDF"}
+              {sourceUrl ? "Replace PDF" : "Upload lab PDF"}
             </span>
           </Button>
         </label>
@@ -209,9 +222,9 @@ export default function OutsourcedPdfEditor({
             <FileText className="h-3.5 w-3.5 mr-1" /> Source PDF
           </Button>
         )}
-        {proofUrl && (
-          <Button type="button" size="sm" variant="ghost" className="h-8 text-xs" onClick={() => window.open(proofUrl, "_blank")}>
-            <FileText className="h-3.5 w-3.5 mr-1" /> Final PDF
+        {previewUrls[0] && (
+          <Button type="button" size="sm" variant="ghost" className="h-8 text-xs" onClick={() => window.open(previewUrls[0], "_blank")}>
+            <Image className="h-3.5 w-3.5 mr-1" /> View crop
           </Button>
         )}
       </div>
@@ -231,7 +244,7 @@ export default function OutsourcedPdfEditor({
               </Button>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-[10px] text-muted-foreground">{pageCrops.length} region(s) on this page · {crops.length} total</span>
+              <span className="text-[10px] text-muted-foreground">{pageCrops.length} region(s) on this page; {crops.length} total</span>
               <Button type="button" size="sm" variant="ghost" className="h-7 text-xs text-destructive" onClick={clearPageCrops} disabled={pageCrops.length === 0}>
                 <Trash2 className="h-3 w-3 mr-1" /> Clear page
               </Button>
@@ -255,7 +268,7 @@ export default function OutsourcedPdfEditor({
             )}
             {pageCrops.map((c, i) => (
               <div
-                key={`${c.pageIndex}-${i}-${c.x}`}
+                key={`${c.pageIndex}-${i}`}
                 className="absolute border-2 border-emerald-500 bg-emerald-400/20 pointer-events-none"
                 style={{ left: `${c.x * 100}%`, top: `${c.y * 100}%`, width: `${c.w * 100}%`, height: `${c.h * 100}%` }}
               />
@@ -265,7 +278,7 @@ export default function OutsourcedPdfEditor({
             )}
           </div>
           <p className="text-[10px] text-muted-foreground text-center">
-            Drag on the page to keep a region. Unselected areas are omitted. Crops auto-fit under demographics / above signatures.
+            Draw on the page to keep a region. Only selected areas are stored (high-res). Letterhead / demographics are added when the report is generated.
           </p>
         </>
       )}
@@ -274,10 +287,10 @@ export default function OutsourcedPdfEditor({
         <Button
           size="sm"
           onClick={() => void buildAndSave()}
-          disabled={!sourceUrl || crops.length === 0 || composing || isSaving}
+          disabled={!sourceUrl || crops.length === 0 || composing || !!isSaving}
         >
           {(composing || isSaving) ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Save className="h-4 w-4 mr-1" />}
-          Save PDF → Verification
+          Save crops → Verification
         </Button>
       </div>
     </div>
