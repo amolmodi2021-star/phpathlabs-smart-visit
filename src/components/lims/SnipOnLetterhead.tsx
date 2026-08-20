@@ -2,9 +2,16 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Clipboard, Image, Loader2, Plus, Trash2, FileText, ExternalLink } from "lucide-react";
-import { toast } from "sonner";
 import * as pdfjsLib from "pdfjs-dist";
 import { getCachedLetterheadPng } from "@/lib/reportAssetCache";
+import {
+  DEFAULT_SNIP_SCALE_PCT,
+  DEFAULT_SNIP_TOP_MARGIN_PCT,
+  clampScale,
+  clampTopMargin,
+  parseSnipPageScales,
+  scalesRecordToArray,
+} from "@/lib/snipLayout";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.2.67/pdf.worker.min.mjs`;
 
@@ -16,55 +23,37 @@ interface SnipOnLetterheadProps {
   onPaste: (regId: string, testId: string, event: React.ClipboardEvent) => void;
   onFileUpload: (regId: string, testId: string, file: File) => void;
   onDeletePage: (regId: string, testId: string, pageIndex: number) => void;
-}
-
-interface PageImage {
-  url: string;
-  scale: number;
+  /** Optional seed from parent query (avoids extra round-trip when already loaded). */
+  initialPageScales?: unknown;
+  initialTopMarginPct?: number | null;
 }
 
 const SnipOnLetterhead = ({
   regId, testId, imageUrls, isUploading, onPaste, onFileUpload, onDeletePage,
+  initialPageScales, initialTopMarginPct,
 }: SnipOnLetterheadProps) => {
   const [letterheadDataUrl, setLetterheadDataUrl] = useState<string | null>(null);
   const [loadingLetterhead, setLoadingLetterhead] = useState(true);
-  const [topMarginPct, setTopMarginPct] = useState(8.4);
-  const [topMarginInput, setTopMarginInput] = useState("8.4");
+  const [topMarginPct, setTopMarginPct] = useState(DEFAULT_SNIP_TOP_MARGIN_PCT);
+  const [topMarginInput, setTopMarginInput] = useState(String(DEFAULT_SNIP_TOP_MARGIN_PCT));
   const [pageScales, setPageScales] = useState<Record<number, number>>({});
   const [resizing, setResizing] = useState<{ pageIndex: number; startX: number; startY: number; startScale: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const pasteRef = useRef<HTMLDivElement>(null);
+  const layoutReadyRef = useRef(false);
+  const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const applyScalesFromRaw = useCallback((raw: unknown, urlCount: number) => {
+    const arr = parseSnipPageScales(raw, urlCount);
+    const next: Record<number, number> = {};
+    arr.forEach((s, i) => { next[i] = s; });
+    setPageScales(next);
+  }, []);
 
   useEffect(() => {
     const loadLetterhead = async () => {
       setLoadingLetterhead(true);
       try {
-        // Load saved snip margin from app_settings
-        const { data: marginSetting } = await supabase
-          .from("app_settings")
-          .select("setting_value")
-          .eq("setting_key", "snip_top_margin_pct")
-          .limit(1)
-          .single();
-
-        if (marginSetting?.setting_value) {
-          const saved = Number(marginSetting.setting_value);
-          setTopMarginPct(saved);
-          setTopMarginInput(saved.toFixed(1));
-        } else {
-          // Fall back to layout settings top_margin_cm
-          const { data: layoutSettings } = await supabase
-            .from("report_layout_settings")
-            .select("top_margin_cm")
-            .limit(1)
-            .single();
-          if (layoutSettings?.top_margin_cm) {
-            const marginPct = (Number(layoutSettings.top_margin_cm) / 29.7) * 100;
-            setTopMarginPct(marginPct);
-            setTopMarginInput(marginPct.toFixed(1));
-          }
-        }
-
         const { data: settings } = await supabase
           .from("report_layout_settings")
           .select("letterhead_pdf_path")
@@ -104,7 +93,90 @@ const SnipOnLetterhead = ({
     loadLetterhead();
   }, []);
 
-  const getScale = (idx: number) => pageScales[idx] ?? 70;
+  useEffect(() => {
+    let cancelled = false;
+    layoutReadyRef.current = false;
+
+    const loadLayout = async () => {
+      let margin = initialTopMarginPct != null && Number.isFinite(Number(initialTopMarginPct))
+        ? clampTopMargin(Number(initialTopMarginPct))
+        : null;
+      let scalesRaw: unknown = initialPageScales ?? null;
+
+      if (margin == null || scalesRaw == null) {
+        const { data: row } = await supabase
+          .from("outsourced_test_snips")
+          .select("top_margin_pct, snip_page_scales")
+          .eq("registration_id", regId)
+          .eq("test_id", testId)
+          .maybeSingle();
+        if (cancelled) return;
+        if (margin == null && row?.top_margin_pct != null) {
+          margin = clampTopMargin(Number(row.top_margin_pct));
+        }
+        if (scalesRaw == null && (row as any)?.snip_page_scales != null) {
+          scalesRaw = (row as any).snip_page_scales;
+        }
+      }
+
+      if (margin == null) {
+        const { data: marginSetting } = await supabase
+          .from("app_settings")
+          .select("setting_value")
+          .eq("setting_key", "snip_top_margin_pct")
+          .limit(1)
+          .maybeSingle();
+        if (cancelled) return;
+        if (marginSetting?.setting_value) {
+          margin = clampTopMargin(Number(marginSetting.setting_value));
+        } else {
+          margin = DEFAULT_SNIP_TOP_MARGIN_PCT;
+        }
+      }
+
+      if (cancelled) return;
+      setTopMarginPct(margin);
+      setTopMarginInput(margin.toFixed(1));
+      applyScalesFromRaw(scalesRaw, imageUrls.length);
+      layoutReadyRef.current = true;
+    };
+
+    void loadLayout();
+    return () => { cancelled = true; };
+  }, [regId, testId, initialPageScales, initialTopMarginPct, applyScalesFromRaw, imageUrls.length]);
+
+  useEffect(() => {
+    setPageScales((prev) => {
+      const next: Record<number, number> = {};
+      for (let i = 0; i < imageUrls.length; i++) {
+        next[i] = prev[i] != null ? clampScale(prev[i]) : DEFAULT_SNIP_SCALE_PCT;
+      }
+      return next;
+    });
+  }, [imageUrls.length]);
+
+  const persistLayout = useCallback(async (scales: Record<number, number>, margin: number) => {
+    if (!layoutReadyRef.current) return;
+    const arr = scalesRecordToArray(scales, imageUrls.length);
+    const { error } = await supabase
+      .from("outsourced_test_snips")
+      .update({
+        snip_page_scales: arr,
+        top_margin_pct: margin,
+      } as any)
+      .eq("registration_id", regId)
+      .eq("test_id", testId);
+    if (error) console.error("Failed to persist snip layout:", error);
+  }, [regId, testId, imageUrls.length]);
+
+  const schedulePersist = useCallback((scales: Record<number, number>, margin: number) => {
+    if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
+    persistTimerRef.current = setTimeout(() => {
+      void persistLayout(scales, margin);
+    }, 300);
+  }, [persistLayout]);
+
+  const getScale = (idx: number) => pageScales[idx] ?? DEFAULT_SNIP_SCALE_PCT;
 
   const handleResizeStart = useCallback((e: React.MouseEvent, pageIndex: number) => {
     e.preventDefault();
@@ -125,17 +197,23 @@ const SnipOnLetterhead = ({
       const diagonal = (dx + dy) / 2;
       const containerWidth = containerRef.current?.offsetWidth || 600;
       const scaleDelta = (diagonal / containerWidth) * 100;
-      const newScale = Math.max(20, Math.min(100, resizing.startScale + scaleDelta));
+      const newScale = clampScale(resizing.startScale + scaleDelta);
       setPageScales(prev => ({ ...prev, [resizing.pageIndex]: newScale }));
     };
-    const handleUp = () => setResizing(null);
+    const handleUp = () => {
+      setPageScales((prev) => {
+        schedulePersist(prev, topMarginPct);
+        return prev;
+      });
+      setResizing(null);
+    };
     window.addEventListener("mousemove", handleMove);
     window.addEventListener("mouseup", handleUp);
     return () => {
       window.removeEventListener("mousemove", handleMove);
       window.removeEventListener("mouseup", handleUp);
     };
-  }, [resizing]);
+  }, [resizing, schedulePersist, topMarginPct]);
 
   const renderPageOnLetterhead = (url: string, idx: number) => {
     const scale = getScale(idx);
@@ -155,7 +233,6 @@ const SnipOnLetterhead = ({
             </Button>
           </div>
         </div>
-        {/* Fixed A4 card — never expand to full panel width (that caused the "extra zoom"). */}
         <div className="relative w-full bg-white" style={{ aspectRatio: "210 / 297" }}>
           {letterheadDataUrl ? (
             <img
@@ -169,7 +246,6 @@ const SnipOnLetterhead = ({
               <span className="text-xs text-muted-foreground">No letterhead uploaded</span>
             </div>
           )}
-          {/* Snip sits inside the letterhead page bounds */}
           <div
             className="absolute inset-x-0 bottom-0 top-0 flex justify-center overflow-hidden pointer-events-none"
             style={{ paddingTop: `${topMarginPct}%`, paddingBottom: "6%", paddingLeft: "4%", paddingRight: "4%" }}
@@ -216,17 +292,11 @@ const SnipOnLetterhead = ({
                 type="text"
                 value={topMarginInput}
                 onChange={(e) => setTopMarginInput(e.target.value)}
-                onBlur={async () => {
-                  const val = Math.max(0, Math.min(50, Number(topMarginInput) || 0));
+                onBlur={() => {
+                  const val = clampTopMargin(Number(topMarginInput) || 0);
                   setTopMarginPct(val);
                   setTopMarginInput(val.toFixed(1));
-                  // Persist margin globally in app_settings
-                  await supabase
-                    .from("app_settings")
-                    .upsert(
-                      { setting_key: "snip_top_margin_pct", setting_value: String(val) },
-                      { onConflict: "setting_key" }
-                    );
+                  schedulePersist(pageScales, val);
                 }}
                 className="w-16 h-7 text-xs text-center border rounded bg-background"
               />

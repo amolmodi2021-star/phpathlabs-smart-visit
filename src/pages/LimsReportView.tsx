@@ -30,6 +30,7 @@ import {
   reportAssetCacheKey,
 } from "@/lib/reportAssetCache";
 import { isSnipResultRow, snipImageUrlsFromRow } from "@/lib/outsourcedResultMode";
+import { DEFAULT_SNIP_SCALE_PCT, DEFAULT_SNIP_TOP_MARGIN_PCT, parseSnipPageScales } from "@/lib/snipLayout";
 import { healApprovedReportSnapshotFromLive } from "@/lib/patientResultLookup";
 import {
   hasRenderableHistograms,
@@ -395,6 +396,8 @@ interface TestBlock {
 interface SnipPage {
   imageUrl: string;
   testId?: string;
+  scalePct?: number;
+  topMarginPct?: number;
 }
 
 interface PageContent {
@@ -402,6 +405,8 @@ interface PageContent {
   departmentName?: string;
   testBlocks?: TestBlock[];
   snipImage?: string;
+  snipScalePct?: number;
+  snipTopMarginPct?: number;
   histograms?: AnalyzerHistogram[];
   approvers?: string[];
   /** Per-page sample collection datetime (ISO) — different date/time never share a page */
@@ -809,12 +814,22 @@ const LimsReportView = () => {
     // html-to-image (esp. with cacheBust) hang the WhatsApp popup on "Downloading…".
     const snipPages: SnipPage[] = [];
     const snipIds = new Set<string>();
-    const snipJobs: { testId: string; url: string }[] = [];
+    const snipJobs: { testId: string; url: string; scalePct: number; topMarginPct: number }[] = [];
     (snips || []).forEach((s: any) => {
       if (selectedTestIds && !selectedTestIds.has(s.test_id)) return;
       if (!isSnipResultRow(s)) return;
       snipIds.add(s.test_id);
-      snipImageUrlsFromRow(s).forEach((url: string) => snipJobs.push({ testId: s.test_id, url }));
+      const urls = snipImageUrlsFromRow(s);
+      const scales = parseSnipPageScales(s.snip_page_scales, urls.length);
+      const margin = s.top_margin_pct != null && Number.isFinite(Number(s.top_margin_pct))
+        ? Number(s.top_margin_pct)
+        : DEFAULT_SNIP_TOP_MARGIN_PCT;
+      urls.forEach((url: string, i: number) => snipJobs.push({
+        testId: s.test_id,
+        url,
+        scalePct: scales[i] ?? DEFAULT_SNIP_SCALE_PCT,
+        topMarginPct: margin,
+      }));
     });
     const inlinedSnipUrls = await Promise.all(snipJobs.map(async (job) => {
       const u = job.url;
@@ -828,10 +843,10 @@ const LimsReportView = () => {
         : `url:${u}`;
       try {
         const dataUrl = await withTimeout(urlToDataUrl(u, cacheKey), 30_000, "snip image download");
-        return { testId: job.testId, url: dataUrl };
+        return { testId: job.testId, url: dataUrl, scalePct: job.scalePct, topMarginPct: job.topMarginPct };
       } catch (e) {
         console.error("Failed to inline snip image:", u, e);
-        return { testId: job.testId, url: null as string | null };
+        return { testId: job.testId, url: null as string | null, scalePct: job.scalePct, topMarginPct: job.topMarginPct };
       }
     }));
     const failedSnips = inlinedSnipUrls.filter((u) => !u.url).length;
@@ -839,7 +854,12 @@ const LimsReportView = () => {
       toast.error(`Could not load ${failedSnips} snipped report image(s) for PDF`);
     }
     inlinedSnipUrls.forEach((row) => {
-      if (row.url) snipPages.push({ imageUrl: row.url, testId: row.testId });
+      if (row.url) snipPages.push({
+        imageUrl: row.url,
+        testId: row.testId,
+        scalePct: row.scalePct,
+        topMarginPct: row.topMarginPct,
+      });
     });
 
     // Inline snapshot signature URLs embedded in approved_reports.test_results JSONB
@@ -1163,11 +1183,21 @@ const LimsReportView = () => {
         }
       }
       for (const snip of snipsByTest.get(testId) || []) {
-        pagesWithHistograms.push({ type: "snip", snipImage: snip.imageUrl });
+        pagesWithHistograms.push({
+          type: "snip",
+          snipImage: snip.imageUrl,
+          snipScalePct: snip.scalePct,
+          snipTopMarginPct: snip.topMarginPct,
+        });
       }
     }
     for (const snip of snipsByTest.get("__orphan__") || []) {
-      pagesWithHistograms.push({ type: "snip", snipImage: snip.imageUrl });
+      pagesWithHistograms.push({
+        type: "snip",
+        snipImage: snip.imageUrl,
+        snipScalePct: snip.scalePct,
+        snipTopMarginPct: snip.topMarginPct,
+      });
     }
 
     return {
@@ -1949,14 +1979,21 @@ const LimsReportView = () => {
                 )}
 
                 {page.type === "snip" && page.snipImage && (
-                  <div className="flex items-start justify-center h-full pt-1 overflow-hidden">
+                  <div
+                    className="flex items-start justify-center h-full overflow-hidden"
+                    style={{
+                      paddingTop: `${page.snipTopMarginPct ?? DEFAULT_SNIP_TOP_MARGIN_PCT}%`,
+                      paddingLeft: "4%",
+                      paddingRight: "4%",
+                    }}
+                  >
                     <img
                       data-snip-image="true"
                       src={page.snipImage}
                       alt="Outsourced Report"
-                      className="max-w-full object-contain"
+                      className="object-contain object-top"
                       style={{
-                        // Reserve full margins + header + signature band + page number + safety gap so snip never overlaps signature.
+                        width: `${page.snipScalePct ?? DEFAULT_SNIP_SCALE_PCT}%`,
                         maxHeight: `${PAGE_HEIGHT_MM - topMm - bottomMm - HEADER_HEIGHT_MM - SIGNATURE_HEIGHT_MM - PAGE_NUM_HEIGHT_MM - footerNoteMm - 6}mm`,
                       }}
                     />

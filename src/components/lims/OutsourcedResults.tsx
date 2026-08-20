@@ -37,6 +37,15 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { isSnipResultRow, snipImageUrlsFromRow } from "@/lib/outsourcedResultMode";
+import {
+  loadOutsourcedRefRange,
+  loadOutsourcedUnit,
+  resolveOutsourcedFlag,
+  resolveOutsourcedRefRange,
+  resolveOutsourcedUnit,
+} from "@/lib/outsourcedResultOverrides";
+import { calculateResultFlag } from "@/lib/reportFlags";
+import { recalculateRegistrationStatus } from "@/lib/limsStatus";
 
 interface OutsourcedTest {
   testId: string;
@@ -62,6 +71,9 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
   const [expandedPatient, setExpandedPatient] = useState<string | null>(null);
   const [expandedTest, setExpandedTest] = useState<string | null>(null);
   const [editedValues, setEditedValues] = useState<Record<string, string>>({});
+  const [editedUnits, setEditedUnits] = useState<Record<string, string>>({});
+  const [editedRefRanges, setEditedRefRanges] = useState<Record<string, string>>({});
+  const [editedFlags, setEditedFlags] = useState<Record<string, string>>({});
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [uploadingKey, setUploadingKey] = useState<string | null>(null);
   const { data: outsourceLabs = [] } = useMasterLookup("outsource_lab");
@@ -290,7 +302,12 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
   // Helper: resolve best normal range for a parameter given patient demographics
   const resolveNormalRange = useCallback((parameterId: string, reg: any) => {
     const ranges = normalRangesMap[parameterId];
-    if (!ranges || ranges.length === 0) return { text: "", low: null as number | null, high: null as number | null };
+    if (!ranges || ranges.length === 0) {
+      return {
+        text: "", low: null as number | null, high: null as number | null,
+        rangeType: "numeric", descriptiveOptions: [] as string[], expectedValue: "", normalFindings: "",
+      };
+    }
     let patientAge: number | null = null;
     if (reg.dob) {
       const birth = new Date(reg.dob);
@@ -315,9 +332,22 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
       if (ageMatched.length > 0) candidates = ageMatched;
     }
     const best = candidates.find((r: any) => (r.gender || "all").toLowerCase() !== "all") || candidates[0];
-    if (!best) return { text: "", low: null as number | null, high: null as number | null };
+    if (!best) {
+      return {
+        text: "", low: null as number | null, high: null as number | null,
+        rangeType: "numeric", descriptiveOptions: [] as string[], expectedValue: "", normalFindings: "",
+      };
+    }
     const text = best.normal_range_text || (best.normal_range_low != null && best.normal_range_high != null ? `${best.normal_range_low} - ${best.normal_range_high}` : "");
-    return { text, low: best.normal_range_low as number | null, high: best.normal_range_high as number | null };
+    return {
+      text,
+      low: best.normal_range_low as number | null,
+      high: best.normal_range_high as number | null,
+      rangeType: best.range_type || "numeric",
+      descriptiveOptions: Array.isArray(best.descriptive_options) ? best.descriptive_options : [],
+      expectedValue: best.expected_value || "",
+      normalFindings: best.normal_findings || "",
+    };
   }, [normalRangesMap]);
 
   // Build outsourced patient entries (includes naturally outsourced + transferred inhouse tests + parameter-level)
@@ -657,13 +687,16 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
   // Delete a specific snip page
   const deleteSnipPage = useCallback(async (regId: string, testId: string, pageIndex: number) => {
     try {
+      const existing = getSnip(regId, testId);
       const currentUrls = getSnipImageUrls(regId, testId);
       const newUrls = currentUrls.filter((_, i) => i !== pageIndex);
+      const oldScales = Array.isArray((existing as any)?.snip_page_scales) ? (existing as any).snip_page_scales : [];
+      const newScales = oldScales.filter((_: unknown, i: number) => i !== pageIndex);
       if (newUrls.length === 0) {
-        // No more images — reset back to awaiting results
         await supabase.from("outsourced_test_snips").update({
           snip_image_url: null,
           snip_image_urls: [],
+          snip_page_scales: [],
           result_mode: "manual",
           outsource_status: "sent",
         } as any).eq("registration_id", regId).eq("test_id", testId);
@@ -673,6 +706,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
         await supabase.from("outsourced_test_snips").update({
           snip_image_url: newUrls[0],
           snip_image_urls: newUrls,
+          snip_page_scales: newScales,
         } as any).eq("registration_id", regId).eq("test_id", testId);
         toast.success(`Page ${pageIndex + 1} removed`);
       }
@@ -720,7 +754,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
     }
   }, [qc, existingSnips]);
 
-  // Save manual results
+  // Save typed (+ optional snip) results and transfer straight to Verification
   const saveManualResults = useCallback(async (regId: string, testId: string, testName: string, outsourcedParamIds?: string[], reg?: any) => {
     const key = `${regId}||${testId}`;
     setSavingKey(key);
@@ -731,50 +765,87 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
         if (tp.is_subheader) continue;
         const p = tp.report_test_parameters;
         if (!p) continue;
-        // For parameter-level outsource, only save outsourced parameters
         if (outsourcedParamIds && outsourcedParamIds.length > 0 && !outsourcedParamIds.includes(p.id)) continue;
         const valKey = `${regId}||${p.id}`;
-        const value = editedValues[valKey] || "";
-        if (!value) continue;
-        const resolved = reg ? resolveNormalRange(p.id, reg) : { text: "", low: null, high: null };
+        const existing = findPatientResultRow(existingResults, regId, testId, p.id);
+        const value = editedValues[valKey] !== undefined ? editedValues[valKey] : (existing?.result_value || "");
+        if (!value || !String(value).trim()) continue;
+        const resolved = reg ? resolveNormalRange(p.id, reg) : {
+          text: "", low: null as number | null, high: null as number | null,
+          rangeType: "numeric", descriptiveOptions: [] as string[], expectedValue: "", normalFindings: "",
+        };
         const rangeLow = resolved.low ?? p.normal_range_low;
         const rangeHigh = resolved.high ?? p.normal_range_high;
-        const rangeText = resolved.text || p.normal_range_text || (rangeLow != null && rangeHigh != null ? `${rangeLow} - ${rangeHigh}` : "");
-        const num = parseFloat(value);
-        let flag = "";
-        if (!isNaN(num)) {
-          if (rangeLow != null && num < rangeLow) flag = "L";
-          else if (rangeHigh != null && num > rangeHigh) flag = "H";
-          else flag = "N";
-        }
+        const masterRef = resolved.text || p.normal_range_text || (rangeLow != null && rangeHigh != null ? `${rangeLow} - ${rangeHigh}` : "");
+        const unit = resolveOutsourcedUnit({
+          isOutsourced: true,
+          editedUnit: editedUnits[valKey],
+          savedUnit: existing?.unit,
+          masterUnit: p.unit || "",
+        });
+        const refRange = resolveOutsourcedRefRange({
+          isOutsourced: true,
+          editedRef: editedRefRanges[valKey],
+          savedRef: existing?.reference_range,
+          masterRef,
+          rangeType: resolved.rangeType,
+          normalRangeText: resolved.text || p.normal_range_text,
+        });
+        const autoFlag = calculateResultFlag({
+          value,
+          low: rangeLow,
+          high: rangeHigh,
+          rangeType: resolved.rangeType,
+          expectedValue: resolved.expectedValue,
+          descriptiveOptions: resolved.descriptiveOptions,
+          normalRangeText: resolved.text || p.normal_range_text,
+          normalFindings: resolved.normalFindings,
+          unit,
+        });
+        const flag = resolveOutsourcedFlag({
+          isOutsourced: true,
+          editedFlag: editedFlags[valKey],
+          savedFlag: existing?.flag,
+          autoFlag,
+          currentValue: value,
+          savedValue: existing?.result_value,
+        });
         upserts.push({
           registration_id: regId, test_id: testId, parameter_id: p.id,
           param_code: p.param_code, parameter_name: p.parameter_name,
-          result_value: value, unit: p.unit,
-          reference_range: rangeText,
+          result_value: value, unit,
+          reference_range: refRange,
           normal_range_low: rangeLow, normal_range_high: rangeHigh,
-          flag: flag || null, status: "pending", is_calculated: false, is_from_interface: false,
+          flag: flag || null,
+          status: "entered",
+          entered_at: new Date().toISOString(),
+          entered_by: getCurrentUserName(),
+          is_calculated: false, is_from_interface: false,
         });
       }
       if (upserts.length > 0) {
-        if (outsourcedParamIds && outsourcedParamIds.length > 0) {
-          // Parameter-level: only delete outsourced param results, not all
-          for (const paramId of outsourcedParamIds) {
-            await supabase.from("patient_results").delete().eq("registration_id", regId).eq("test_id", testId).eq("parameter_id", paramId);
-          }
-        } else {
-          await supabase.from("patient_results").delete().eq("registration_id", regId).eq("test_id", testId);
-        }
+        const paramIdsToReplace = upserts.map((u) => u.parameter_id);
+        const { error: delErr } = await supabase
+          .from("patient_results")
+          .delete()
+          .eq("registration_id", regId)
+          .eq("test_id", testId)
+          .in("parameter_id", paramIdsToReplace)
+          .in("status", ["pending", "entered", "results_entered"]);
+        if (delErr) throw delErr;
         const { error } = await supabase.from("patient_results").insert(upserts as any);
         if (error) throw error;
       }
-      // Keep any existing snip images — typed params and snips may both appear on reports
       const existingSnip = getSnip(regId, testId);
       const keepUrls = snipImageUrlsFromRow(existingSnip);
+      if (upserts.length === 0 && keepUrls.length === 0) {
+        toast.error("Enter parameter values and/or attach snip images before saving");
+        return;
+      }
       const { error: snipErr } = await supabase.from("outsourced_test_snips").upsert({
         registration_id: regId, test_id: testId,
         result_mode: keepUrls.length > 0 ? "snip" : "manual",
-        outsource_status: "results_saved",
+        outsource_status: "results_entered",
         snip_image_url: keepUrls[0] || null,
         snip_image_urls: keepUrls,
         entered_at: new Date().toISOString(),
@@ -782,50 +853,36 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
       } as any, { onConflict: "registration_id,test_id" });
       if (snipErr) throw snipErr;
 
-      toast.success(`Results saved for ${testName}`);
-      setEditedValues(prev => {
+      await recalculateRegistrationStatus(regId);
+
+      toast.success(`Results saved — ${testName} moved to Verification`);
+      const clearKeys = (prev: Record<string, string>) => {
         const next = { ...prev };
         Object.keys(next).forEach(k => { if (k.startsWith(`${regId}||`)) delete next[k]; });
         return next;
-      });
+      };
+      setEditedValues(clearKeys);
+      setEditedUnits(clearKeys);
+      setEditedRefRanges(clearKeys);
+      setEditedFlags(clearKeys);
       qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
       qc.invalidateQueries({ queryKey: ["outsourced_manual_results"] });
+      qc.invalidateQueries({ queryKey: ["outsourced_pending_ids"] });
       qc.invalidateQueries({ queryKey: ["verification_results"] });
       qc.invalidateQueries({ queryKey: ["verification_outsourced"] });
+      qc.invalidateQueries({ queryKey: ["verification_pending_ids"] });
       qc.invalidateQueries({ queryKey: ["patient_results_existing"] });
     } catch (err: any) {
       toast.error(err.message || "Failed to save results");
     } finally {
       setSavingKey(null);
     }
-  }, [editedValues, testParamsMap, qc, resolveNormalRange, existingSnips]);
+  }, [editedValues, editedUnits, editedRefRanges, editedFlags, testParamsMap, qc, resolveNormalRange, existingSnips, existingResults]);
 
-  // Save snip results and move to verification
-  const saveSnipResults = useCallback(async (regId: string, testId: string, testName: string, _outsourcedParamIds?: string[]) => {
-    const key = `${regId}||${testId}`;
-    setSavingKey(key);
-    try {
-      const { error } = await supabase.from("outsourced_test_snips").upsert({
-        registration_id: regId, test_id: testId,
-        result_mode: "snip", outsource_status: "results_saved",
-        entered_at: new Date().toISOString(),
-        entered_by: getCurrentUserName(),
-      } as any, { onConflict: "registration_id,test_id" });
-      if (error) throw error;
-
-      toast.success(`Snip saved for ${testName}`);
-      qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
-      qc.invalidateQueries({ queryKey: ["outsourced_manual_results"] });
-      qc.invalidateQueries({ queryKey: ["verification_results"] });
-      qc.invalidateQueries({ queryKey: ["verification_outsourced"] });
-      qc.invalidateQueries({ queryKey: ["patient_results_existing"] });
-    } catch (err: any) {
-      toast.error(err.message || "Failed to save");
-    } finally {
-      setSavingKey(null);
-    }
-  }, [qc, clearManualResultsForTest]);
-
+  // Save snip results and transfer to Verification (also persists any typed values currently entered)
+  const saveSnipResults = useCallback(async (regId: string, testId: string, testName: string, outsourcedParamIds?: string[], reg?: any) => {
+    await saveManualResults(regId, testId, testName, outsourcedParamIds, reg);
+  }, [saveManualResults]);
   const saveEditLabName = async () => {
     if (!editLabKey || !editLabName.trim()) return;
     setSavingEditLab(true);
@@ -1082,25 +1139,25 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
               </div>
             )}
             {hasParams && (
-                <div className="mt-2">
+                <div className="mt-2 overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="py-1 text-xs w-[80px]">Code</TableHead>
+                        <TableHead className="py-1 text-xs w-[70px]">Code</TableHead>
                         <TableHead className="py-1 text-xs">Parameter</TableHead>
-                        <TableHead className="py-1 text-xs w-[160px]">Result</TableHead>
-                        <TableHead className="py-1 text-xs w-[60px]">Unit</TableHead>
-                        <TableHead className="py-1 text-xs w-[120px]">Ref. Range</TableHead>
+                        <TableHead className="py-1 text-xs w-[140px]">Result</TableHead>
+                        <TableHead className="py-1 text-xs w-[80px]">Unit</TableHead>
+                        <TableHead className="py-1 text-xs w-[180px]">Ref. Range</TableHead>
+                        <TableHead className="py-1 text-xs w-[80px] text-center">Flag</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {params.map((tp: any) => {
                         if (tp.is_subheader) {
-                          // For parameter-level outsource, skip subheaders
                           if (test.isParameterLevel) return null;
                           return (
                             <TableRow key={tp.id || tp.subheader_text}>
-                              <TableCell colSpan={5} className="py-1 text-xs font-semibold text-primary bg-muted/30">
+                              <TableCell colSpan={6} className="py-1 text-xs font-semibold text-primary bg-muted/30">
                                 {tp.subheader_text}
                               </TableCell>
                             </TableRow>
@@ -1108,25 +1165,50 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
                         }
                         const p = tp.report_test_parameters;
                         if (!p) return null;
-                        // For parameter-level outsource, only show outsourced parameters
                         if (test.isParameterLevel && test.outsourcedParameterIds && !test.outsourcedParameterIds.includes(p.id)) {
                           return null;
                         }
                         const valKey = `${regId}||${p.id}`;
                         const existing = findPatientResultRow(existingResults, regId, testId, p.id);
-                        // Hide ONLY when this row is already finalised downstream
-                        // (verified / approved / dispatched). For pending/entered rows
-                        // — including those pushed back from Verification — keep the
-                        // row visible and pre-fill with the saved value so the user
-                        // can review and edit. Without this, reopening the test card
-                        // shows a blank table because every saved value would be
-                        // hidden.
                         if (existing && ["verified", "approved", "dispatched"].includes(existing.status) && editedValues[valKey] === undefined) {
                           return null;
                         }
                         const currentValue = editedValues[valKey] !== undefined ? editedValues[valKey] : (existing?.result_value || "");
                         const resolved = resolveNormalRange(p.id, entry.registration);
-                        const refRange = resolved.text || p.normal_range_text || (p.normal_range_low != null && p.normal_range_high != null ? `${p.normal_range_low} - ${p.normal_range_high}` : "");
+                        const masterRef = resolved.text || p.normal_range_text || (p.normal_range_low != null && p.normal_range_high != null ? `${p.normal_range_low} - ${p.normal_range_high}` : "");
+                        const displayUnit = resolveOutsourcedUnit({
+                          isOutsourced: true,
+                          editedUnit: editedUnits[valKey],
+                          savedUnit: loadOutsourcedUnit(true, existing, p.unit || ""),
+                          masterUnit: p.unit || "",
+                        });
+                        const displayRef = resolveOutsourcedRefRange({
+                          isOutsourced: true,
+                          editedRef: editedRefRanges[valKey],
+                          savedRef: loadOutsourcedRefRange(true, existing, masterRef, resolved.rangeType, resolved.text || p.normal_range_text),
+                          masterRef,
+                          rangeType: resolved.rangeType,
+                          normalRangeText: resolved.text || p.normal_range_text,
+                        });
+                        const autoFlag = calculateResultFlag({
+                          value: currentValue,
+                          low: resolved.low ?? p.normal_range_low,
+                          high: resolved.high ?? p.normal_range_high,
+                          rangeType: resolved.rangeType,
+                          expectedValue: resolved.expectedValue,
+                          descriptiveOptions: resolved.descriptiveOptions,
+                          normalRangeText: resolved.text || p.normal_range_text,
+                          normalFindings: resolved.normalFindings,
+                          unit: displayUnit,
+                        });
+                        const flag = resolveOutsourcedFlag({
+                          isOutsourced: true,
+                          editedFlag: editedFlags[valKey],
+                          savedFlag: existing?.flag,
+                          autoFlag,
+                          currentValue,
+                          savedValue: existing?.result_value,
+                        });
 
                         return (
                           <TableRow key={valKey}>
@@ -1136,12 +1218,42 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
                               <Input
                                 value={currentValue}
                                 onChange={e => setEditedValues(prev => ({ ...prev, [valKey]: e.target.value }))}
-                                className="h-7 text-sm"
+                                className={`h-7 text-sm ${flag === "H" || flag === "L" || flag === "A" || flag === "X" ? "border-destructive text-destructive font-bold" : ""}`}
                                 placeholder="Enter result"
                               />
                             </TableCell>
-                            <TableCell className="py-1 text-xs text-muted-foreground">{p.unit}</TableCell>
-                            <TableCell className="py-1 text-xs text-muted-foreground">{refRange}</TableCell>
+                            <TableCell className="py-1">
+                              <Input
+                                value={displayUnit}
+                                onChange={e => setEditedUnits(prev => ({ ...prev, [valKey]: e.target.value }))}
+                                className="h-7 text-xs w-[70px]"
+                                placeholder="Unit"
+                              />
+                            </TableCell>
+                            <TableCell className="py-1">
+                              <Textarea
+                                value={displayRef}
+                                onChange={e => setEditedRefRanges(prev => ({ ...prev, [valKey]: e.target.value }))}
+                                className="min-h-[2.5rem] text-xs w-[180px] whitespace-pre-wrap resize-y"
+                                placeholder="Normal / advisory range"
+                              />
+                            </TableCell>
+                            <TableCell className="py-1 text-center">
+                              <Select
+                                value={flag || "none"}
+                                onValueChange={(v) => setEditedFlags(prev => ({ ...prev, [valKey]: v === "none" ? "" : v }))}
+                              >
+                                <SelectTrigger className="h-7 text-xs w-[80px]">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="none">—</SelectItem>
+                                  <SelectItem value="N">Normal</SelectItem>
+                                  <SelectItem value="H">HIGH</SelectItem>
+                                  <SelectItem value="L">LOW</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </TableCell>
                           </TableRow>
                         );
                       })}
@@ -1170,12 +1282,14 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
                   onPaste={handlePaste}
                   onFileUpload={handleFileUpload}
                   onDeletePage={deleteSnipPage}
+                  initialPageScales={(snip as any)?.snip_page_scales}
+                  initialTopMarginPct={(snip as any)?.top_margin_pct}
                 />
                 {getSnipImageUrls(regId, testId).length > 0 && (
                   <div className="flex justify-end">
                     <Button
                       size="sm"
-                      onClick={() => saveSnipResults(regId, testId, test.testName, test.outsourcedParameterIds)}
+                      onClick={() => saveSnipResults(regId, testId, test.testName, test.outsourcedParameterIds, entry.registration)}
                       disabled={savingKey === `${regId}||${testId}`}
                     >
                       {savingKey === `${regId}||${testId}` ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Save className="h-4 w-4 mr-1" />}

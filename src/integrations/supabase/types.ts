@@ -1345,6 +1345,7 @@ export type Database = {
           sent_at: string | null
           snip_image_url: string | null
           snip_image_urls: Json | null
+          snip_page_scales: Json | null
           test_id: string
           top_margin_pct: number | null
           updated_at: string
@@ -1361,6 +1362,7 @@ export type Database = {
           sent_at?: string | null
           snip_image_url?: string | null
           snip_image_urls?: Json | null
+          snip_page_scales?: Json | null
           test_id: string
           top_margin_pct?: number | null
           updated_at?: string
@@ -1377,6 +1379,7 @@ export type Database = {
           sent_at?: string | null
           snip_image_url?: string | null
           snip_image_urls?: Json | null
+          snip_page_scales?: Json | null
           test_id?: string
           top_margin_pct?: number | null
           updated_at?: string

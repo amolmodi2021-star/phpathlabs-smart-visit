@@ -499,11 +499,19 @@ const ResultsEntry = () => {
   const { transferredTestKeys, outsourcedParamSets, outsourcedSnipDetails } = useMemo(() => {
     const testKeys = new Set<string>();
     const paramSets: Record<string, Set<string>> = {};
-    const details: Record<string, { status: string; labName: string | null; sentAt: string | null; resultMode: string; snipImageUrls: string[] }> = {};
+    const details: Record<string, { status: string; labName: string | null; sentAt: string | null; resultMode: string; snipImageUrls: string[]; snipPageScales?: unknown; topMarginPct?: number | null }> = {};
     outsourcedSnips.forEach((s: any) => {
       const key = `${s.registration_id}||${s.test_id}`;
-      const urls = Array.isArray(s.snip_image_urls) ? s.snip_image_urls : [];
-      details[key] = { status: s.outsource_status || "pending", labName: s.outsourced_lab_name || null, sentAt: s.sent_at || null, resultMode: s.result_mode || "manual", snipImageUrls: urls };
+      const urls = Array.isArray(s.snip_image_urls) ? s.snip_image_urls : (s.snip_image_url ? [s.snip_image_url] : []);
+      details[key] = {
+        status: s.outsource_status || "pending",
+        labName: s.outsourced_lab_name || null,
+        sentAt: s.sent_at || null,
+        resultMode: s.result_mode || "manual",
+        snipImageUrls: urls,
+        snipPageScales: s.snip_page_scales,
+        topMarginPct: s.top_margin_pct,
+      };
       const paramIds = Array.isArray(s.outsourced_parameter_ids) ? s.outsourced_parameter_ids : [];
       if (paramIds.length > 0) {
         if (!paramSets[key]) paramSets[key] = new Set();
@@ -808,16 +816,18 @@ const ResultsEntry = () => {
         registration_id: regId,
         test_id: testId,
         result_mode: "snip",
-        outsource_status: "results_saved",
+        outsource_status: "results_entered",
         entered_at: new Date().toISOString(),
         entered_by: getCurrentUserName(),
       } as any, { onConflict: "registration_id,test_id" });
       if (error) throw error;
-      toast.success(`Snip saved for ${testName}`);
+      toast.success(`Snip saved — ${testName} moved to Verification`);
       await Promise.all([
         qc.invalidateQueries({ queryKey: ["results_outsourced_snips"] }),
         qc.invalidateQueries({ queryKey: ["outsourced_snips"] }),
         qc.invalidateQueries({ queryKey: ["patient_results_existing"] }),
+        qc.invalidateQueries({ queryKey: ["verification_pending_ids"] }),
+        qc.invalidateQueries({ queryKey: ["verification_outsourced"] }),
       ]);
     } catch (err: any) {
       toast.error(err.message || "Failed to save snip");
@@ -2165,6 +2175,8 @@ const ResultsEntry = () => {
                         onPaste={handlePatientSnipPaste}
                         onFileUpload={handlePatientSnipUpload}
                         onDeletePage={handlePatientSnipDeletePage}
+                        initialPageScales={testSnipDetail?.snipPageScales}
+                        initialTopMarginPct={testSnipDetail?.topMarginPct}
                       />
                       {(testSnipDetail?.snipImageUrls?.length || 0) > 0 && (
                         <div className="flex justify-end">
