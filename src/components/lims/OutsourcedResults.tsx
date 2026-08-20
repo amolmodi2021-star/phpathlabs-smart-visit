@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
-import OutsourcedPdfEditor from "./OutsourcedPdfEditor";
+import OutsourcedPdfEditor, { type OutsourcedPdfEditorHandle } from "./OutsourcedPdfEditor";
 import { useMasterLookup } from "@/hooks/useMasterLookup";
 
 import { expandRegistrationTests } from "@/lib/expandRegistrationTests";
@@ -75,6 +75,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
   const [editedRefRanges, setEditedRefRanges] = useState<Record<string, string>>({});
   const [editedFlags, setEditedFlags] = useState<Record<string, string>>({});
   const [savingKey, setSavingKey] = useState<string | null>(null);
+  const pdfEditorRef = useRef<OutsourcedPdfEditorHandle | null>(null);
   const [uploadingKey, setUploadingKey] = useState<string | null>(null);
   const { data: outsourceLabs = [] } = useMasterLookup("outsource_lab");
 
@@ -1178,21 +1179,6 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
             )}
           </div>
           <div className="flex items-center gap-2">
-            {canEnterResults && hasParams && (
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-7 text-[11px] gap-1 border-blue-300 text-blue-700 hover:bg-blue-50"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setExpandedTest(testKey);
-                  setSnipMode(regId, test.testId, test.outsourcedParameterIds);
-                }}
-              >
-                <Image className="h-3.5 w-3.5" />
-                Add snipped image
-              </Button>
-            )}
             {test.isTransferredInhouse && !test.isParameterLevel && status !== "results_saved" && (
               <Button
                 size="sm"
@@ -1254,13 +1240,13 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
           <div className="border-t p-3 space-y-3 bg-muted/10">
             {!hasParams && (
               <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-3 py-2">
-                No report parameters are linked for this test. Use <strong>Add snipped image</strong> to attach the outsourced report, then Save.
+                No report parameters are linked for this test. Upload the lab PDF, draw crop region(s), then use <strong>Save</strong>.
               </div>
             )}
             {hasParams && (
               <div className="rounded-md border border-blue-200 bg-blue-50/80 p-2 space-y-2">
                 <div className="text-xs font-medium text-blue-900">
-                  Outsourced result — enter parameter values and/or attach snipped images. Both appear on the report (parameters first, then snips).
+                  Enter parameter values and/or draw PDF crop regions. One Save stores both (parameters appear first on the report, then crops).
                 </div>
               </div>
             )}
@@ -1385,22 +1371,14 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
                       })}
                     </TableBody>
                   </Table>
-                  <div className="flex justify-end mt-2">
-                    <Button
-                      size="sm"
-                      onClick={() => saveManualResults(regId, test.testId, test.testName, test.outsourcedParameterIds, entry.registration)}
-                      disabled={isSaving}
-                    >
-                      {isSaving ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Save className="h-4 w-4 mr-1" />}
-                      Save Results
-                    </Button>
-                  </div>
                 </div>
             )}
 
             {(
               <div className="mt-2 space-y-3">
                 <OutsourcedPdfEditor
+                  ref={pdfEditorRef}
+                  key={`pdf-editor-${testKey}`}
                   regId={regId}
                   testId={testId}
                   testName={test.testName}
@@ -1434,8 +1412,8 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
                     );
                   }}
                 />
-                {Array.isArray((snip as any)?.snip_image_urls) && (snip as any).snip_image_urls[0] && (
-                  <div className="flex justify-end">
+                <div className="flex items-center justify-between gap-2">
+                  {Array.isArray((snip as any)?.snip_image_urls) && (snip as any).snip_image_urls[0] ? (
                     <Button
                       size="sm"
                       variant="outline"
@@ -1444,8 +1422,54 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
                     >
                       <FileText className="h-3.5 w-3.5 mr-1" /> View Crop
                     </Button>
-                  </div>
-                )}
+                  ) : (
+                    <span />
+                  )}
+                  <Button
+                    size="sm"
+                    className="h-8 gap-1.5"
+                    disabled={isSaving}
+                    onClick={async () => {
+                      const editor = pdfEditorRef.current;
+                      const hasCrops = !!editor?.hasCrops();
+                      const existingUrls = Array.isArray((snip as any)?.snip_image_urls)
+                        ? ((snip as any).snip_image_urls as string[]).filter(Boolean)
+                        : [];
+                      let hasParamValues = false;
+                      if (hasParams) {
+                        for (const tp of params) {
+                          if (tp.is_subheader) continue;
+                          const p = tp.report_test_parameters;
+                          if (!p) continue;
+                          if (test.isParameterLevel && test.outsourcedParameterIds && !test.outsourcedParameterIds.includes(p.id)) continue;
+                          const valKey = `${regId}||${p.id}`;
+                          const existing = findPatientResultRow(existingResults, regId, testId, p.id);
+                          const currentValue = editedValues[valKey] !== undefined ? editedValues[valKey] : (existing?.result_value || "");
+                          if (String(currentValue || "").trim()) {
+                            hasParamValues = true;
+                            break;
+                          }
+                        }
+                      }
+                      if (hasCrops) {
+                        try {
+                          await editor!.saveCrops();
+                        } catch {
+                          /* toast already shown in editor */
+                        }
+                        return;
+                      }
+                      if (hasParamValues || existingUrls.length > 0) {
+                        await saveManualResults(regId, test.testId, test.testName, test.outsourcedParameterIds, entry.registration);
+                        return;
+                      }
+                      toast.error("Enter parameter values and/or select PDF crop regions before saving");
+                    }}
+                  >
+                    {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                    Save
+                  </Button>
+                </div>
               </div>
             )}
           </div>

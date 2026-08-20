@@ -45,7 +45,7 @@ import SyncingOverlay from "./SyncingOverlay";
 import NewBadge from "./NewBadge";
 import PatientTestPipelineHover from "./PatientTestPipelineHover";
 import OutsourcedResults from "./OutsourcedResults";
-import OutsourcedPdfEditor from "./OutsourcedPdfEditor";
+import OutsourcedPdfEditor, { type OutsourcedPdfEditorHandle } from "./OutsourcedPdfEditor";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { formatDateDDMMYYYY } from "@/lib/utils";
@@ -1149,6 +1149,7 @@ const ResultsEntry = () => {
   // Tracks tests currently being Save & Verified so a debounced auto-save cannot
   // overwrite their freshly-written `entered` rows back to `pending`.
   const saveInFlightRef = useRef<Set<string>>(new Set());
+  const pdfEditorRef = useRef<OutsourcedPdfEditorHandle | null>(null);
 
   const clearAutoSaveTimer = (regId: string, testId: string) => {
     const key = `${regId}||${testId}`;
@@ -1481,8 +1482,19 @@ const ResultsEntry = () => {
   });
 
   // ─── Handle save & send to verification with blank check (per-test) ───
-  const handleSaveAndVerify = (entry: PatientEntry, testId: string, testName: string) => {
+  const handleSaveAndVerify = async (entry: PatientEntry, testId: string, testName: string) => {
     const reg = entry.registration;
+    const testKey = `${reg.id}||${testId}`;
+    // If outsourced PDF crops are pending in the editor, save them with this same action.
+    const editor = pdfEditorRef.current;
+    if (expandedTestKey === testKey && editor?.hasCrops()) {
+      try {
+        const ok = await editor.saveCrops();
+        if (!ok) return;
+      } catch {
+        return;
+      }
+    }
     const testParams = entry.parameters.filter(p => p.testId === testId);
 
     const startSave = () => {
@@ -2166,9 +2178,11 @@ const ResultsEntry = () => {
                   {isTestExpanded && isOutsourcedTest && (
                     <div className="mt-2 mx-1 rounded-md border border-blue-200 bg-blue-50/80 p-2 space-y-2" onClick={(e) => e.stopPropagation()}>
                       <div className="text-xs font-medium text-blue-900">
-                        Outsourced — enter parameters and/or upload lab PDF (crop editor). Composed PDF shows on the report.
+                        Outsourced — enter parameters and/or upload lab PDF crops. <strong>Save & Verify</strong> stores both parameter values and crops together.
                       </div>
                       <OutsourcedPdfEditor
+                        ref={pdfEditorRef}
+                        key={`pdf-editor-${testKey}`}
                         regId={reg.id}
                         testId={tg.testId}
                         testName={tg.testName}
@@ -2190,7 +2204,7 @@ const ResultsEntry = () => {
                         existingSourcePdfUrl={testSnipDetail?.sourcePdfUrl}
                         existingCrops={testSnipDetail?.pdfCropRegions}
                         existingSnipUrls={testSnipDetail?.snipImageUrls || []}
-                        isSaving={savingSnipKey === testKey}
+                        isSaving={savingSnipKey === testKey || isTestSaving}
                         onSaved={async (payload) => {
                           const urls = payload.snipImageUrls.filter(Boolean);
                           await supabase.from("outsourced_test_snips").upsert({
@@ -2208,7 +2222,6 @@ const ResultsEntry = () => {
                             entered_at: new Date().toISOString(),
                             entered_by: getCurrentUserName(),
                           } as any, { onConflict: "registration_id,test_id" });
-                          toast.success(`Crops saved — ${tg.testName} moved to Verification`);
                           await Promise.all([
                             qc.invalidateQueries({ queryKey: ["results_outsourced_snips"] }),
                             qc.invalidateQueries({ queryKey: ["outsourced_snips"] }),

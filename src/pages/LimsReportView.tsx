@@ -1199,9 +1199,12 @@ const LimsReportView = () => {
         }
       }
       for (const snip of snipsByTest.get(testId) || []) {
+        const testInfo = testsMap[testId];
+        const deptId = testInfo?.department_id || null;
+        const deptFromTest = deptId ? (deptNameMap[deptId] || null) : null;
         pagesWithHistograms.push({
           type: "snip",
-          departmentName: snip.departmentName || block?.departmentName,
+          departmentName: snip.departmentName || block?.departmentName || deptFromTest || "Results",
           snipImage: snip.imageUrl,
           snipTestName: snip.testName || block?.testName,
           snipScalePct: snip.scalePct,
@@ -1214,7 +1217,7 @@ const LimsReportView = () => {
     for (const snip of snipsByTest.get("__orphan__") || []) {
       pagesWithHistograms.push({
         type: "snip",
-        departmentName: snip.departmentName,
+        departmentName: snip.departmentName || "Results",
         snipImage: snip.imageUrl,
         snipTestName: snip.testName,
         snipScalePct: snip.scalePct,
@@ -1973,7 +1976,7 @@ const LimsReportView = () => {
               )}
 
               {/* Main Content Area — packs down to top of signature band */}
-              <div data-report-content className={page.type === "histogram" ? "flex-1 min-h-0 overflow-hidden" : "flex-1 overflow-visible"}>{/* overflow-visible: surfaces any pagination-estimate regression instead of silently clipping rows (e.g. RFT being truncated). Histogram page must not paint over the signature. */}
+              <div data-report-content className={page.type === "histogram" || page.type === "snip" ? "flex-1 min-h-0 overflow-hidden" : "flex-1 overflow-visible"}>{/* overflow-visible: surfaces any pagination-estimate regression instead of silently clipping rows (e.g. RFT being truncated). Histogram/snip pages must not paint over the signature. */}
                 {page.type === "structured" && page.testBlocks && (() => {
                   const hasFitToPage = page.testBlocks.some(b => b.fitToPage);
                   const resultsContent = (
@@ -2004,15 +2007,8 @@ const LimsReportView = () => {
                 )}
 
                 {page.type === "snip" && page.snipImage && (() => {
-                  const availableHeightMm = PAGE_HEIGHT_MM
-                    - topMm
-                    - bottomMm
-                    - HEADER_HEIGHT_MM
-                    - SIGNATURE_HEIGHT_MM
-                    - PAGE_NUM_HEIGHT_MM
-                    - footerNoteMm
-                    - (page.snipFullBleed ? 0 : (DEPT_HEADER_MM + TEST_HEADER_MM + 4))
-                    - 2;
+                  // Reserve: top logo margin, demographics, dept+test headers, signature, page #, footer note.
+                  // PNG fills only the leftover band (object-fit: contain).
                   if (page.snipFullBleed) {
                     return (
                       <div className="flex items-start justify-center h-full overflow-hidden">
@@ -2031,28 +2027,33 @@ const LimsReportView = () => {
                       </div>
                     );
                   }
-                  // Fit crop/snip into the band between demographics and signature:
-                  // enlarge small images / shrink large ones; CSS only (no re-encode).
-                  // Keep department → test hierarchy above the crop (continuation page).
+                  const showDept = !!page.departmentName;
+                  const showTest = !!page.snipTestName;
                   return (
-                    <div className="w-full flex flex-col min-h-0" style={{ height: `${Math.max(40, availableHeightMm + DEPT_HEADER_MM + TEST_HEADER_MM)}mm` }}>
-                      {(page.departmentName || page.snipTestName) && (
-                        <div className="shrink-0 mb-1">
-                          {page.departmentName && (
-                            <div data-report-dept-header className="font-bold uppercase tracking-wide text-primary border-b border-primary/30 pb-0.5 mb-1" style={{ fontSize: "15px" }}>
+                    <div className="w-full h-full flex flex-col min-h-0 overflow-hidden">
+                      {(showDept || showTest) && (
+                        <div className="shrink-0 mb-1.5 space-y-1">
+                          {showDept && (
+                            <div
+                              data-report-dept-header
+                              data-pdf-section="department"
+                              className="px-3 py-1.5 rounded-t font-bold text-center bg-[#2E3192] text-white print:bg-transparent print:text-gray-900 print:border-2 print:border-gray-800"
+                              style={{ fontSize: "15px" }}
+                            >
                               {page.departmentName}
                             </div>
                           )}
-                          {page.snipTestName && (
-                            <div className="font-semibold" style={{ fontSize: "14px" }}>
+                          {showTest && (
+                            <div
+                              className="px-3 py-1 font-semibold bg-blue-50 print:bg-transparent border border-gray-100"
+                              style={{ color: "#2E3192", fontSize: "14px" }}
+                            >
                               {page.snipTestName}
                             </div>
                           )}
                         </div>
                       )}
-                      <div
-                        className="w-full flex-1 min-h-0 overflow-hidden flex items-start justify-center"
-                      >
+                      <div className="w-full flex-1 min-h-0 overflow-hidden flex items-start justify-center">
                         <img
                           data-snip-image="true"
                           src={page.snipImage}
@@ -2060,6 +2061,7 @@ const LimsReportView = () => {
                           style={{
                             width: "100%",
                             height: "100%",
+                            maxHeight: "100%",
                             objectFit: "contain",
                             objectPosition: "top center",
                           }}

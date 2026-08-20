@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import * as pdfjsLib from "pdfjs-dist";
 import { Button } from "@/components/ui/button";
-import { Loader2, Upload, Save, Trash2, FileText, ChevronLeft, ChevronRight, Image } from "lucide-react";
+import { Loader2, Upload, Trash2, FileText, ChevronLeft, ChevronRight, Image } from "lucide-react";
 import { toast } from "sonner";
 import { uploadBlobToCloudinary } from "@/lib/cardStorageCloudinary";
 import {
@@ -14,6 +14,21 @@ import {
 pdfjsLib.GlobalWorkerOptions.workerSrc =
   `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.2.67/pdf.worker.min.mjs`;
 
+export type OutsourcedPdfSavePayload = {
+  sourcePdfUrl: string;
+  sourcePdfPublicId: string;
+  cropRegions: PdfCropRegion[];
+  snipImageUrls: string[];
+};
+
+export type OutsourcedPdfEditorHandle = {
+  /** Upload crops and call onSaved. Returns true if crops were saved. */
+  saveCrops: () => Promise<boolean>;
+  hasCrops: () => boolean;
+  hasSource: () => boolean;
+  isBusy: () => boolean;
+};
+
 type Props = {
   regId: string;
   testId: string;
@@ -21,15 +36,9 @@ type Props = {
   patientMeta: ComposePatientMeta;
   existingSourcePdfUrl?: string | null;
   existingCrops?: unknown;
-  existingComposedPdfUrl?: string | null;
   existingSnipUrls?: string[];
   isSaving?: boolean;
-  onSaved: (payload: {
-    sourcePdfUrl: string;
-    sourcePdfPublicId: string;
-    cropRegions: PdfCropRegion[];
-    snipImageUrls: string[];
-  }) => Promise<void>;
+  onSaved: (payload: OutsourcedPdfSavePayload) => Promise<void>;
 };
 
 type DragBox = { x0: number; y0: number; x1: number; y1: number } | null;
@@ -43,11 +52,14 @@ function dataUrlToBlob(dataUrl: string): Blob {
   return new Blob([bytes], { type: mime });
 }
 
-export default function OutsourcedPdfEditor({
-  regId, testId, testName, patientMeta: _patientMeta,
-  existingSourcePdfUrl, existingCrops, existingSnipUrls,
-  isSaving, onSaved,
-}: Props) {
+const OutsourcedPdfEditor = forwardRef<OutsourcedPdfEditorHandle, Props>(function OutsourcedPdfEditor(
+  {
+    regId, testId, testName, patientMeta: _patientMeta,
+    existingSourcePdfUrl, existingCrops, existingSnipUrls,
+    isSaving, onSaved,
+  },
+  ref,
+) {
   const [sourceUrl, setSourceUrl] = useState(existingSourcePdfUrl || "");
   const [sourcePublicId, setSourcePublicId] = useState("");
   const [pageCount, setPageCount] = useState(0);
@@ -148,9 +160,15 @@ export default function OutsourcedPdfEditor({
 
   const clearPageCrops = () => setCrops((prev) => prev.filter((c) => c.pageIndex !== pageIndex));
 
-  const buildAndSave = async () => {
-    if (!sourceUrl) { toast.error("Upload a lab PDF first"); return; }
-    if (crops.length === 0) { toast.error("Draw at least one keep-region on the PDF"); return; }
+  const buildAndSave = useCallback(async (): Promise<boolean> => {
+    if (!sourceUrl) {
+      toast.error("Upload a lab PDF first");
+      return false;
+    }
+    if (crops.length === 0) {
+      toast.error("Draw at least one keep-region on the PDF");
+      return false;
+    }
     setComposing(true);
     try {
       const sorted = [...crops].sort((a, b) => a.pageIndex - b.pageIndex || a.y - b.y);
@@ -175,12 +193,21 @@ export default function OutsourcedPdfEditor({
         cropRegions: crops,
         snipImageUrls: urls,
       });
+      return true;
     } catch (e: any) {
       toast.error(e?.message || "Failed to save cropped regions");
+      return false;
     } finally {
       setComposing(false);
     }
-  };
+  }, [sourceUrl, crops, onSaved, regId, testId, testName, sourcePublicId]);
+
+  useImperativeHandle(ref, () => ({
+    saveCrops: buildAndSave,
+    hasCrops: () => crops.length > 0,
+    hasSource: () => !!sourceUrl,
+    isBusy: () => uploading || composing || !!isSaving || loadingPage,
+  }), [buildAndSave, crops.length, sourceUrl, uploading, composing, isSaving, loadingPage]);
 
   const dragStyle = drag
     ? {
@@ -194,8 +221,7 @@ export default function OutsourcedPdfEditor({
   return (
     <div className="space-y-3 rounded-md border border-blue-200 bg-blue-50/40 p-3">
       <div className="text-xs font-medium text-blue-900">
-        Upload lab PDF → select keep-areas (high-res crop, no letterhead) → Save to Verification.
-        Demographics and letterhead are applied on provisional / final report (toggle letterhead when printing).
+        Optional: upload lab PDF and select keep-areas (high-res crop). Use the single Save below to store parameter values and crops together.
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -278,21 +304,12 @@ export default function OutsourcedPdfEditor({
             )}
           </div>
           <p className="text-[10px] text-muted-foreground text-center">
-            Draw on the page to keep a region. Only selected areas are stored (high-res). Letterhead / demographics are added when the report is generated.
+            Draw keep-regions on the page. Crops stay high-res; letterhead / demographics / department header are applied on the report.
           </p>
         </>
       )}
-
-      <div className="flex justify-end">
-        <Button
-          size="sm"
-          onClick={() => void buildAndSave()}
-          disabled={!sourceUrl || crops.length === 0 || composing || !!isSaving}
-        >
-          {(composing || isSaving) ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Save className="h-4 w-4 mr-1" />}
-          Save crops → Verification
-        </Button>
-      </div>
     </div>
   );
-}
+});
+
+export default OutsourcedPdfEditor;
