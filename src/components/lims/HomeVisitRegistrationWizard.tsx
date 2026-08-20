@@ -18,6 +18,13 @@ import PatientRegistration, {
 } from "@/components/lims/PatientRegistration";
 import InvoicePreview from "@/components/lims/InvoicePreview";
 import { applyRoundUpToNextTen, withEffectiveDiscountPct } from "@/lib/roundUpDiscount";
+import {
+  OVERPAYMENT_MESSAGE,
+  collectedExceedsBill,
+  isOverpaymentMessage,
+} from "@/lib/billPayment";
+import { useResetPaymentsWhenBillChanges } from "@/hooks/useResetPaymentsWhenBillChanges";
+import OverpaymentAlertDialog from "@/components/lims/OverpaymentAlertDialog";
 
 const PAYMENT_MODES = ["Cash", "GPay", "Paytm", "Credit Card", "NEFT"];
 
@@ -84,6 +91,7 @@ const HomeVisitRegistrationWizard = ({ visit, open, onClose }: Props) => {
   const [queueRequestId, setQueueRequestId] = useState(0);
   const [batchSending, setBatchSending] = useState(false);
   const [sendStatus, setSendStatus] = useState("");
+  const [overpaymentInfo, setOverpaymentInfo] = useState<{ collected: number; bill: number } | null>(null);
   const batchWaitRef = useRef<{ resolve: (ok: boolean) => void } | null>(null);
 
   const primaryMobile = String(visit?.estimates?.whatsapp_number || "").replace(/\D/g, "").slice(-10);
@@ -191,13 +199,29 @@ const HomeVisitRegistrationWizard = ({ visit, open, onClose }: Props) => {
     if (selectedModes.size !== 1) return;
     const mode = Array.from(selectedModes)[0];
     setModeAmounts({ [mode]: roundUpTarget });
-  }, [roundUpSelected, roundUpTarget, selectedModes.size]);
+  }, [roundUpSelected, selectedModes.size, roundUpTarget]);
 
   const paidAmount = useMemo(
     () => Array.from(selectedModes).reduce((sum, m) => sum + (modeAmounts[m] || 0), 0),
     [selectedModes, modeAmounts],
   );
   const dueAmount = Math.max(0, grandTotal - paidAmount);
+
+  useResetPaymentsWhenBillChanges(
+    grandTotal,
+    selectedModes,
+    modeAmounts,
+    setSelectedModes,
+    setModeAmounts,
+  );
+
+  const blockIfOverpaid = (collected: number, bill: number) => {
+    if (!collectedExceedsBill(collected, bill)) return false;
+    setOverpaymentInfo({ collected, bill });
+    setSelectedModes(new Set());
+    setModeAmounts({});
+    return true;
+  };
 
   const toggleMode = (mode: string) => {
     setSelectedModes((prev) => {
@@ -252,7 +276,7 @@ const HomeVisitRegistrationWizard = ({ visit, open, onClose }: Props) => {
   const registerMutation = useMutation({
     mutationFn: async () => {
       if (billedSession.length === 0) throw new Error("Add at least one patient");
-      if (paidAmount > grandTotal) throw new Error("Payment cannot exceed grand total");
+      if (collectedExceedsBill(paidAmount, grandTotal)) throw new Error(OVERPAYMENT_MESSAGE);
       const stampedBy = getCurrentUserName();
       if (!stampedBy) throw new Error("Please sign in again before saving");
       const phlebo = lockedUserName || stampedBy;
@@ -420,7 +444,15 @@ const HomeVisitRegistrationWizard = ({ visit, open, onClose }: Props) => {
       setSendStatus("");
       setStep("invoices");
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => {
+      if (isOverpaymentMessage(e.message)) {
+        setOverpaymentInfo({ collected: paidAmount, bill: grandTotal });
+        setSelectedModes(new Set());
+        setModeAmounts({});
+        return;
+      }
+      toast.error(e.message);
+    },
   });
 
   const onQueueSettled = useCallback((result: { ok: boolean; error?: string }) => {
@@ -677,7 +709,10 @@ const HomeVisitRegistrationWizard = ({ visit, open, onClose }: Props) => {
                 <Button
                   className="flex-1"
                   disabled={registerMutation.isPending}
-                  onClick={() => registerMutation.mutate()}
+                  onClick={() => {
+                    if (blockIfOverpaid(paidAmount, grandTotal)) return;
+                    registerMutation.mutate();
+                  }}
                 >
                   <Save className="h-4 w-4 mr-2" />
                   {session.length > 1
@@ -745,6 +780,13 @@ const HomeVisitRegistrationWizard = ({ visit, open, onClose }: Props) => {
           statusHint={sendStatus}
         />
       )}
+
+      <OverpaymentAlertDialog
+        open={!!overpaymentInfo}
+        onOpenChange={(o) => { if (!o) setOverpaymentInfo(null); }}
+        collected={overpaymentInfo?.collected}
+        billAmount={overpaymentInfo?.bill}
+      />
     </>
   );
 };

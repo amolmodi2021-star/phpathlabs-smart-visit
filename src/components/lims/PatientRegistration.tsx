@@ -32,6 +32,13 @@ import {
   applyRoundUpToNextTen,
   withEffectiveDiscountPct,
 } from "@/lib/roundUpDiscount";
+import {
+  OVERPAYMENT_MESSAGE,
+  collectedExceedsBill,
+  isOverpaymentMessage,
+} from "@/lib/billPayment";
+import { useResetPaymentsWhenBillChanges } from "@/hooks/useResetPaymentsWhenBillChanges";
+import OverpaymentAlertDialog from "@/components/lims/OverpaymentAlertDialog";
 
 const TITLES = [...PATIENT_TITLES];
 const PAYMENT_MODES = ["Cash", "GPay", "Paytm", "Credit Card", "NEFT"];
@@ -165,6 +172,7 @@ const PatientRegistration = ({
   const [remarks, setRemarks] = useState(d?.remarks ?? "");
   const [isStat, setIsStat] = useState(d?.isStat ?? false);
   const [showHvcConfirm, setShowHvcConfirm] = useState(false);
+  const [overpaymentInfo, setOverpaymentInfo] = useState<{ collected: number; bill: number } | null>(null);
   const [duplicateRegInfo, setDuplicateRegInfo] = useState<{ umr: string; invoices: string[] } | null>(null);
 
   // Channel
@@ -610,12 +618,28 @@ const PatientRegistration = ({
   );
   const dueAmount = Math.max(0, billing.finalAmount - paidAmount);
 
+  useResetPaymentsWhenBillChanges(
+    billing.finalAmount,
+    selectedModes,
+    modeAmounts,
+    setSelectedModes,
+    setModeAmounts,
+  );
+
   useEffect(() => {
     if (!roundUpSelected || !roundUpOffer) return;
     if (selectedModes.size !== 1) return;
     const mode = Array.from(selectedModes)[0];
     setModeAmounts({ [mode]: roundUpOffer.finalAmount });
-  }, [roundUpSelected, roundUpOffer?.finalAmount, selectedModes.size]);
+  }, [roundUpSelected, selectedModes.size, roundUpOffer]);
+
+  const blockIfOverpaid = (collected: number, bill: number) => {
+    if (!collectedExceedsBill(collected, bill)) return false;
+    setOverpaymentInfo({ collected, bill });
+    setSelectedModes(new Set());
+    setModeAmounts({});
+    return true;
+  };
 
   const buildSessionDraft = (): RegistrationSessionDraft => ({
     mobile: mobileNumber.replace(/\D/g, "").slice(-10),
@@ -662,8 +686,8 @@ const PatientRegistration = ({
     if (homeVisitOnly && !(getCurrentUserName()?.trim() || completingPhleboName.trim())) {
       throw new Error("Signed-in user name required for Completed by (Phlebo)");
     }
-    if (!deferPayment && paidAmount > billing.finalAmount) {
-      throw new Error("Payment amount cannot exceed the final amount");
+    if (!deferPayment && collectedExceedsBill(paidAmount, billing.finalAmount)) {
+      throw new Error(OVERPAYMENT_MESSAGE);
     }
   };
 
@@ -674,6 +698,10 @@ const PatientRegistration = ({
       if (!onSessionContinue) throw new Error("Session continue handler missing");
       onSessionContinue(buildSessionDraft());
     } catch (e: any) {
+      if (isOverpaymentMessage(e?.message)) {
+        setOverpaymentInfo({ collected: paidAmount, bill: billing.finalAmount });
+        return;
+      }
       toast.error(e?.message || "Please fill required fields");
     }
   };
@@ -683,7 +711,9 @@ const PatientRegistration = ({
     mutationFn: async () => {
       validateBeforeSave();
       const cleanMobile = mobileNumber.replace(/\D/g, "").slice(-10);
-      if (!deferPayment && paidAmount > billing.finalAmount) throw new Error("Payment amount cannot exceed the final amount");
+      if (!deferPayment && collectedExceedsBill(paidAmount, billing.finalAmount)) {
+        throw new Error(OVERPAYMENT_MESSAGE);
+      }
 
       const stampedBy = getCurrentUserName();
       if (!stampedBy) throw new Error("Please sign in again before saving the registration");
@@ -846,7 +876,15 @@ const PatientRegistration = ({
         calculations: billing,
       });
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => {
+      if (isOverpaymentMessage(e.message)) {
+        setOverpaymentInfo({ collected: paidAmount, bill: billing.finalAmount });
+        setSelectedModes(new Set());
+        setModeAmounts({});
+        return;
+      }
+      toast.error(e.message);
+    },
   });
 
   const resetForm = (opts?: { silent?: boolean }) => {
@@ -862,6 +900,7 @@ const PatientRegistration = ({
     setAllowIneligibleDiscount(false);
     setSelectedModes(new Set()); setModeAmounts({}); setInvoiceData(null); setTriedSave(false);
     setManualAge(""); setRemarks(""); setIsStat(false); setShowHvcConfirm(false);
+    setOverpaymentInfo(null);
     setPatientLocked(false);
     setFilledOnLock({ title: false, gender: false, dob: false, address: false });
     setShowPatientPicker(false); setPickerMobile("");
@@ -1519,6 +1558,7 @@ const PatientRegistration = ({
                   toast.error("Signed-in user name required");
                   return;
                 }
+                if (!deferPayment && blockIfOverpaid(paidAmount, billing.finalAmount)) return;
                 if (deferPayment) {
                   if (allowHvCharges && visitType === "home_visit" && (!homeVisitCharges || homeVisitCharges === 0)) {
                     setShowHvcConfirm(true);
@@ -1560,6 +1600,7 @@ const PatientRegistration = ({
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={() => {
                 setShowHvcConfirm(false);
+                if (!deferPayment && blockIfOverpaid(paidAmount, billing.finalAmount)) return;
                 if (deferPayment) continueToSession();
                 else saveMutation.mutate();
               }}
@@ -1569,6 +1610,13 @@ const PatientRegistration = ({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <OverpaymentAlertDialog
+        open={!!overpaymentInfo}
+        onOpenChange={(o) => { if (!o) setOverpaymentInfo(null); }}
+        collected={overpaymentInfo?.collected}
+        billAmount={overpaymentInfo?.bill}
+      />
     </div>
   );
 };
