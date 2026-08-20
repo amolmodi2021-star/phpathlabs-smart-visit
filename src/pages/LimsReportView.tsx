@@ -2004,7 +2004,10 @@ const LimsReportView = () => {
                       alt="Outsourced Report"
                       className={page.snipFullBleed ? "w-full h-full object-contain object-top" : "object-contain object-top"}
                       style={page.snipFullBleed ? {
-                        maxHeight: `${PAGE_HEIGHT_MM - SIGNATURE_HEIGHT_MM - PAGE_NUM_HEIGHT_MM}mm`,
+                        maxHeight: `${PAGE_HEIGHT_MM - SIGNATURE_HEIGHT_MM - PAGE_NUM_HEIGHT_MM - (layoutSettings.bottom_margin_cm || 1.5) * 10}mm`,
+                        width: "100%",
+                        objectFit: "contain",
+                        objectPosition: "top center",
                       } : {
                         width: `${page.snipScalePct ?? DEFAULT_SNIP_SCALE_PCT}%`,
                         maxHeight: `${PAGE_HEIGHT_MM - topMm - bottomMm - HEADER_HEIGHT_MM - SIGNATURE_HEIGHT_MM - PAGE_NUM_HEIGHT_MM - footerNoteMm - 6}mm`,

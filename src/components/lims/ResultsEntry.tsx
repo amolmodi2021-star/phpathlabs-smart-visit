@@ -2183,6 +2183,7 @@ const ResultsEntry = () => {
                           mobileNumber: reg.mobile_number,
                           invoiceNumber: reg.invoice_number,
                           registrationDate: reg.created_at,
+                          sampleCollectionDate: reg.sample_collection_date || null,
                           visitType: reg.visit_type,
                           testName: tg.testName,
                         }}

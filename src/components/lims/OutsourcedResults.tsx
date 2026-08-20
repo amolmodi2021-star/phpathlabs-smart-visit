@@ -1326,6 +1326,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
                     mobileNumber: entry.registration.mobile_number,
                     invoiceNumber: entry.registration.invoice_number,
                     registrationDate: entry.registration.created_at,
+                    sampleCollectionDate: entry.registration.sample_collection_date || entry.registration.collected_at || null,
                     visitType: entry.registration.visit_type,
                     testName: test.testName,
                   }}
