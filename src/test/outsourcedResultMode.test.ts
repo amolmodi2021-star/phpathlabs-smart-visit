@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   appendOutsourcedSnipImage,
   clearTypedOutsourcedResults,
+  hasOutsourcedSnipImages,
   isSnipResultDetail,
   isSnipResultRow,
   snipImageUrlsFromRow,
@@ -19,16 +20,17 @@ describe("outsourcedResultMode", () => {
     expect(snipImageUrlsFromRow({ snip_image_url: "https://legacy.png" })).toEqual(["https://legacy.png"]);
   });
 
-  it("treats only result_mode=snip with images as a snip result", () => {
+  it("treats any row with images as a snip result (manual+snip allowed)", () => {
     expect(isSnipResultRow({ result_mode: "snip", snip_image_urls: ["https://a/1.png"] })).toBe(true);
-    expect(isSnipResultRow({ result_mode: "manual", snip_image_urls: ["https://a/1.png"] })).toBe(false);
+    expect(isSnipResultRow({ result_mode: "manual", snip_image_urls: ["https://a/1.png"] })).toBe(true);
+    expect(hasOutsourcedSnipImages({ result_mode: "manual", snip_image_urls: ["https://a/1.png"] })).toBe(true);
     expect(isSnipResultRow({ result_mode: "snip", snip_image_urls: [] })).toBe(false);
     expect(isSnipResultRow(null)).toBe(false);
   });
 
-  it("matches the Results/Verification detail-map shape", () => {
+  it("matches the Results/Verification detail-map shape by images", () => {
     expect(isSnipResultDetail({ resultMode: "snip", snipImageUrls: ["https://a/1.png"] })).toBe(true);
-    expect(isSnipResultDetail({ resultMode: "manual", snipImageUrls: ["https://a/1.png"] })).toBe(false);
+    expect(isSnipResultDetail({ resultMode: "manual", snipImageUrls: ["https://a/1.png"] })).toBe(true);
     expect(isSnipResultDetail({ resultMode: "snip", snipImageUrls: [] })).toBe(false);
   });
 
@@ -49,13 +51,10 @@ describe("outsourcedResultMode", () => {
     expect(paramIn).toHaveBeenCalledWith("parameter_id", ["p1", "p2"]);
   });
 
-  it("uploads a snip image, marks result_mode=snip, and clears typed values", async () => {
-    const statusIn = vi.fn().mockResolvedValue({ error: null });
-    const testEq = vi.fn(() => ({ in: statusIn }));
-    const regEq = vi.fn(() => ({ eq: testEq }));
+  it("uploads a snip image and keeps typed patient_results", async () => {
     const upsert = vi.fn().mockResolvedValue({ error: null });
     const from = vi.fn((table: string) => {
-      if (table === "patient_results") return { delete: () => ({ eq: regEq }) };
+      if (table === "patient_results") throw new Error("must not clear typed results on snip upload");
       return { upsert };
     });
     const upload = vi.fn().mockResolvedValue({ error: null });
@@ -83,6 +82,6 @@ describe("outsourcedResultMode", () => {
       }),
       { onConflict: "registration_id,test_id" },
     );
-    expect(from).toHaveBeenCalledWith("patient_results");
+    expect(from).not.toHaveBeenCalledWith("patient_results");
   });
 });

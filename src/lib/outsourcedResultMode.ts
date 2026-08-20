@@ -1,6 +1,6 @@
 /**
- * Outsourced results are exclusive: typed parameter values OR a snipped image,
- * never both. Tests without parameter setup are snip-only by default.
+ * Outsourced results may include typed parameter values and/or snipped images
+ * on the same test. Tests without parameter setup remain snip-only by default.
  */
 
 export type OutsourcedResultMode = "manual" | "snip";
@@ -17,14 +17,25 @@ export function snipImageUrlsFromRow(snip: {
   return [];
 }
 
-/** True when this outsourced row is saved as a snipped-image result. */
+/** True when this outsourced row has at least one snipped image (any result_mode). */
+export function hasOutsourcedSnipImages(snip: {
+  result_mode?: string | null;
+  snip_image_urls?: unknown;
+  snip_image_url?: string | null;
+} | null | undefined): boolean {
+  return snipImageUrlsFromRow(snip).length > 0;
+}
+
+/**
+ * True when snipped images should appear on reports / snip cards.
+ * Images win regardless of result_mode so manual+snip can coexist.
+ */
 export function isSnipResultRow(snip: {
   result_mode?: string | null;
   snip_image_urls?: unknown;
   snip_image_url?: string | null;
 } | null | undefined): boolean {
-  if (!snip || snip.result_mode !== "snip") return false;
-  return snipImageUrlsFromRow(snip).length > 0;
+  return hasOutsourcedSnipImages(snip);
 }
 
 /** UI/detail-map shape used by Results / Verification / Approval. */
@@ -32,10 +43,11 @@ export function isSnipResultDetail(detail: {
   resultMode?: string | null;
   snipImageUrls?: unknown;
 } | null | undefined): boolean {
-  if (!detail || detail.resultMode !== "snip") return false;
+  if (!detail) return false;
   return Array.isArray(detail.snipImageUrls) && detail.snipImageUrls.length > 0;
 }
 
+/** @deprecated Prefer keeping typed results when adding snips; kept for explicit clears only. */
 export async function clearTypedOutsourcedResults(
   client: { from: (table: string) => any },
   regId: string,
@@ -60,7 +72,7 @@ export async function appendOutsourcedSnipImage(
   testId: string,
   file: File,
   existingUrls: string[],
-  outsourcedParamIds?: string[],
+  _outsourcedParamIds?: string[],
 ): Promise<string[]> {
   const ext = (file.name.split(".").pop() || "png").replace(/[^a-zA-Z0-9]/g, "") || "png";
   const fileName = `${regId}_${testId}_${Date.now()}.${ext}`;
@@ -79,6 +91,6 @@ export async function appendOutsourcedSnipImage(
     outsource_status: "sent",
   }, { onConflict: "registration_id,test_id" });
   if (upsertErr) throw upsertErr;
-  await clearTypedOutsourcedResults(client, regId, testId, outsourcedParamIds);
+  // Keep typed patient_results — snips and parameters may both appear on reports.
   return newUrls;
 }

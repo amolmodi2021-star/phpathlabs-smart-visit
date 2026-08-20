@@ -393,7 +393,7 @@ const DoctorApproval = () => {
 
         if (isSnipResult && !isParamLevel && snipDetail.status === "verified") {
           snipOnlyTests.push({ testId: t.test_id, testName: t.test_name || testInfo.test_name || "", labName: snipDetail.labName, snipUrls: snipDetail.snipImageUrls, outsourceStatus: snipDetail.status });
-          continue;
+          if (validParams.length === 0) continue;
         }
 
         if (validParams.length === 0) {
@@ -419,7 +419,6 @@ const DoctorApproval = () => {
           if (tp.is_subheader) continue;
           const p = tp.report_test_parameters; if (!p) continue;
           const isParamOutsourced = isFullTestOutsourced || (paramOutsourcedSet && paramOutsourcedSet.has(p.id));
-          if (isSnipResult && isParamOutsourced) continue;
           const existing = testVerifiedResults.find((r: any) => r.parameter_id === p.id);
           if (!existing && !isParamOutsourced) continue;
           if (existing?.status === "approved" || existing?.status === "dispatched") continue;
@@ -444,7 +443,7 @@ const DoctorApproval = () => {
             rangeType: resolved.rangeType, descriptiveOptions: resolved.descriptiveOptions, expectedValue: resolved.expectedValue, normalFindings: resolved.normalFindings, normalRangeText: resolved.text || "",
             isOutsourced: !!isParamOutsourced, outsourceLabName: isParamOutsourced ? (snipDetail?.labName || null) : null,
             outsourceStatus: isParamOutsourced ? (snipDetail?.status || "pending") : "",
-            isSnipMode: isParamOutsourced && snipDetail?.resultMode === "snip",
+            isSnipMode: false,
             enteredAt: existing?.entered_at || null, enteredBy: existing?.entered_by || null, verifiedAt: existing?.verified_at || null, verifiedBy: existing?.verified_by || null,
             note: existing?.note || "",
           });

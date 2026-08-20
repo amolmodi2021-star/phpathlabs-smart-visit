@@ -52,7 +52,7 @@ import { formatDateDDMMYYYY } from "@/lib/utils";
 import { expandRegistrationTests } from "@/lib/expandRegistrationTests";
 import { fetchAllByIds } from "@/lib/fetchAllRows";
 import { PATIENT_RESULTS_SELECT_RESULTS } from "@/lib/patientResultsSelect";
-import { isSnipResultDetail, appendOutsourcedSnipImage, clearTypedOutsourcedResults } from "@/lib/outsourcedResultMode";
+import { isSnipResultDetail, appendOutsourcedSnipImage } from "@/lib/outsourcedResultMode";
 
 /** List headers — omit tests / cancelled_tests JSON (egress). */
 const REG_LIST_SELECT =
@@ -711,8 +711,6 @@ const ResultsEntry = () => {
 
   const applySnipEntry = async (regId: string, testId: string) => {
     const testKey = `${regId}||${testId}`;
-    const paramIds = outsourcedParamIdsForTest(regId, testId);
-    await clearTypedOutsourcedResults(supabase, regId, testId, paramIds);
     const { error } = await supabase.from("outsourced_test_snips").upsert({
       registration_id: regId,
       test_id: testId,
@@ -724,52 +722,13 @@ const ResultsEntry = () => {
     setExpandedTestKey(testKey);
     qc.invalidateQueries({ queryKey: ["results_outsourced_snips"] });
     qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
-    qc.invalidateQueries({ queryKey: ["patient_results_existing"] });
   };
 
-  const applyManualEntry = async (regId: string, testId: string) => {
-    const testKey = `${regId}||${testId}`;
-    const { error } = await supabase.from("outsourced_test_snips").upsert({
-      registration_id: regId,
-      test_id: testId,
-      result_mode: "manual",
-      snip_image_url: null,
-      snip_image_urls: [],
-    } as any, { onConflict: "registration_id,test_id" });
-    if (error) throw error;
-    setSnipEntryKeys((prev) => {
-      const next = new Set(prev);
-      next.delete(testKey);
-      return next;
-    });
-    setExpandedTestKey(testKey);
-    qc.invalidateQueries({ queryKey: ["results_outsourced_snips"] });
-    qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
-  };
-
-  const beginSnipEntry = async (regId: string, testId: string, testName: string, hasTypedValues: boolean) => {
-    const paramIds = outsourcedParamIdsForTest(regId, testId);
-    if (hasTypedValues) {
-      setSnipModeConfirm({ regId, testId, testName, paramIds, target: "snip" });
-      return;
-    }
+  const beginSnipEntry = async (regId: string, testId: string) => {
     try {
       await applySnipEntry(regId, testId);
     } catch (err: any) {
-      toast.error(err.message || "Failed to switch to snipped image");
-    }
-  };
-
-  const beginManualEntry = async (regId: string, testId: string, testName: string, hasImages: boolean) => {
-    const paramIds = outsourcedParamIdsForTest(regId, testId);
-    if (hasImages) {
-      setSnipModeConfirm({ regId, testId, testName, paramIds, target: "manual" });
-      return;
-    }
-    try {
-      await applyManualEntry(regId, testId);
-    } catch (err: any) {
-      toast.error(err.message || "Failed to switch to typed values");
+      toast.error(err.message || "Failed to open snipped image entry");
     }
   };
 
@@ -845,7 +804,6 @@ const ResultsEntry = () => {
     const key = `${regId}||${testId}`;
     setSavingSnipKey(key);
     try {
-      await clearTypedOutsourcedResults(supabase, regId, testId, outsourcedParamIdsForTest(regId, testId));
       const { error } = await supabase.from("outsourced_test_snips").upsert({
         registration_id: regId,
         test_id: testId,
@@ -942,10 +900,13 @@ const ResultsEntry = () => {
         
         // Track tests with no parameters configured
         const validParams = params.filter((tp: any) => !tp.is_subheader && tp.report_test_parameters);
-        // Snip-mode outsourced tests (even when parameters exist) skip typed entry
-        if (isSnipResult && !isParamLevel && !["results_entered", "verified", "approved", "dispatched"].includes(snipDetail.status)) {
+        // Snip-only (no params): show snip card. With params, keep both snip card + typed rows.
+        if (isSnipResult && !isParamLevel && validParams.length === 0 && !["results_entered", "verified", "approved", "dispatched"].includes(snipDetail.status)) {
           snipOnlyTests.push({ testId: t.test_id, testName: t.test_name || testInfo.test_name || "", labName: snipDetail.labName, snipUrls: snipDetail.snipImageUrls, outsourceStatus: snipDetail.status });
           continue;
+        }
+        if (isSnipResult && !isParamLevel && validParams.length > 0 && !["results_entered", "verified", "approved", "dispatched"].includes(snipDetail.status)) {
+          snipOnlyTests.push({ testId: t.test_id, testName: t.test_name || testInfo.test_name || "", labName: snipDetail.labName, snipUrls: snipDetail.snipImageUrls, outsourceStatus: snipDetail.status });
         }
         if (validParams.length === 0) {
           // Check if this is a snip-only outsourced test
@@ -967,8 +928,6 @@ const ResultsEntry = () => {
           const p = tp.report_test_parameters;
           if (!p) continue;
           const isParamOutsourced = isFullTestOutsourced || (paramOutsourcedSet && paramOutsourcedSet.has(p.id));
-          // Snip-mode outsourced params are handled via the snip card, not typed values
-          if (isSnipResult && isParamOutsourced) continue;
           const resolved = resolveResultForResultsEntry(existingResults, reg.id, t.test_id, p.id);
           testParamResults.push({ param: p, tp, isParamOutsourced, existing: resolved.row, covered: resolved.covered });
         }
@@ -1033,7 +992,7 @@ const ResultsEntry = () => {
             isOutsourced: !!isParamOutsourced,
             outsourceLabName: isParamOutsourced ? (snipDetail?.labName || null) : null,
             outsourceStatus: isParamOutsourced ? (snipDetail?.status || "pending") : "",
-            isSnipMode: isParamOutsourced && snipDetail?.resultMode === "snip",
+            isSnipMode: false,
             note: existing?.note || "",
           });
         }
@@ -2070,7 +2029,7 @@ const ResultsEntry = () => {
               const isFullTestOutsourced = transferredTestKeys.has(testKey) || !!outsourcedSnipDetails[testKey];
               const testSnipDetail = outsourcedSnipDetails[testKey];
               const isOutsourcedTest = isFullTestOutsourced || tg.params.some((p) => p.isOutsourced);
-              const isSnipMode = snipEntryKeys.has(testKey) || testSnipDetail?.resultMode === "snip";
+              const hasSnipImages = snipEntryKeys.has(testKey) || (testSnipDetail?.snipImageUrls?.length || 0) > 0;
               const isTestExpanded = expandedTestKey === testKey;
               const filledCount = tg.params.filter(p => {
                 const k = `${reg.id}||${p.parameterId}`;
@@ -2187,63 +2146,41 @@ const ResultsEntry = () => {
                   {isTestExpanded && isOutsourcedTest && (
                     <div className="mt-2 mx-1 rounded-md border border-blue-200 bg-blue-50/80 p-2 space-y-2" onClick={(e) => e.stopPropagation()}>
                       <div className="text-xs font-medium text-blue-900">
-                        Outsourced result — type parameter values or add a snipped image, not both.
+                        Outsourced — enter parameters and/or attach snipped images. Both show on the report (parameters first).
                       </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant={!isSnipMode ? "default" : "outline"}
-                          className="h-9 text-xs gap-1.5"
-                          onClick={() => beginManualEntry(reg.id, tg.testId, tg.testName, (testSnipDetail?.snipImageUrls?.length || 0) > 0)}
-                        >
-                          <Keyboard className="h-3.5 w-3.5" /> Type parameter values
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant={isSnipMode ? "default" : "outline"}
-                          className="h-9 text-xs gap-1.5"
-                          onClick={() => {
-                            const hasTyped = tg.params.some((p) => {
-                              const k = `${reg.id}||${p.parameterId}`;
-                              const v = editedValues[k] !== undefined ? editedValues[k] : p.resultValue;
-                              return !!(v && v.trim());
-                            });
-                            beginSnipEntry(reg.id, tg.testId, tg.testName, hasTyped);
-                          }}
-                        >
-                          <Image className="h-3.5 w-3.5" /> Add snipped image
-                        </Button>
-                      </div>
-                      {isSnipMode && (
-                        <>
-                          <SnipOnLetterhead
-                            regId={reg.id}
-                            testId={tg.testId}
-                            imageUrls={testSnipDetail?.snipImageUrls || []}
-                            isUploading={uploadingSnipKey === testKey}
-                            onPaste={handlePatientSnipPaste}
-                            onFileUpload={handlePatientSnipUpload}
-                            onDeletePage={handlePatientSnipDeletePage}
-                          />
-                          {(testSnipDetail?.snipImageUrls?.length || 0) > 0 && (
-                            <div className="flex justify-end">
-                              <Button
-                                size="sm"
-                                onClick={() => savePatientSnipResults(reg.id, tg.testId, tg.testName)}
-                                disabled={savingSnipKey === testKey}
-                              >
-                                {savingSnipKey === testKey ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Save className="h-4 w-4 mr-1" />}
-                                Save Snipped Image
-                              </Button>
-                            </div>
-                          )}
-                        </>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={hasSnipImages ? "default" : "outline"}
+                        className="h-9 text-xs gap-1.5"
+                        onClick={() => beginSnipEntry(reg.id, tg.testId)}
+                      >
+                        <Image className="h-3.5 w-3.5" /> Add snipped image
+                      </Button>
+                      <SnipOnLetterhead
+                        regId={reg.id}
+                        testId={tg.testId}
+                        imageUrls={testSnipDetail?.snipImageUrls || []}
+                        isUploading={uploadingSnipKey === testKey}
+                        onPaste={handlePatientSnipPaste}
+                        onFileUpload={handlePatientSnipUpload}
+                        onDeletePage={handlePatientSnipDeletePage}
+                      />
+                      {(testSnipDetail?.snipImageUrls?.length || 0) > 0 && (
+                        <div className="flex justify-end">
+                          <Button
+                            size="sm"
+                            onClick={() => savePatientSnipResults(reg.id, tg.testId, tg.testName)}
+                            disabled={savingSnipKey === testKey}
+                          >
+                            {savingSnipKey === testKey ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Save className="h-4 w-4 mr-1" />}
+                            Save Snipped Image
+                          </Button>
+                        </div>
                       )}
                     </div>
                   )}
-                  {isTestExpanded && !isSnipMode && (
+                  {isTestExpanded && (
                     <div className="overflow-x-auto -mx-1">
                     <Table>
                       <TableHeader>
@@ -2779,17 +2716,16 @@ const ResultsEntry = () => {
             <AlertDialogAction
               onClick={async () => {
                 if (!snipModeConfirm) return;
-                const { regId, testId, target } = snipModeConfirm;
+                const { regId, testId } = snipModeConfirm;
                 setSnipModeConfirm(null);
                 try {
-                  if (target === "snip") await applySnipEntry(regId, testId);
-                  else await applyManualEntry(regId, testId);
+                  await applySnipEntry(regId, testId);
                 } catch (err: any) {
-                  toast.error(err.message || "Failed to switch entry method");
+                  toast.error(err.message || "Failed to open snipped image entry");
                 }
               }}
             >
-              Switch
+              Continue
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -394,6 +394,7 @@ interface TestBlock {
 
 interface SnipPage {
   imageUrl: string;
+  testId?: string;
 }
 
 interface PageContent {
@@ -807,15 +808,16 @@ const LimsReportView = () => {
     // Snip images — MUST be inlined as data URLs. Remote storage URLs +
     // html-to-image (esp. with cacheBust) hang the WhatsApp popup on "Downloading…".
     const snipPages: SnipPage[] = [];
-    const rawSnipUrls: string[] = [];
     const snipIds = new Set<string>();
+    const snipJobs: { testId: string; url: string }[] = [];
     (snips || []).forEach((s: any) => {
       if (selectedTestIds && !selectedTestIds.has(s.test_id)) return;
       if (!isSnipResultRow(s)) return;
       snipIds.add(s.test_id);
-      snipImageUrlsFromRow(s).forEach((url: string) => rawSnipUrls.push(url));
+      snipImageUrlsFromRow(s).forEach((url: string) => snipJobs.push({ testId: s.test_id, url }));
     });
-    const inlinedSnipUrls = await Promise.all(rawSnipUrls.map(async (u) => {
+    const inlinedSnipUrls = await Promise.all(snipJobs.map(async (job) => {
+      const u = job.url;
       const marker = "/outsourced-snips/";
       const idx = u.indexOf(marker);
       const path = idx >= 0
@@ -825,18 +827,19 @@ const LimsReportView = () => {
         ? reportAssetCacheKey("outsourced-snips", path)
         : `url:${u}`;
       try {
-        return await withTimeout(urlToDataUrl(u, cacheKey), 30_000, "snip image download");
+        const dataUrl = await withTimeout(urlToDataUrl(u, cacheKey), 30_000, "snip image download");
+        return { testId: job.testId, url: dataUrl };
       } catch (e) {
         console.error("Failed to inline snip image:", u, e);
-        return null;
+        return { testId: job.testId, url: null as string | null };
       }
     }));
-    const failedSnips = inlinedSnipUrls.filter((u) => !u).length;
+    const failedSnips = inlinedSnipUrls.filter((u) => !u.url).length;
     if (failedSnips > 0) {
       toast.error(`Could not load ${failedSnips} snipped report image(s) for PDF`);
     }
-    inlinedSnipUrls.forEach((url) => {
-      if (url) snipPages.push({ imageUrl: url });
+    inlinedSnipUrls.forEach((row) => {
+      if (row.url) snipPages.push({ imageUrl: row.url, testId: row.testId });
     });
 
     // Inline snapshot signature URLs embedded in approved_reports.test_results JSONB
@@ -928,12 +931,11 @@ const LimsReportView = () => {
       : 0;
     const usableHeight = PAGE_HEIGHT_MM - topMm - bottomMm - HEADER_HEIGHT_MM - SIGNATURE_HEIGHT_MM - PAGE_NUM_HEIGHT_MM - footerNoteMm;
 
-    // Merge all test_results from all approved reports
+    // Merge all test_results from all approved reports (include params even when snips exist)
     const allResults: TestResultEntry[] = [];
     approvedReports.forEach((report: any) => {
       const results = (report.test_results || []) as TestResultEntry[];
       results.forEach(r => {
-        if (snipModeTestIds.has(r.test_id)) return;
         if (r.result_value && r.result_value.toString().trim()) {
           allResults.push(r);
         }
@@ -1067,40 +1069,106 @@ const LimsReportView = () => {
       return a.testName.localeCompare(b.testName);
     });
 
-    // First-pass pack (estimates). Measure-then-repack refines using real DOM heights.
-    const structuredPages = packStructuredTestBlocks(
-      testBlocks,
-      (block, isFirst) => block.estimatedHeightMm + (isFirst ? 0 : INTER_PROFILE_GAP_MM),
-      usableHeight - FIT_TOLERANCE_MM,
-    );
+    // Pack per test in department/test hierarchy: structured params first, then that test's snips.
+    const snipsByTest = new Map<string, SnipPage[]>();
+    for (const snip of snipImages) {
+      const tid = snip.testId || "__orphan__";
+      const list = snipsByTest.get(tid) || [];
+      list.push(snip);
+      snipsByTest.set(tid, list);
+    }
 
-    const pagesWithHistograms: PageContent[] = [];
-    let histogramPageInserted = false;
-    for (const page of structuredPages) {
-      pagesWithHistograms.push(page);
-      if (
-        enableHistograms
-        &&
-        !histogramPageInserted
-        && page.type === "structured"
-        && pageHasCbcTest(page.testBlocks)
-        && hasRenderableHistograms(analyzerHistograms)
-      ) {
-        pagesWithHistograms.push({
-          type: "histogram",
-          departmentName: page.departmentName || "Haematology",
-          histograms: analyzerHistograms,
-          approvers: page.approvers,
-          sampleCollectionDate: page.sampleCollectionDate,
-        });
-        histogramPageInserted = true;
+    const blockById = new Map(testBlocks.map((b) => [b.testId, b]));
+    const orderedTestIds: string[] = [];
+    const seenOrder = new Set<string>();
+    for (const b of testBlocks) {
+      orderedTestIds.push(b.testId);
+      seenOrder.add(b.testId);
+    }
+    // Snip-only tests (no typed params) — insert in same dept/test hierarchy
+    const snipOnlyMeta = [...snipsByTest.keys()]
+      .filter((id) => id !== "__orphan__" && !seenOrder.has(id))
+      .map((testId) => {
+        const testInfo = testsMap[testId];
+        const deptId = testInfo?.department_id || null;
+        return {
+          testId,
+          departmentOrder: deptId ? (deptOrderMap[deptId] ?? 999) : 999,
+          testOrder: (testInfo?.report_display_order ?? 9999),
+          testName: testInfo?.test_name || testId,
+        };
+      })
+      .sort((a, b) => {
+        if (a.departmentOrder !== b.departmentOrder) return a.departmentOrder - b.departmentOrder;
+        if (a.testOrder !== b.testOrder) return a.testOrder - b.testOrder;
+        return a.testName.localeCompare(b.testName);
+      });
+
+    // Merge snip-only into ordered list by sort key
+    const mergedIds: string[] = [];
+    {
+      let i = 0;
+      let j = 0;
+      const structuredMeta = testBlocks.map((b) => ({
+        testId: b.testId,
+        departmentOrder: b.departmentOrder,
+        testOrder: b.testOrder,
+        testName: b.testName,
+      }));
+      while (i < structuredMeta.length || j < snipOnlyMeta.length) {
+        const a = structuredMeta[i];
+        const b = snipOnlyMeta[j];
+        if (!b || (a && (
+          a.departmentOrder < b.departmentOrder
+          || (a.departmentOrder === b.departmentOrder && a.testOrder < b.testOrder)
+          || (a.departmentOrder === b.departmentOrder && a.testOrder === b.testOrder && a.testName.localeCompare(b.testName) <= 0)
+        ))) {
+          mergedIds.push(a.testId);
+          i++;
+        } else {
+          mergedIds.push(b.testId);
+          j++;
+        }
       }
     }
 
-    // Add snip pages
-    snipImages.forEach(snip => {
+    const pagesWithHistograms: PageContent[] = [];
+    let histogramPageInserted = false;
+    for (const testId of mergedIds) {
+      const block = blockById.get(testId);
+      if (block) {
+        const structuredPages = packStructuredTestBlocks(
+          [block],
+          (blk, isFirst) => blk.estimatedHeightMm + (isFirst ? 0 : INTER_PROFILE_GAP_MM),
+          usableHeight - FIT_TOLERANCE_MM,
+        );
+        for (const page of structuredPages) {
+          pagesWithHistograms.push(page);
+          if (
+            enableHistograms
+            && !histogramPageInserted
+            && page.type === "structured"
+            && pageHasCbcTest(page.testBlocks)
+            && hasRenderableHistograms(analyzerHistograms)
+          ) {
+            pagesWithHistograms.push({
+              type: "histogram",
+              departmentName: page.departmentName || "Haematology",
+              histograms: analyzerHistograms,
+              approvers: page.approvers,
+              sampleCollectionDate: page.sampleCollectionDate,
+            });
+            histogramPageInserted = true;
+          }
+        }
+      }
+      for (const snip of snipsByTest.get(testId) || []) {
+        pagesWithHistograms.push({ type: "snip", snipImage: snip.imageUrl });
+      }
+    }
+    for (const snip of snipsByTest.get("__orphan__") || []) {
       pagesWithHistograms.push({ type: "snip", snipImage: snip.imageUrl });
-    });
+    }
 
     return {
       pages: pagesWithHistograms,
@@ -1227,37 +1295,49 @@ const LimsReportView = () => {
         return base + bump + (isFirst ? 0 : INTER_PROFILE_GAP_MM);
       };
 
-      const structured = packStructuredTestBlocks(
-        packPlan.sortedTestBlocks,
-        getHeight,
-        Math.max(40, usableMm),
-        deptHeaderMm,
-      );
-
       const nextPages: PageContent[] = [];
       let histogramPageInserted = false;
-      for (const page of structured) {
-        nextPages.push(page);
-        if (
-          enableHistograms &&
-          !histogramPageInserted &&
-          page.type === "structured" &&
-          pageHasCbcTest(page.testBlocks) &&
-          hasRenderableHistograms(analyzerHistograms)
-        ) {
-          nextPages.push({
-            type: "histogram",
-            departmentName: page.departmentName || "Haematology",
-            histograms: analyzerHistograms,
-            approvers: page.approvers,
-            sampleCollectionDate: page.sampleCollectionDate,
-          });
-          histogramPageInserted = true;
+      // Preserve first-pass order: each test's structured block(s), then its snip pages.
+      for (const pg of packPlan.pages) {
+        if (pg.type === "snip") {
+          nextPages.push(pg);
+          continue;
+        }
+        if (pg.type === "histogram") {
+          // Re-insert after CBC structured page below.
+          continue;
+        }
+        if (pg.type === "structured" && pg.testBlocks && pg.testBlocks.length > 0) {
+          const blocks = pg.testBlocks
+            .map((b) => packPlan.sortedTestBlocks.find((x) => x.testId === b.testId) || b)
+            .filter(Boolean) as TestBlock[];
+          const structured = packStructuredTestBlocks(
+            blocks,
+            getHeight,
+            Math.max(40, usableMm),
+            deptHeaderMm,
+          );
+          for (const page of structured) {
+            nextPages.push(page);
+            if (
+              enableHistograms &&
+              !histogramPageInserted &&
+              page.type === "structured" &&
+              pageHasCbcTest(page.testBlocks) &&
+              hasRenderableHistograms(analyzerHistograms)
+            ) {
+              nextPages.push({
+                type: "histogram",
+                departmentName: page.departmentName || "Haematology",
+                histograms: analyzerHistograms,
+                approvers: page.approvers,
+                sampleCollectionDate: page.sampleCollectionDate,
+              });
+              histogramPageInserted = true;
+            }
+          }
         }
       }
-      packPlan.pages.forEach((pg) => {
-        if (pg.type === "snip") nextPages.push(pg);
-      });
 
       measurePassRef.current += 1;
       if (pagesFingerprint(nextPages) !== pagesFingerprint(pages)) {

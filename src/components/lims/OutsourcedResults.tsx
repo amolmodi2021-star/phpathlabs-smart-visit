@@ -678,50 +678,43 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
     }
   }, [qc, existingSnips]);
 
-  // Set manual mode (clears any snipped images — the two methods are exclusive)
+  // Soft mode hints only — typed params and snips may coexist.
   const setManualMode = useCallback(async (regId: string, testId: string) => {
     try {
       const existing = getSnip(regId, testId);
+      const urls = snipImageUrlsFromRow(existing);
       const { error } = await supabase.from("outsourced_test_snips").upsert({
         registration_id: regId,
         test_id: testId,
-        result_mode: "manual",
-        snip_image_url: null,
-        snip_image_urls: [],
-        outsource_status: isSnipResultRow(existing) ? "sent" : ((existing as any)?.outsource_status || "sent"),
+        result_mode: urls.length > 0 ? "snip" : "manual",
+        outsource_status: (existing as any)?.outsource_status || "sent",
       } as any, { onConflict: "registration_id,test_id" });
       if (error) throw error;
       setModeOverride((prev) => ({ ...prev, [`${regId}||${testId}`]: "manual" }));
       qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
       qc.invalidateQueries({ queryKey: ["results_outsourced_snips"] });
     } catch (err: any) {
-      toast.error(err.message || "Failed to set manual mode");
+      toast.error(err.message || "Failed to open typed entry");
     }
   }, [qc, existingSnips]);
 
-  // Set snip mode (clears typed parameter values — the two methods are exclusive)
-  const setSnipMode = useCallback(async (regId: string, testId: string, outsourcedParamIds?: string[]) => {
+  const setSnipMode = useCallback(async (regId: string, testId: string, _outsourcedParamIds?: string[]) => {
     try {
-      await clearManualResultsForTest(regId, testId, outsourcedParamIds);
       const existing = getSnip(regId, testId);
       const { error } = await supabase.from("outsourced_test_snips").upsert({
         registration_id: regId,
         test_id: testId,
         result_mode: "snip",
-        outsource_status: (existing as any)?.outsource_status === "results_saved" && !isSnipResultRow(existing)
-          ? "sent"
-          : ((existing as any)?.outsource_status || "sent"),
+        outsource_status: (existing as any)?.outsource_status || "sent",
       } as any, { onConflict: "registration_id,test_id" });
       if (error) throw error;
       setModeOverride((prev) => ({ ...prev, [`${regId}||${testId}`]: "snip" }));
       qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
-      qc.invalidateQueries({ queryKey: ["outsourced_manual_results"] });
       qc.invalidateQueries({ queryKey: ["results_outsourced_snips"] });
-      qc.invalidateQueries({ queryKey: ["patient_results_existing"] });
     } catch (err: any) {
-      toast.error(err.message || "Failed to set snip mode");
+      toast.error(err.message || "Failed to open snip entry");
     }
-  }, [qc, existingSnips, clearManualResultsForTest]);
+  }, [qc, existingSnips]);
 
   // Save manual results
   const saveManualResults = useCallback(async (regId: string, testId: string, testName: string, outsourcedParamIds?: string[], reg?: any) => {
@@ -771,12 +764,15 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
         const { error } = await supabase.from("patient_results").insert(upserts as any);
         if (error) throw error;
       }
-      // Update snip record status — wipe any snipped images so both methods cannot coexist
+      // Keep any existing snip images — typed params and snips may both appear on reports
+      const existingSnip = getSnip(regId, testId);
+      const keepUrls = snipImageUrlsFromRow(existingSnip);
       const { error: snipErr } = await supabase.from("outsourced_test_snips").upsert({
         registration_id: regId, test_id: testId,
-        result_mode: "manual", outsource_status: "results_saved",
-        snip_image_url: null,
-        snip_image_urls: [],
+        result_mode: keepUrls.length > 0 ? "snip" : "manual",
+        outsource_status: "results_saved",
+        snip_image_url: keepUrls[0] || null,
+        snip_image_urls: keepUrls,
         entered_at: new Date().toISOString(),
         entered_by: getCurrentUserName(),
       } as any, { onConflict: "registration_id,test_id" });
@@ -798,14 +794,13 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
     } finally {
       setSavingKey(null);
     }
-  }, [editedValues, testParamsMap, qc, resolveNormalRange]);
+  }, [editedValues, testParamsMap, qc, resolveNormalRange, existingSnips]);
 
   // Save snip results and move to verification
-  const saveSnipResults = useCallback(async (regId: string, testId: string, testName: string, outsourcedParamIds?: string[]) => {
+  const saveSnipResults = useCallback(async (regId: string, testId: string, testName: string, _outsourcedParamIds?: string[]) => {
     const key = `${regId}||${testId}`;
     setSavingKey(key);
     try {
-      await clearManualResultsForTest(regId, testId, outsourcedParamIds);
       const { error } = await supabase.from("outsourced_test_snips").upsert({
         registration_id: regId, test_id: testId,
         result_mode: "snip", outsource_status: "results_saved",
@@ -994,7 +989,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
             )}
           </div>
           <div className="flex items-center gap-2">
-            {canEnterResults && hasParams && currentMode !== "snip" && (
+            {canEnterResults && hasParams && (
               <Button
                 size="sm"
                 variant="outline"
@@ -1002,14 +997,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
                 onClick={(e) => {
                   e.stopPropagation();
                   setExpandedTest(testKey);
-                  if (hasManualResults(regId, test.testId)) {
-                    setModeSwitchConfirm({
-                      regId, testId: test.testId, testName: test.testName, to: "snip",
-                      outsourcedParamIds: test.outsourcedParameterIds,
-                    });
-                  } else {
-                    setSnipMode(regId, test.testId, test.outsourcedParameterIds);
-                  }
+                  setSnipMode(regId, test.testId, test.outsourcedParameterIds);
                 }}
               >
                 <Image className="h-3.5 w-3.5" />
@@ -1083,53 +1071,11 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
             {hasParams && (
               <div className="rounded-md border border-blue-200 bg-blue-50/80 p-2 space-y-2">
                 <div className="text-xs font-medium text-blue-900">
-                  Outsourced result — type parameter values or add a snipped image, not both.
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                <Button
-                  type="button"
-                  variant={currentMode === "manual" ? "default" : "outline"}
-                  className="h-9 text-xs gap-1.5"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setExpandedTest(testKey);
-                    if (currentMode === "manual") return;
-                    if (getSnipImageUrls(regId, test.testId).length > 0) {
-                      setModeSwitchConfirm({
-                        regId, testId: test.testId, testName: test.testName, to: "manual",
-                        outsourcedParamIds: test.outsourcedParameterIds,
-                      });
-                      return;
-                    }
-                    setManualMode(regId, test.testId);
-                  }}
-                >
-                  <Keyboard className="h-3.5 w-3.5" /> Type parameter values
-                </Button>
-                <Button
-                  type="button"
-                  variant={currentMode === "snip" ? "default" : "outline"}
-                  className="h-9 text-xs gap-1.5"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setExpandedTest(testKey);
-                    if (currentMode === "snip") return;
-                    if (hasManualResults(regId, test.testId)) {
-                      setModeSwitchConfirm({
-                        regId, testId: test.testId, testName: test.testName, to: "snip",
-                        outsourcedParamIds: test.outsourcedParameterIds,
-                      });
-                      return;
-                    }
-                    setSnipMode(regId, test.testId, test.outsourcedParameterIds);
-                  }}
-                >
-                  <Image className="h-3.5 w-3.5" /> Add snipped image
-                </Button>
+                  Outsourced result — enter parameter values and/or attach snipped images. Both appear on the report (parameters first, then snips).
                 </div>
               </div>
             )}
-            {hasParams && currentMode === "manual" && (
+            {hasParams && (
                 <div className="mt-2">
                   <Table>
                     <TableHeader>
@@ -1208,7 +1154,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
                 </div>
             )}
 
-            {(currentMode === "snip" || !hasParams) && (
+            {(
               <div className="mt-2 space-y-3">
                 <SnipOnLetterhead
                   regId={regId}

@@ -223,9 +223,7 @@ const ModifiedApproval = () => {
         if (!r.test_id) continue;
         const snip = snips.find((s: any) => s.test_id === r.test_id);
         const snipParamIds = Array.isArray(snip?.outsourced_parameter_ids) ? snip.outsourced_parameter_ids : [];
-        const fullSnip = isSnipResultRow(snip) && snipParamIds.length === 0;
-        if (fullSnip) continue;
-        if (isSnipResultRow(snip) && snipParamIds.includes(r.parameter_id)) continue;
+        // Keep typed params even when snips exist (both appear on reports).
         if (!testGroups[r.test_id]) {
           const testInfo = testsMap[r.test_id] || {};
           testGroups[r.test_id] = {
@@ -260,19 +258,18 @@ const ModifiedApproval = () => {
       Object.values(testGroups).forEach((tg) => {
         const snip = snips.find((s: any) => s.test_id === tg.testId);
         const snipParamIds = Array.isArray(snip?.outsourced_parameter_ids) ? snip.outsourced_parameter_ids : [];
-        // Full-test snip: do not invent typed parameter rows
-        if (isSnipResultRow(snip) && snipParamIds.length === 0) {
+        const defs = (testParamsMap as any)[tg.testId] || [];
+        // Snip-only tests (no param defs): keep params empty. Otherwise keep typed + snipUrls.
+        if (isSnipResultRow(snip) && snipParamIds.length === 0 && defs.length === 0) {
           tg.params = [];
           return;
         }
-        const defs = (testParamsMap as any)[tg.testId] || [];
         const existingPids = new Set(tg.params.map((p: any) => p.parameter_id));
         defs.forEach((tp: any) => {
           if (tp.is_subheader) return;
           const rtp = tp.report_test_parameters;
           if (!rtp) return;
           if (existingPids.has(tp.parameter_id)) return;
-          if (isSnipResultRow(snip) && snipParamIds.includes(tp.parameter_id)) return;
           tg.params.push({
             registration_id: regId,
             test_id: tg.testId,

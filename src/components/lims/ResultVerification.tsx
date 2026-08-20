@@ -495,10 +495,10 @@ const ResultVerification = () => {
         const isSnipResult = isSnipResultDetail(snipDetail);
         const isParamLevel = !!(paramOutsourcedSet && paramOutsourcedSet.size > 0);
 
-        // Snip-mode (including tests that have parameters) — verify the image, not typed values
+        // Snip card for image verify; with params also keep typed rows (both allowed).
         if (isSnipResult && !isParamLevel && ["results_entered", "entered"].includes(snipDetail.status)) {
           snipOnlyTests.push({ testId: t.test_id, testName: t.test_name || testInfo.test_name || "", labName: snipDetail.labName, snipUrls: snipDetail.snipImageUrls, outsourceStatus: snipDetail.status });
-          continue;
+          if (validParams.length === 0) continue;
         }
 
         // Snip-only test: no params but has outsourced snip with results_entered status
@@ -532,7 +532,6 @@ const ResultVerification = () => {
           const p = tp.report_test_parameters;
           if (!p) continue;
           const isParamOutsourced = isFullTestOutsourced || (paramOutsourcedSet && paramOutsourcedSet.has(p.id));
-          if (isSnipResult && isParamOutsourced) continue;
           const existing = testEnteredResults.find((r: any) => r.parameter_id === p.id);
           if (!existing && !isParamOutsourced) continue;
           if (existing?.status === "approved" || existing?.status === "dispatched") continue;
@@ -560,7 +559,7 @@ const ResultVerification = () => {
             rangeType: resolved.rangeType, descriptiveOptions: resolved.descriptiveOptions, expectedValue: resolved.expectedValue, normalFindings: resolved.normalFindings, normalRangeText: resolved.text || "",
             isOutsourced: !!isParamOutsourced, outsourceLabName: isParamOutsourced ? (snipDetail?.labName || null) : null,
             outsourceStatus: isParamOutsourced ? (snipDetail?.status || "pending") : "",
-            isSnipMode: isParamOutsourced && snipDetail?.resultMode === "snip",
+            isSnipMode: false,
             enteredAt: existing?.entered_at || null,
             enteredBy: existing?.entered_by || null,
             note: existing?.note || "",
