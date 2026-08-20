@@ -165,34 +165,151 @@ export function rebuildPaymentsForPaidCap(
 
 const ALLOWED_PAYMENT_MODES = new Set(["Cash", "GPay", "Paytm", "Credit Card", "NEFT"]);
 
+export type DueCollectionGroup = {
+  date: string;
+  entries: BillPaymentEntry[];
+  total: number;
+};
+
+/** One due-collection event (same `date` stamp) — may contain a Cash+GPay split. */
+export function groupDueCollectionsByDate(
+  dueCollections: BillPaymentEntry[] | null | undefined,
+): DueCollectionGroup[] {
+  const list = Array.isArray(dueCollections) ? dueCollections : [];
+  const map = new Map<string, BillPaymentEntry[]>();
+  for (const p of list) {
+    const key = String(p.date || "");
+    if (!map.has(key)) map.set(key, []);
+    map.get(key)!.push(p);
+  }
+  return [...map.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([date, entries]) => ({
+      date,
+      entries,
+      total: sumPaymentEntries(entries),
+    }));
+}
+
+export type DueCollectionGroupEdit = {
+  date: string;
+  /** Locked collection total — mode split must equal this. */
+  total: number;
+  modeAmounts: Record<string, number>;
+};
+
+function normalizeModeAmounts(modeAmounts: Record<string, number> | undefined): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const [mode, amount] of Object.entries(modeAmounts || {})) {
+    const n = Number(amount || 0);
+    if (!ALLOWED_PAYMENT_MODES.has(mode) || !(n > 0)) continue;
+    out[mode] = n;
+  }
+  return out;
+}
+
 /**
- * Remap payment modes on due-collection lines only (amounts + dates unchanged).
- * Used to correct a wrong mode chosen during Due Payments without inventing
- * a second registration payment.
+ * Rebuild due-collection payment lines from per-collection mode splits.
+ * Each group's total must match the original collection total; dates stay fixed.
  */
+export function buildDueCollectionsFromGroupEdits(
+  groups: DueCollectionGroupEdit[],
+): BillPaymentEntry[] {
+  const out: BillPaymentEntry[] = [];
+  for (const g of groups) {
+    const date = String(g.date || "");
+    if (!date) throw new Error("Due collection is missing its collection timestamp");
+    const modes = normalizeModeAmounts(g.modeAmounts);
+    const entries = Object.entries(modes).map(([mode, amount]) => ({
+      mode,
+      amount,
+      date,
+    }));
+    if (entries.length === 0) {
+      throw new Error("Each due collection needs at least one payment mode");
+    }
+    const sum = sumPaymentEntries(entries);
+    const total = Number(g.total || 0);
+    if (Math.abs(sum - total) > 0.01) {
+      throw new Error(`Due collection split must equal ₹${total}`);
+    }
+    out.push(...entries);
+  }
+  return out;
+}
+
+/**
+ * Replace due-collection lines with edited per-collection mode splits.
+ * Registration (undated) lines are preserved. Collection totals/dates cannot change.
+ */
+export function applyDueCollectionGroupEdits(
+  existingPayments: BillPaymentEntry[] | null | undefined,
+  groupEdits: DueCollectionGroupEdit[],
+): BillPaymentEntry[] {
+  const { registration, dueCollections } = splitRegistrationAndDuePayments(existingPayments);
+  const originalGroups = groupDueCollectionsByDate(dueCollections);
+  if (originalGroups.length === 0) {
+    return [...registration];
+  }
+  if (groupEdits.length !== originalGroups.length) {
+    throw new Error("Due collection list does not match existing due payments");
+  }
+  for (let i = 0; i < originalGroups.length; i++) {
+    const orig = originalGroups[i];
+    const edit = groupEdits[i];
+    if (String(edit.date || "") !== orig.date) {
+      throw new Error("Due collection dates cannot be changed");
+    }
+    if (Math.abs(Number(edit.total || 0) - orig.total) > 0.01) {
+      throw new Error("Due collection totals cannot be changed — only payment modes");
+    }
+  }
+  return [...registration, ...buildDueCollectionsFromGroupEdits(groupEdits)];
+}
+
+export function dueCollectionGroupEditsChanged(
+  existingPayments: BillPaymentEntry[] | null | undefined,
+  groupEdits: DueCollectionGroupEdit[],
+): boolean {
+  const { dueCollections } = splitRegistrationAndDuePayments(existingPayments);
+  const originalGroups = groupDueCollectionsByDate(dueCollections);
+  if (originalGroups.length === 0) return false;
+  if (groupEdits.length !== originalGroups.length) return true;
+  try {
+    const rebuilt = buildDueCollectionsFromGroupEdits(groupEdits);
+    if (rebuilt.length !== dueCollections.length) return true;
+    const norm = (rows: BillPaymentEntry[]) =>
+      rows
+        .map((p) => `${p.date}|${p.mode}|${paymentEntryAmount(p).toFixed(2)}`)
+        .sort()
+        .join(";");
+    return norm(rebuilt) !== norm(dueCollections);
+  } catch {
+    return true;
+  }
+}
+
+/** @deprecated Use applyDueCollectionGroupEdits — kept for simple single-line remaps in tests. */
 export function applyDueCollectionModeEdits(
   existingPayments: BillPaymentEntry[] | null | undefined,
   dueModes: string[],
 ): BillPaymentEntry[] {
-  const { registration, dueCollections } = splitRegistrationAndDuePayments(existingPayments);
-  if (dueCollections.length === 0) {
-    return [...registration];
-  }
-  if (dueModes.length !== dueCollections.length) {
+  const { dueCollections } = splitRegistrationAndDuePayments(existingPayments);
+  const groups = groupDueCollectionsByDate(dueCollections);
+  // Flat per-line mode list (legacy): one mode per dated entry, in group order.
+  let cursor = 0;
+  const edits: DueCollectionGroupEdit[] = groups.map((g) => {
+    const modeAmounts: Record<string, number> = {};
+    for (const entry of g.entries) {
+      const mode = String(dueModes[cursor++] || entry.mode || "").trim();
+      modeAmounts[mode] = (modeAmounts[mode] || 0) + paymentEntryAmount(entry);
+    }
+    return { date: g.date, total: g.total, modeAmounts };
+  });
+  if (cursor !== dueModes.length) {
     throw new Error("Due collection mode list does not match existing due payments");
   }
-  const remapped = dueCollections.map((p, i) => {
-    const mode = String(dueModes[i] || "").trim();
-    if (!ALLOWED_PAYMENT_MODES.has(mode)) {
-      throw new Error(`Invalid due collection payment mode: ${mode || "(empty)"}`);
-    }
-    return {
-      mode,
-      amount: paymentEntryAmount(p),
-      date: p.date,
-    };
-  });
-  return [...registration, ...remapped];
+  return applyDueCollectionGroupEdits(existingPayments, edits);
 }
 
 export function dueCollectionModesChanged(

@@ -7,7 +7,9 @@ import {
   mergeEditedRegistrationSplit,
   rebuildPaymentsForPaidCap,
   applyDueCollectionModeEdits,
+  applyDueCollectionGroupEdits,
   dueCollectionModesChanged,
+  groupDueCollectionsByDate,
   OVERPAYMENT_MESSAGE,
   paymentSelectionIsSet,
   paymentsExceedBill,
@@ -138,5 +140,44 @@ describe("billPayment", () => {
       { mode: "GPay", amount: 200 },
       { mode: "NEFT", amount: 300, date: due.date },
     ]);
+  });
+
+  it("edits each due collection event separately and supports Cash+GPay splits", () => {
+    const d1 = "2026-08-12T13:00:00.000Z";
+    const d2 = "2026-08-13T04:00:00.000Z";
+    const d3 = "2026-08-14T10:00:00.000Z";
+    const payments = [
+      { mode: "Cash", amount: 50 },
+      { mode: "GPay", amount: 100, date: d1 },
+      { mode: "Credit Card", amount: 100, date: d2 },
+      { mode: "Cash", amount: 200, date: d3 },
+      { mode: "NEFT", amount: 50, date: d3 },
+    ];
+    const groups = groupDueCollectionsByDate(splitRegistrationAndDuePayments(payments).dueCollections);
+    expect(groups).toHaveLength(3);
+    expect(groups.map((g) => g.total)).toEqual([100, 100, 250]);
+
+    const remapped = applyDueCollectionGroupEdits(payments, [
+      { date: d1, total: 100, modeAmounts: { Cash: 40, GPay: 60 } },
+      { date: d2, total: 100, modeAmounts: { NEFT: 100 } },
+      { date: d3, total: 250, modeAmounts: { "Credit Card": 250 } },
+    ]);
+    expect(remapped.filter((p) => !p.date)).toEqual([{ mode: "Cash", amount: 50 }]);
+    expect(sumPaymentEntries(remapped.filter((p) => p.date === d1))).toBe(100);
+    expect(remapped.filter((p) => p.date === d1)).toEqual([
+      { mode: "Cash", amount: 40, date: d1 },
+      { mode: "GPay", amount: 60, date: d1 },
+    ]);
+    expect(remapped.filter((p) => p.date === d2)).toEqual([{ mode: "NEFT", amount: 100, date: d2 }]);
+    expect(remapped.filter((p) => p.date === d3)).toEqual([
+      { mode: "Credit Card", amount: 250, date: d3 },
+    ]);
+    expect(() =>
+      applyDueCollectionGroupEdits(payments, [
+        { date: d1, total: 100, modeAmounts: { Cash: 50 } },
+        { date: d2, total: 100, modeAmounts: { NEFT: 100 } },
+        { date: d3, total: 250, modeAmounts: { Cash: 250 } },
+      ]),
+    ).toThrow(/must equal/);
   });
 });

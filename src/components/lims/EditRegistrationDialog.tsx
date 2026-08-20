@@ -17,12 +17,14 @@ import DeletePasswordDialog from "@/components/DeletePasswordDialog";
 import { recalculateRegistrationStatus } from "@/lib/limsStatus";
 import { logPaymentTransaction, syncRegistrationPaymentRow, syncDueCollectionPaymentModes, splitPaymentModes } from "@/lib/paymentTransactions";
 import {
-  applyDueCollectionModeEdits,
-  dueCollectionModesChanged,
+  applyDueCollectionGroupEdits,
+  dueCollectionGroupEditsChanged,
+  groupDueCollectionsByDate,
   mergeEditedRegistrationSplit,
   rebuildPaymentsForPaidCap,
   splitRegistrationAndDuePayments,
   sumPaymentEntries,
+  type DueCollectionGroupEdit,
 } from "@/lib/billPayment";
 import { syncPatientDemographicsByUmr, invalidatePatientCaches } from "@/lib/syncPatientDemographics";
 import DoctorAutocomplete, { ensureDoctor } from "@/components/lims/DoctorAutocomplete";
@@ -56,8 +58,8 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
   // Payment editing
   const [selectedModes, setSelectedModes] = useState<Set<string>>(new Set());
   const [modeAmounts, setModeAmounts] = useState<Record<string, number>>({});
-  /** Parallel to dated due-collection payment lines — mode-only corrections. */
-  const [dueModes, setDueModes] = useState<string[]>([]);
+  /** Per due-collection event (same timestamp): mode split like registration. */
+  const [dueGroupEdits, setDueGroupEdits] = useState<Array<DueCollectionGroupEdit & { selectedModes: string[] }>>([]);
 
   // Cancel / Refund
   const [cancelledTestIds, setCancelledTestIds] = useState<Set<string>>(new Set());
@@ -119,7 +121,23 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
       const amounts: Record<string, number> = {};
       originalSplit.forEach((p: any) => { amounts[p.mode] = Number(p.amount) || 0; });
       setModeAmounts(amounts);
-      setDueModes(dueCollections.map((p: any) => String(p.mode || "Cash")));
+      setDueGroupEdits(
+        groupDueCollectionsByDate(dueCollections).map((g) => {
+          const modeAmounts: Record<string, number> = {};
+          const selected: string[] = [];
+          for (const entry of g.entries) {
+            const mode = String(entry.mode || "Cash");
+            modeAmounts[mode] = (modeAmounts[mode] || 0) + Number(entry.amount || 0);
+            if (!selected.includes(mode)) selected.push(mode);
+          }
+          return {
+            date: g.date,
+            total: g.total,
+            modeAmounts,
+            selectedModes: selected,
+          };
+        }),
+      );
       const existing = Array.isArray(reg.cancelled_tests) ? reg.cancelled_tests : [];
       setCancelledTestIds(new Set(existing.map((t: any) => t.test_id || t)));
       setRefundMode("Cash");
@@ -197,14 +215,26 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
     const existingPayments: any[] = Array.isArray(reg?.payments) ? reg.payments : [];
     return sumPaymentEntries(splitRegistrationAndDuePayments(existingPayments).registration);
   }, [reg?.payments]);
-  const dueCollectionEntries = useMemo(() => {
+  const dueCollectionGroups = useMemo(() => {
     const existingPayments: any[] = Array.isArray(reg?.payments) ? reg.payments : [];
-    return splitRegistrationAndDuePayments(existingPayments).dueCollections;
+    return groupDueCollectionsByDate(
+      splitRegistrationAndDuePayments(existingPayments).dueCollections,
+    );
   }, [reg?.payments]);
   const dueModesDirty = useMemo(
-    () => dueCollectionModesChanged(reg?.payments, dueModes),
-    [reg?.payments, dueModes],
+    () => dueCollectionGroupEditsChanged(
+      reg?.payments,
+      dueGroupEdits.map(({ date, total, modeAmounts }) => ({ date, total, modeAmounts })),
+    ),
+    [reg?.payments, dueGroupEdits],
   );
+  const dueGroupsMismatch = useMemo(() => {
+    return dueGroupEdits.some((g) => {
+      const allocated = Object.values(g.modeAmounts || {}).reduce((s, n) => s + Number(n || 0), 0);
+      if ((g.selectedModes || []).length === 0 && g.total > 0) return true;
+      return Math.abs(allocated - Number(g.total || 0)) > 0.01;
+    });
+  }, [dueGroupEdits]);
 
   const togglePaymentMode = (mode: string) => {
     setSelectedModes(prev => {
@@ -213,6 +243,33 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
       else next.add(mode);
       return next;
     });
+  };
+
+  const toggleDueGroupMode = (groupIdx: number, mode: string) => {
+    setDueGroupEdits((prev) => prev.map((g, i) => {
+      if (i !== groupIdx) return g;
+      const selected = new Set(g.selectedModes || []);
+      const nextAmounts = { ...(g.modeAmounts || {}) };
+      if (selected.has(mode)) {
+        selected.delete(mode);
+        delete nextAmounts[mode];
+      } else {
+        selected.add(mode);
+      }
+      const selectedModes = Array.from(selected);
+      if (selectedModes.length === 1) {
+        return { ...g, selectedModes, modeAmounts: { [selectedModes[0]]: g.total } };
+      }
+      return { ...g, selectedModes, modeAmounts: nextAmounts };
+    }));
+  };
+
+  const setDueGroupModeAmount = (groupIdx: number, mode: string, amount: number) => {
+    setDueGroupEdits((prev) =>
+      prev.map((g, i) =>
+        i === groupIdx ? { ...g, modeAmounts: { ...g.modeAmounts, [mode]: amount } } : g,
+      ),
+    );
   };
 
   // Auto-fill when single mode selected — only the original registration payment,
@@ -311,6 +368,9 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
       if (isPaymentLocked && dueModesDirty) {
         throw new Error("Unlock payment mode editing for older invoices before changing due collection modes");
       }
+      if (dueGroupsMismatch) {
+        throw new Error("Each due collection's payment modes must add up to that collection's total");
+      }
 
       const editedSplit = Array.from(selectedModes)
         .filter(m => (modeAmounts[m] || 0) > 0)
@@ -319,9 +379,12 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
       const existingPayments: any[] = Array.isArray(reg.payments) ? reg.payments : [];
       const { registration: originalRegEntries } = splitRegistrationAndDuePayments(existingPayments);
       const newFinalForCap = discountChanged ? discountCalc.finalAmount : Number(reg.final_amount || 0);
-      // Remap due-collection modes first (amount/date unchanged), then apply any
-      // at-registration split edit — never invents a second registration payment.
-      const paymentsWithDueModes = applyDueCollectionModeEdits(existingPayments, dueModes);
+      // Remap each due-collection event's mode split (totals/dates fixed), then apply
+      // any at-registration split edit — never invents a second registration payment.
+      const paymentsWithDueModes = applyDueCollectionGroupEdits(
+        existingPayments,
+        dueGroupEdits.map(({ date, total, modeAmounts: amts }) => ({ date, total, modeAmounts: amts })),
+      );
       const payments = mergeEditedRegistrationSplit(paymentsWithDueModes, editedSplit, newFinalForCap);
 
       const updateData: any = {
@@ -916,7 +979,7 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
             {/* Payment Mode Redistribution — only the original registration split */}
             {!isBillCancelled && originalRegPaid > 0 && (
               <div className="space-y-2">
-                <h3 className="font-semibold text-sm">Payment Mode</h3>
+                <h3 className="font-semibold text-sm">Registration Payment Mode</h3>
                 <div className="text-sm text-muted-foreground mb-1">Paid at registration: <span className="font-semibold text-foreground">₹{originalRegPaid}</span></div>
 
                 {isPaymentLocked && (
@@ -964,15 +1027,17 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
               </div>
             )}
 
-            {/* Due collection mode correction — amount stays the same; mode only */}
-            {!isBillCancelled && dueCollectionEntries.length > 0 && (
-              <div className="space-y-2">
-                <h3 className="font-semibold text-sm">Due Collection Mode</h3>
-                <div className="text-sm text-muted-foreground mb-1">
-                  Correct a wrong mode chosen during due collection. Amount cannot be changed.
+            {/* Due collections — one editable mode-split block per collection event */}
+            {!isBillCancelled && dueCollectionGroups.length > 0 && (
+              <div className="space-y-3">
+                <div>
+                  <h3 className="font-semibold text-sm">Due Collection Payment Modes</h3>
+                  <div className="text-sm text-muted-foreground">
+                    Each due collection is edited like registration: change modes or split (e.g. Cash + GPay). Collection totals stay fixed.
+                  </div>
                 </div>
 
-                {isPaymentLocked && (
+                {isPaymentLocked && originalRegPaid <= 0 && (
                   <div className="p-3 rounded border border-orange-300 bg-orange-50 space-y-2">
                     <div className="text-sm text-orange-700 flex items-center gap-2">
                       <Lock className="h-4 w-4" />
@@ -984,39 +1049,75 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
                   </div>
                 )}
 
-                <fieldset disabled={isPaymentLocked} className={isPaymentLocked ? "opacity-60 pointer-events-none" : ""}>
-                  <div className="space-y-2">
-                    {dueCollectionEntries.map((entry, idx) => (
-                      <div key={`${entry.date || "due"}-${idx}`} className="flex flex-wrap items-center gap-2 rounded border p-2">
-                        <span className="text-sm font-medium w-24">₹{Number(entry.amount || 0)}</span>
-                        <span className="text-xs text-muted-foreground min-w-[140px]">
-                          {entry.date ? format(new Date(entry.date), "dd-MM-yyyy hh:mm a") : "Due collection"}
-                        </span>
-                        <Select
-                          value={dueModes[idx] || entry.mode || "Cash"}
-                          onValueChange={(value) => {
-                            setDueModes((prev) => {
-                              const next = [...prev];
-                              next[idx] = value;
-                              return next;
-                            });
-                          }}
-                        >
-                          <SelectTrigger className="w-36 h-8">
-                            <SelectValue placeholder="Mode" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {PAYMENT_MODES.map((mode) => (
-                              <SelectItem key={mode} value={mode}>{mode}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                <fieldset disabled={isPaymentLocked} className={isPaymentLocked ? "opacity-60 pointer-events-none space-y-3" : "space-y-3"}>
+                  {dueGroupEdits.map((group, groupIdx) => {
+                    const allocated = Object.values(group.modeAmounts || {}).reduce((s, n) => s + Number(n || 0), 0);
+                    const mismatch = Math.abs(allocated - Number(group.total || 0)) > 0.01;
+                    const selected = new Set(group.selectedModes || []);
+                    return (
+                      <div key={group.date || `due-${groupIdx}`} className="rounded border p-3 space-y-2">
+                        <div className="flex flex-wrap items-baseline justify-between gap-2">
+                          <div className="text-sm font-medium">
+                            Collection {groupIdx + 1}
+                            {group.date ? (
+                              <span className="ml-2 font-normal text-muted-foreground">
+                                {format(new Date(group.date), "dd-MM-yyyy hh:mm a")}
+                              </span>
+                            ) : null}
+                          </div>
+                          <div className="text-sm">
+                            Total: <span className="font-semibold">₹{group.total}</span>
+                            <span className="text-muted-foreground text-xs ml-1">(locked)</span>
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {PAYMENT_MODES.map((mode) => (
+                            <Button
+                              key={mode}
+                              type="button"
+                              size="sm"
+                              variant={selected.has(mode) ? "default" : "outline"}
+                              onClick={() => toggleDueGroupMode(groupIdx, mode)}
+                            >
+                              {mode}
+                            </Button>
+                          ))}
+                        </div>
+                        {Array.from(selected).map((mode) => (
+                          <div key={mode} className="flex items-center gap-2">
+                            <Label className="w-28 text-sm">{mode}:</Label>
+                            <Input
+                              type="number"
+                              min={0}
+                              className="w-32"
+                              value={group.modeAmounts[mode] || ""}
+                              onChange={(e) => setDueGroupModeAmount(groupIdx, mode, Number(e.target.value) || 0)}
+                              placeholder="₹ Amount"
+                              readOnly={selected.size === 1}
+                            />
+                          </div>
+                        ))}
+                        {selected.size > 1 && (
+                          <div className="text-sm space-y-1 pt-1">
+                            <div className="flex justify-between">
+                              <span>Allocated:</span>
+                              <span className={`font-medium ${mismatch ? "text-destructive" : ""}`}>
+                                ₹{allocated} / ₹{group.total}
+                              </span>
+                            </div>
+                            {mismatch && (
+                              <div className="text-destructive text-xs font-medium">
+                                ⚠ Split amounts must equal ₹{group.total}
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
-                    ))}
-                  </div>
+                    );
+                  })}
                   {dueModesDirty && (
-                    <div className="text-xs text-muted-foreground pt-1">
-                      Mode change will update Daily Report payment-mode columns (same amount).
+                    <div className="text-xs text-muted-foreground">
+                      Mode changes update Daily Report payment-mode columns for those due collections (same amounts).
                     </div>
                   )}
                 </fieldset>
@@ -1024,7 +1125,11 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
             )}
 
             {!isBillCancelled && (
-              <Button onClick={handleSaveDetails} disabled={saving || paymentModesMismatch || overpaymentBlocksSave} className="w-full">
+              <Button
+                onClick={handleSaveDetails}
+                disabled={saving || paymentModesMismatch || dueGroupsMismatch || overpaymentBlocksSave}
+                className="w-full"
+              >
                 <Save className="h-4 w-4 mr-2" />{overpaymentBlocksSave ? "Process Refund Below First" : "Save Details"}
               </Button>
             )}
