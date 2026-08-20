@@ -8,11 +8,13 @@ export function openReportForManualWhatsApp(opts: {
   if (!opts.registrationId || !tests) {
     return { ok: false, error: "No reports available to download" };
   }
+  // Unique name every time — a reused named window often focuses without reloading.
   const url = `/lims/report/${opts.registrationId}?tests=${encodeURIComponent(tests)}&manualWa=1`;
-  const win = window.open(url, "lims-report-manual-wa", "width=960,height=720");
+  const win = window.open(url, `lims-report-manual-wa-${Date.now()}`, "width=960,height=720");
   if (!win) {
     return { ok: false, error: "Popup blocked — allow popups to download the report PDF" };
   }
+  try { win.focus(); } catch { /* ignore */ }
   return { ok: true };
 }
 
@@ -34,17 +36,19 @@ export function queueApprovedReportWhatsApp(opts: {
     const pendingQ = `&pendingReports=${encodeURIComponent(pending.join(", "))}`;
     const url =
       `/lims/report/${opts.registrationId}?tests=${encodeURIComponent(tests)}&queueWa=1${pendingQ}`;
-    const win = window.open(url, "lims-report-wa-queue", "width=960,height=720");
+    // Unique name: reusing "lims-report-wa-queue" left a hung blank tab that never reloaded.
+    const win = window.open(url, `lims-report-wa-queue-${Date.now()}`, "width=960,height=720");
     if (!win) {
       resolve({
         ok: false,
-        error: "Popup blocked ? allow popups so Dispatch All can queue the report PDF",
+        error: "Popup blocked — allow popups so Dispatch All can queue the report PDF",
       });
       return;
     }
+    try { win.focus(); } catch { /* ignore */ }
 
     let settled = false;
-  const timeoutMs = opts.timeoutMs ?? 180_000;
+    const timeoutMs = opts.timeoutMs ?? 180_000;
     const timeout = window.setTimeout(() => {
       finish({ ok: false, error: "Timed out generating report PDF for WhatsApp" });
     }, timeoutMs);

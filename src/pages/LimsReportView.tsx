@@ -161,8 +161,9 @@ const captureWithRetry = async (
     backgroundColor: "#ffffff",
     width,
     height,
-    // data: URLs + cacheBust re-fetch loops can stall snip captures
-    cacheBust: captureOpts?.cacheBust ?? !isSnipPage,
+    // Never default-bust: html-to-image appends ?t=… which breaks data: signature/letterhead URLs
+    // and hung Dispatch WhatsApp PDF generation on multi-page reports.
+    cacheBust: captureOpts?.cacheBust ?? false,
     style: { transform: "none", transformOrigin: "top left" } as Record<string, string>,
   };
   let lastUrl = "";
@@ -1473,7 +1474,10 @@ const LimsReportView = () => {
   }, [loading, packPlan, pages, enableHistograms, analyzerHistograms]);
 
 
-  const buildPdfBlob = async (): Promise<{ blob: Blob; filename: string } | null> => {
+  const buildPdfBlob = async (opts?: {
+    /** Faster capture for Dispatch WhatsApp queue (still includes histograms + snips). */
+    queueMode?: boolean;
+  }): Promise<{ blob: Blob; filename: string } | null> => {
     if (!printRef.current) return null;
 
     // Wait for measure-then-repack to settle so export matches densest safe layout.
@@ -1490,11 +1494,14 @@ const LimsReportView = () => {
     const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
     const NATIVE_W = Math.round((PAGE_WIDTH_MM / 25.4) * 96);
     const NATIVE_H = Math.round((PAGE_HEIGHT_MM / 25.4) * 96);
+    const queueCapture = opts?.queueMode
+      ? { pixelRatio: 2, attempts: 2, quality: 0.88, cacheBust: false } satisfies PageCaptureOptions
+      : undefined;
     for (let i = 0; i < pageElements.length; i++) {
       if (i > 0) pdf.addPage();
       const el = pageElements[i] as HTMLElement;
       // Snip pages use lower pixelRatio inside captureWithRetry (photos hang at PR3).
-      const jpeg = await captureWithRetry(el, NATIVE_W, NATIVE_H, "jpeg");
+      const jpeg = await captureWithRetry(el, NATIVE_W, NATIVE_H, "jpeg", queueCapture);
       pdf.addImage(jpeg, "JPEG", 0, 0, PAGE_WIDTH_MM, PAGE_HEIGHT_MM, undefined, "FAST");
     }
 
@@ -1598,24 +1605,47 @@ const LimsReportView = () => {
   }, [autoShareRequested, hasDownloadedOnce]);
 
   // ── Auto-queue report PDF to WhatsApp Console (when queueWa=1) ──
+  // Wait for paginationReady so measure-repack does not cancel the scheduled start.
+  // Unique popup names are handled in dispatchReportWhatsApp.ts.
   useEffect(() => {
     if (!queueWaRequested) return;
     if (loading) return;
+    if (!paginationReady) return;
+    if (!invoiceBarcodeReady) return;
+    if (autoQueueWaStartedRef.current) return;
+
     if (pages.length === 0) {
-      if (autoQueueWaStartedRef.current) return;
       autoQueueWaStartedRef.current = true;
       const msg = "No report pages to export — snipped images may have failed to load";
       toast.error(msg);
       notifyQueueWa(false, msg);
       return;
     }
-    if (!invoiceBarcodeReady) return;
-    if (autoQueueWaStartedRef.current) return;
+
     autoQueueWaStartedRef.current = true;
-    const t = setTimeout(async () => {
+    let launched = false;
+    let finished = false;
+    let cancelled = false;
+
+    const failSafe = window.setTimeout(() => {
+      if (finished || !launched) return;
+      const msg = "Timed out generating report PDF for WhatsApp";
+      toast.error(msg);
+      notifyQueueWa(false, msg);
+      setDownloading(false);
+    }, 150_000);
+
+    const t = window.setTimeout(async () => {
+      if (cancelled) return;
+      launched = true;
       setDownloading(true);
+      toast.message("Building report PDF…");
       try {
-        const built = await buildPdfBlob();
+        const built = await withTimeout(
+          buildPdfBlob({ queueMode: true }),
+          120_000,
+          "report PDF build",
+        );
         if (!built) throw new Error("No pages to export");
         const report = approvedReports[0];
         const phone = report?.mobile_number || registration?.mobile_number || "";
@@ -1669,25 +1699,62 @@ const LimsReportView = () => {
         toast.error(msg);
         notifyQueueWa(false, msg);
       } finally {
+        finished = true;
+        window.clearTimeout(failSafe);
         setDownloading(false);
       }
-    }, 800);
-    return () => clearTimeout(t);
+    }, 500);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(t);
+      // Keep failSafe while in-flight work continues; only drop it if we never launched.
+      if (!launched) {
+        window.clearTimeout(failSafe);
+        autoQueueWaStartedRef.current = false;
+      }
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [queueWaRequested, loading, pages.length, invoiceBarcodeReady, invoiceBarcodePng]);
+  }, [queueWaRequested, loading, paginationReady, invoiceBarcodeReady, pages.length]);
+
+  // Fail closed if report data never finishes loading in the Dispatch popup.
+  useEffect(() => {
+    if (!queueWaRequested) return;
+    if (!loading) return;
+    if (autoQueueWaStartedRef.current) return;
+    const t = window.setTimeout(() => {
+      if (autoQueueWaStartedRef.current) return;
+      autoQueueWaStartedRef.current = true;
+      const msg = "Timed out loading report for WhatsApp";
+      toast.error(msg);
+      notifyQueueWa(false, msg);
+    }, 90_000);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queueWaRequested, loading]);
 
   // ── Failed Console send: download PDF only (staff send manually) ──
   useEffect(() => {
     if (!manualWaRequested) return;
     if (loading) return;
-    if (pages.length === 0) return;
+    if (!paginationReady) return;
     if (!invoiceBarcodeReady) return;
     if (autoManualWaStartedRef.current) return;
+    if (pages.length === 0) return;
+
     autoManualWaStartedRef.current = true;
-    const t = setTimeout(async () => {
+    let launched = false;
+    let cancelled = false;
+    const t = window.setTimeout(async () => {
+      if (cancelled) return;
+      launched = true;
       setDownloading(true);
       try {
-        const built = await buildPdfBlob();
+        const built = await withTimeout(
+          buildPdfBlob({ queueMode: true }),
+          120_000,
+          "report PDF download",
+        );
         if (!built) throw new Error("No pages to export");
         const url = URL.createObjectURL(built.blob);
         const a = document.createElement("a");
@@ -1705,10 +1772,14 @@ const LimsReportView = () => {
       } finally {
         setDownloading(false);
       }
-    }, 800);
-    return () => clearTimeout(t);
+    }, 500);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(t);
+      if (!launched) autoManualWaStartedRef.current = false;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [manualWaRequested, loading, pages.length, invoiceBarcodeReady, invoiceBarcodePng]);
+  }, [manualWaRequested, loading, paginationReady, invoiceBarcodeReady, pages.length]);
 
   // ── Share on WhatsApp ──
   const handleShareWhatsApp = async () => {
