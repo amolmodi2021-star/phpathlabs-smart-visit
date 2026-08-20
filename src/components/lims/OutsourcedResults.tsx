@@ -18,12 +18,14 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
+import { DescriptiveCombobox } from "./DescriptiveCombobox";
+import TimeResultInput from "./TimeResultInput";
 import OutsourcedPdfEditor, { type OutsourcedPdfEditorHandle } from "./OutsourcedPdfEditor";
 import { useMasterLookup } from "@/hooks/useMasterLookup";
 
 import { expandRegistrationTests } from "@/lib/expandRegistrationTests";
 import { findPatientResultRow } from "@/lib/patientResultLookup";
-import { formatAgeGender } from "@/lib/ageGender";
+import { formatAgeGender, patientAgeYears } from "@/lib/ageGender";
 import { patientDisplayName } from "@/lib/patientDisplayName";
 import { getCurrentUserName } from "@/lib/auth";
 import { fetchAllByIds } from "@/lib/fetchAllRows";
@@ -46,6 +48,20 @@ import {
 } from "@/lib/outsourcedResultOverrides";
 import { calculateResultFlag } from "@/lib/reportFlags";
 import { recalculateRegistrationStatus } from "@/lib/limsStatus";
+
+const QUALITATIVE_PAIRS = [
+  { label: "Absent / Present", values: ["Absent", "Present"] },
+  { label: "Reactive / Non Reactive", values: ["Reactive", "Non Reactive"] },
+  { label: "Positive / Negative", values: ["Positive", "Negative"] },
+];
+const getQualitativeOptions = (expectedValue: string): string[] => {
+  const pair = QUALITATIVE_PAIRS.find((p) => p.label === expectedValue);
+  if (pair) return pair.values;
+  for (const p of QUALITATIVE_PAIRS) {
+    if (p.values.some((v) => v.toLowerCase() === expectedValue.toLowerCase())) return p.values;
+  }
+  return [];
+};
 
 interface OutsourcedTest {
   testId: string;
@@ -309,30 +325,26 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
         rangeType: "numeric", descriptiveOptions: [] as string[], expectedValue: "", normalFindings: "",
       };
     }
-    let patientAge: number | null = null;
-    if (reg.dob) {
-      const birth = new Date(reg.dob);
-      const now = new Date();
-      patientAge = Math.floor((now.getTime() - birth.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
-    }
-    const patientGender = (reg.gender || "").toLowerCase().charAt(0);
-    let candidates = ranges.filter((r: any) => {
+    const gender = (reg?.gender || "").toLowerCase();
+    const ageYears = patientAgeYears(reg?.dob, reg?.age_text);
+    const matchesAge = (r: any) => {
+      if (r.age_min == null && r.age_max == null) return true;
+      if (ageYears == null) return true;
+      const min = r.age_min ?? 0;
+      const max = r.age_max ?? 200;
+      return ageYears >= min && ageYears <= max;
+    };
+    const genderPool = ranges.filter((r: any) => {
       const g = (r.gender || "all").toLowerCase();
-      if (g === "all") return true;
-      if (g === "male" && patientGender === "m") return true;
-      if (g === "female" && patientGender === "f") return true;
-      return false;
+      return g === "all"
+        || g === gender
+        || (gender === "m" && g === "male")
+        || (gender === "f" && g === "female")
+        || (gender.startsWith("male") && g === "male")
+        || (gender.startsWith("female") && g === "female");
     });
-    if (patientAge != null) {
-      const ageMatched = candidates.filter((r: any) => {
-        if (r.age_min == null && r.age_max == null) return true;
-        if (r.age_min != null && patientAge! < r.age_min) return false;
-        if (r.age_max != null && patientAge! > r.age_max) return false;
-        return true;
-      });
-      if (ageMatched.length > 0) candidates = ageMatched;
-    }
-    const best = candidates.find((r: any) => (r.gender || "all").toLowerCase() !== "all") || candidates[0];
+    const pool = (genderPool.length ? genderPool : ranges).filter(matchesAge);
+    const best = pool[0] || ranges[0];
     if (!best) {
       return {
         text: "", low: null as number | null, high: null as number | null,
@@ -1322,17 +1334,53 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
                           savedValue: existing?.result_value,
                         });
 
+                        const abnormal = flag === "H" || flag === "L" || flag === "A" || flag === "X";
+                        const setValue = (v: string) => setEditedValues((prev) => ({ ...prev, [valKey]: v }));
+
                         return (
                           <TableRow key={valKey}>
                             <TableCell className="py-1 text-xs font-mono text-muted-foreground">{p.param_code}</TableCell>
                             <TableCell className="py-1 text-sm">{p.parameter_name}</TableCell>
                             <TableCell className="py-1">
-                              <Input
-                                value={currentValue}
-                                onChange={e => setEditedValues(prev => ({ ...prev, [valKey]: e.target.value }))}
-                                className={`h-7 text-sm ${flag === "H" || flag === "L" || flag === "A" || flag === "X" ? "border-destructive text-destructive font-bold" : ""}`}
-                                placeholder="Enter result"
-                              />
+                              {resolved.rangeType === "time" ? (
+                                <TimeResultInput
+                                  value={currentValue}
+                                  onChange={setValue}
+                                  abnormal={abnormal}
+                                />
+                              ) : resolved.rangeType === "qualitative" && getQualitativeOptions(resolved.expectedValue).length > 0 ? (
+                                <Select value={currentValue || undefined} onValueChange={setValue}>
+                                  <SelectTrigger className={`h-7 text-sm !w-[180px] min-w-[180px] max-w-[180px] ${abnormal ? "border-destructive text-destructive font-bold" : ""}`}>
+                                    <SelectValue placeholder="Select..." />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {getQualitativeOptions(resolved.expectedValue).map((opt: string) => (
+                                      <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              ) : resolved.rangeType === "descriptive" && resolved.descriptiveOptions.length > 0 ? (
+                                <DescriptiveCombobox
+                                  value={currentValue}
+                                  options={resolved.descriptiveOptions}
+                                  onChange={setValue}
+                                  className="w-[180px]"
+                                />
+                              ) : resolved.rangeType === "undefined" && resolved.descriptiveOptions.length > 0 ? (
+                                <DescriptiveCombobox
+                                  value={currentValue}
+                                  options={resolved.descriptiveOptions}
+                                  onChange={setValue}
+                                  className="w-[180px]"
+                                />
+                              ) : (
+                                <Input
+                                  value={currentValue}
+                                  onChange={(e) => setValue(e.target.value)}
+                                  className={`h-7 text-sm ${abnormal ? "border-destructive text-destructive font-bold" : ""}`}
+                                  placeholder="Enter result"
+                                />
+                              )}
                             </TableCell>
                             <TableCell className="py-1">
                               <Input
