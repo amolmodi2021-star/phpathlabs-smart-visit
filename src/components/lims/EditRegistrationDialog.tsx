@@ -16,7 +16,12 @@ import { Save, Ban, RotateCcw, Lock } from "lucide-react";
 import DeletePasswordDialog from "@/components/DeletePasswordDialog";
 import { recalculateRegistrationStatus } from "@/lib/limsStatus";
 import { logPaymentTransaction, syncRegistrationPaymentRow, splitPaymentModes } from "@/lib/paymentTransactions";
-import { mergeEditedRegistrationSplit, splitRegistrationAndDuePayments, sumPaymentEntries } from "@/lib/billPayment";
+import {
+  mergeEditedRegistrationSplit,
+  rebuildPaymentsForPaidCap,
+  splitRegistrationAndDuePayments,
+  sumPaymentEntries,
+} from "@/lib/billPayment";
 import { syncPatientDemographicsByUmr, invalidatePatientCaches } from "@/lib/syncPatientDemographics";
 import DoctorAutocomplete, { ensureDoctor } from "@/components/lims/DoctorAutocomplete";
 
@@ -427,6 +432,17 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
     setSaving(true);
     try {
       const existingRefund = Number(reg.refund_amount || 0);
+      const existingPayments: any[] = Array.isArray(reg.payments) ? reg.payments : [];
+      const preferredSplit = Array.from(selectedModes)
+        .filter(m => (modeAmounts[m] || 0) > 0)
+        .map(m => ({ mode: m, amount: modeAmounts[m] || 0 }));
+      // Cap payments to the new final; never drop due-collection rows or invent a
+      // second registration payment on top of money already collected as due.
+      const payments = rebuildPaymentsForPaidCap(
+        existingPayments,
+        discountCalc.finalAmount,
+        preferredSplit,
+      );
       const updateData: any = {
         tests: discountCalc.updatedTests,
         gross_amount: discountCalc.totalAmount,
@@ -440,9 +456,7 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
         refund_amount: existingRefund + discountOverpayment,
         refund_mode: overpaymentRefundMode,
         refund_date: new Date().toISOString(),
-        payments: Array.from(selectedModes)
-          .filter(m => (modeAmounts[m] || 0) > 0)
-          .map(m => ({ mode: m, amount: modeAmounts[m] || 0 })),
+        payments,
       };
       const { error } = await supabase.from("patient_registrations").update(updateData).eq("id", reg.id);
       if (error) throw error;
@@ -623,11 +637,12 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
         const currentPayments = Array.isArray(reg.payments) ? reg.payments : [];
         // Proportionally scale existing payment modes to match new paid amount
         const origPaid = Number(reg.paid_amount || 0);
-        const scaledPayments: Array<{ mode: string; amount: number }> =
+        const scaledPayments: Array<{ mode: string; amount: number; date?: string }> =
           origPaid > 0 && newPaid !== origPaid
             ? currentPayments.map((p: any) => ({
                 mode: p.mode,
                 amount: Number(((Number(p.amount || 0) * newPaid) / origPaid).toFixed(2)),
+                ...(p.date ? { date: p.date } : {}),
               }))
             : currentPayments;
         await syncRegistrationPaymentRow({

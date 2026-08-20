@@ -120,3 +120,45 @@ export function mergeEditedRegistrationSplit(
   }
   return merged;
 }
+
+/**
+ * Rebuild payments after paid_amount is capped downward (e.g. overpayment refund).
+ * Due-collection rows (`date`) are preserved; undated registration lines are kept
+ * only for the remainder, so we never invent a second full payment on top of due.
+ */
+export function rebuildPaymentsForPaidCap(
+  existingPayments: BillPaymentEntry[] | null | undefined,
+  newPaidCap: number,
+  preferredRegistrationSplit?: BillPaymentEntry[],
+): BillPaymentEntry[] {
+  const { registration, dueCollections } = splitRegistrationAndDuePayments(existingPayments);
+  const duePaid = sumPaymentEntries(dueCollections);
+  const cap = Math.max(0, Number(newPaidCap || 0));
+
+  if (duePaid >= cap - 0.01) {
+    if (duePaid <= cap + 0.01) {
+      return dueCollections.map((p) => ({ ...p }));
+    }
+    const scale = duePaid > 0 ? cap / duePaid : 0;
+    return dueCollections
+      .map((p) => ({ ...p, amount: Number((paymentEntryAmount(p) * scale).toFixed(2)) }))
+      .filter((p) => paymentEntryAmount(p) > 0);
+  }
+
+  const regTarget = cap - duePaid;
+  const source =
+    preferredRegistrationSplit && sumPaymentEntries(preferredRegistrationSplit) > 0.01
+      ? preferredRegistrationSplit
+      : registration;
+  const regPaid = sumPaymentEntries(source);
+  if (regPaid <= 0.01 || regTarget <= 0.01) {
+    return [...dueCollections];
+  }
+  const scaledReg = source
+    .map((p) => ({
+      mode: p.mode,
+      amount: Number(((paymentEntryAmount(p) * regTarget) / regPaid).toFixed(2)),
+    }))
+    .filter((p) => paymentEntryAmount(p) > 0);
+  return [...scaledReg, ...dueCollections];
+}

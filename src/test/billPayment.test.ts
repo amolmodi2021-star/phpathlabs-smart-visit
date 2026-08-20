@@ -5,6 +5,7 @@ import {
   billAmountChanged,
   isOverpaymentMessage,
   mergeEditedRegistrationSplit,
+  rebuildPaymentsForPaidCap,
   OVERPAYMENT_MESSAGE,
   paymentSelectionIsSet,
   paymentsExceedBill,
@@ -60,6 +61,38 @@ describe("billPayment", () => {
       2230,
     );
     expect(merged).toEqual([{ mode: "GPay", amount: 500 }, dueGpay]);
+  });
+
+  it("rejects mode-edit overshoot like bill 2608120032 (undated + dated full bill)", () => {
+    const dueNeft = { mode: "NEFT", amount: 550, date: "2026-08-12T13:34:37.191Z" };
+    expect(() =>
+      mergeEditedRegistrationSplit([dueNeft], [{ mode: "GPay", amount: 550 }], 550),
+    ).toThrow(/already collected as due/);
+    expect(() =>
+      mergeEditedRegistrationSplit(
+        [{ mode: "GPay", amount: 550 }, dueNeft],
+        [{ mode: "Cash", amount: 550 }],
+        550,
+      ),
+    ).toThrow(/cannot exceed the bill value/);
+  });
+
+  it("on overpayment cap, keeps due-only payments and does not invent registration GPay", () => {
+    const rebuilt = rebuildPaymentsForPaidCap([dueGpay], 1730, [{ mode: "GPay", amount: 1730 }]);
+    expect(rebuilt).toEqual([dueGpay]);
+    expect(sumPaymentEntries(rebuilt)).toBe(1730);
+  });
+
+  it("on overpayment cap, scales registration split and preserves due collections", () => {
+    const due = { mode: "NEFT", amount: 200, date: "2026-08-12T13:34:37.191Z" };
+    const rebuilt = rebuildPaymentsForPaidCap(
+      [{ mode: "Cash", amount: 400 }, due],
+      500,
+      [{ mode: "GPay", amount: 400 }],
+    );
+    expect(sumPaymentEntries(rebuilt)).toBe(500);
+    expect(rebuilt.some((p) => p.date && p.mode === "NEFT" && p.amount === 200)).toBe(true);
+    expect(rebuilt.some((p) => !p.date && p.mode === "GPay" && p.amount === 300)).toBe(true);
   });
 
   it("detects a stale collected amount after the bill is discounted", () => {
