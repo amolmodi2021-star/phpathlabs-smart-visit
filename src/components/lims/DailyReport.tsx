@@ -88,7 +88,7 @@ const DailyReport = () => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("patient_registrations")
-        .select("id, visit_type, channel_id, pickup_point_id, title, gender, patient_name, home_visit_charges")
+        .select("id, visit_type, channel_id, pickup_point_id, title, gender, patient_name, home_visit_charges, due_amount, bill_cancelled")
         .in("id", registrationIds);
       if (error) throw error;
       return (data || []) as any[];
@@ -241,6 +241,31 @@ const DailyReport = () => {
     });
   }, [transactions, userFilter, typeFilter, modeFilter]);
 
+  /**
+   * Outstanding dues for bills registered in the filtered set.
+   * Uses live patient_registrations.due_amount (not the frozen Due snapshot on
+   * payment_transactions), so dues already collected no longer inflate the cards.
+   */
+  const addLiveOutstandingDues = (
+    rows: any[],
+    t: { credit_due: number; debit_due: number },
+  ) => {
+    const seen = new Set<string>();
+    rows.forEach((r: any) => {
+      if (r.transaction_type !== "registration_payment") return;
+      const regId = r.registration_id;
+      if (!regId || seen.has(regId)) return;
+      seen.add(regId);
+      const reg: any = regMap[regId];
+      if (!reg || reg.bill_cancelled) return;
+      const liveDue = Math.max(0, Number(reg.due_amount || 0));
+      if (liveDue <= 0.01) return;
+      const billing = getRegInfo(regId).billing;
+      if (billing === "credit") t.credit_due += liveDue;
+      else t.debit_due += liveDue;
+    });
+  };
+
   // Summary totals
   const totals = useMemo(() => {
     const t = {
@@ -258,15 +283,12 @@ const DailyReport = () => {
       t.discount += Number(r.discount_amount || 0);
       t.final += Number(r.final_amount || 0);
       t.paid += getRowPaid(r);
-      const due = Number(r.due_amount || 0);
-      t.due += due;
-      const billing = getRegInfo(r.registration_id).billing;
-      if (billing === "credit") t.credit_due += due;
-      else t.debit_due += due;
+      t.due += Number(r.due_amount || 0);
       t.refund += Number(r.refund_amount || 0);
       if (r.direction === "in") t.total_in += Number(r.total_amount || 0);
       else t.total_out += Number(r.total_amount || 0);
     });
+    addLiveOutstandingDues(filtered, t);
     return t;
   }, [filtered, regMap, channelMap, pickupMap]);
 
@@ -410,7 +432,7 @@ const DailyReport = () => {
       doc.text(sumParts.join("    "), margin + 2, y + 4.5);
       doc.setTextColor(140, 60, 0);
       doc.text(
-        `Credit Dues: ${totals.credit_due.toFixed(0)}    Debit Dues: ${totals.debit_due.toFixed(0)}    Total Due: ${totals.due.toFixed(0)}`,
+        `Credit Dues (unpaid): ${totals.credit_due.toFixed(0)}    Debit Dues (unpaid): ${totals.debit_due.toFixed(0)}`,
         margin + 2,
         y + 9.5,
       );
@@ -797,15 +819,12 @@ const DailyReport = () => {
         t.discount += Number(r.discount_amount || 0);
         t.final += Number(r.final_amount || 0);
         t.paid += getRowPaid(r);
-        const due = Number(r.due_amount || 0);
-        t.due += due;
-        const billing = getRegInfo(r.registration_id).billing;
-        if (billing === "credit") t.credit_due += due;
-        else t.debit_due += due;
+        t.due += Number(r.due_amount || 0);
         t.refund += Number(r.refund_amount || 0);
         if (r.direction === "in") t.total_in += Number(r.total_amount || 0);
         else t.total_out += Number(r.total_amount || 0);
       });
+      addLiveOutstandingDues(rows, t);
       return t;
     };
 
@@ -1143,12 +1162,12 @@ const DailyReport = () => {
         <div className="rounded-lg border border-amber-200 bg-amber-50/60 p-4 text-center">
           <p className="text-xs font-medium text-amber-800/80 uppercase tracking-wide">Credit Dues</p>
           <p className="text-2xl font-bold text-amber-900 mt-1">₹{totals.credit_due.toFixed(2)}</p>
-          <p className="text-[11px] text-muted-foreground mt-1">Pickup / channel credit billing</p>
+          <p className="text-[11px] text-muted-foreground mt-1">Still unpaid on credit bills (live)</p>
         </div>
         <div className="rounded-lg border border-orange-200 bg-orange-50/60 p-4 text-center">
           <p className="text-xs font-medium text-orange-800/80 uppercase tracking-wide">Debit Dues</p>
           <p className="text-2xl font-bold text-orange-900 mt-1">₹{totals.debit_due.toFixed(2)}</p>
-          <p className="text-[11px] text-muted-foreground mt-1">Patient / walk-in unpaid dues</p>
+          <p className="text-[11px] text-muted-foreground mt-1">Still unpaid on debit bills (live)</p>
         </div>
       </div>
 
