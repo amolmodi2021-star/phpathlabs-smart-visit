@@ -1,4 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.97.0";
+import {
+  machineIdAliases,
+  normalizeInterfaceResultCode,
+  orderTestsMatchMachine,
+} from "./interfaceResultCode.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -120,6 +125,99 @@ async function verifyStaffJwt(req: Request): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/** Pick the pending order for this sample that belongs to the posting analyzer. */
+function resolveOrderForMachine(
+  orders: Array<{ id: string; tests?: any[] }> | null | undefined,
+  machineId: string,
+): string | null {
+  if (!orders || orders.length === 0) return null;
+  const matched = orders.find((ord) => orderTestsMatchMachine(ord.tests || [], machineId));
+  return (matched || orders[0]).id;
+}
+
+const XP_HIST_SCALE: Record<string, { x_min: number; x_max: number; x_label: string }> = {
+  WBC: { x_min: 30, x_max: 300, x_label: "Volume (fL)" },
+  RBC: { x_min: 30, x_max: 300, x_label: "Volume (fL)" },
+  PLT: { x_min: 2, x_max: 30, x_label: "Volume (fL)" },
+};
+
+async function storeAnalyzerHistograms(
+  supabase: any,
+  sampleId: string,
+  machineId: string,
+  format: string,
+  histograms: any[],
+): Promise<{ received: number; stored: number }> {
+  const received = Array.isArray(histograms) ? histograms.length : 0;
+  if (received === 0) return { received: 0, stored: 0 };
+
+  const invoiceNumber = sampleId.replace(/-[A-Za-z0-9]+$/, "");
+  const { data: regRows } = await supabase
+    .from("patient_registrations")
+    .select("id")
+    .eq("invoice_number", invoiceNumber)
+    .limit(1);
+  const registrationId = regRows?.[0]?.id || null;
+
+  let testId: string | null = null;
+  if (registrationId) {
+    const { data: tubes } = await supabase
+      .from("sample_tubes")
+      .select("test_ids, test_names")
+      .eq("registration_id", registrationId);
+    for (const tube of tubes || []) {
+      const names = Array.isArray(tube.test_names) ? tube.test_names : [];
+      if (names.some((n: string) => /cbc|complete blood/i.test(String(n || "")))) {
+        const ids = Array.isArray(tube.test_ids) ? tube.test_ids : [];
+        testId = ids[0] || null;
+        break;
+      }
+    }
+  }
+
+  let stored = 0;
+  for (const h of histograms) {
+    const kind = String(h?.kind || "").trim().toUpperCase();
+    const bins = Array.isArray(h?.bins)
+      ? h.bins.map((v: unknown) => Number(v)).filter((n: number) => Number.isFinite(n))
+      : [];
+    if (!kind || bins.length < 10) continue;
+    const scale = XP_HIST_SCALE[kind] || {};
+    const row = {
+      registration_id: registrationId,
+      sample_id: sampleId,
+      test_id: testId,
+      kind,
+      bins,
+      discriminators: Array.isArray(h.discriminators) ? h.discriminators : null,
+      x_min: h.x_min ?? scale.x_min ?? null,
+      x_max: h.x_max ?? scale.x_max ?? null,
+      x_label: h.x_label ?? scale.x_label ?? null,
+      bin_count: bins.length,
+      source: h.source || null,
+      format: format || h.format || null,
+      machine_id: machineId || "",
+      estimated: !!h.estimated,
+      updated_at: new Date().toISOString(),
+    };
+    const { data: existing } = await supabase
+      .from("analyzer_histograms")
+      .select("id")
+      .eq("sample_id", sampleId)
+      .eq("kind", kind)
+      .limit(1);
+    const existingId = existing?.[0]?.id;
+    if (existingId) {
+      const { error } = await supabase.from("analyzer_histograms").update(row).eq("id", existingId);
+      if (!error) stored++;
+    } else {
+      const { error } = await supabase.from("analyzer_histograms").insert(row);
+      if (!error) stored++;
+    }
+  }
+  return { received, stored };
 }
 
 function checkIngestSecret(req: Request): boolean {
@@ -1003,9 +1101,12 @@ Deno.serve(async (req) => {
             const reqBody: any = lr.request_body || {};
             const items: any[] = Array.isArray(reqBody.results) ? reqBody.results : [];
             for (const it of items) {
-              const code = it.code || it.test_code || "";
+              const code = normalizeInterfaceResultCode(
+                it.code || it.test_code || "",
+                it.name || it.test_name || "",
+              );
               if (!code || latestByCode[code] !== undefined) continue;
-              latestByCode[code] = it;
+              latestByCode[code] = { ...it, code };
             }
           }
           const reprocessResults = Object.entries(latestByCode).map(([code, it]) => ({ ...it, code }));
@@ -1349,10 +1450,11 @@ Deno.serve(async (req) => {
 
       // Filter by requesting machine_id (case-insensitive).
       // Tests with no machine_id assigned are treated as universal (returned to any machine).
+      const machineAliases = machineIdAliases(machineId);
       const filteredTests = machineId
         ? enrichedTests.filter((t) =>
             !t.machine_id ||
-            t.machine_id.toLowerCase() === machineId.toLowerCase()
+            machineAliases.has(String(t.machine_id).toLowerCase())
           )
         : enrichedTests;
 
@@ -1404,19 +1506,22 @@ Deno.serve(async (req) => {
 
       const machineId = bodyMachineId || "";
 
-      // Find matching order
+      // Find matching order — prefer the analyzer that posted (CBC vs chemistry
+      // share one barcode / sample_id).
       let orderId = order_id;
       if (!orderId) {
         const { data: orders } = await supabase
-          .from("lims_test_orders").select("id")
+          .from("lims_test_orders").select("id, tests")
           .eq("sample_id", sample_id)
           .in("status", ["pending", "in_progress"])
-          .order("created_at", { ascending: false }).limit(1);
-        orderId = orders?.[0]?.id || null;
+          .order("created_at", { ascending: false });
+        orderId = resolveOrderForMachine(orders || [], machineId);
       }
 
       // Fetch all code mappings for the incoming codes (1 machine_code → N internal codes allowed)
-      const incomingCodes = results.map((r: any) => r.code || r.test_code || "").filter(Boolean);
+      const incomingCodes = results
+        .map((r: any) => normalizeInterfaceResultCode(r.code || r.test_code || "", r.name || r.test_name || ""))
+        .filter(Boolean);
       let codeMap: Record<string, Array<{ mapped_param_code: string; mapped_test_code: string; parameter_name: string }>> = {};
       if (incomingCodes.length > 0) {
         const { data: mappings } = await supabase
@@ -1451,7 +1556,7 @@ Deno.serve(async (req) => {
       const unmappedRows: any[] = [];
 
       for (const r of results) {
-        const code = r.code || r.test_code || "";
+        const code = normalizeInterfaceResultCode(r.code || r.test_code || "", r.name || r.test_name || "");
         const candidates = codeMap[code] || [];
         // Pick the mapping whose internal code is present in this order;
         // otherwise fall back to the first mapping.
@@ -1685,10 +1790,10 @@ Deno.serve(async (req) => {
           const mappedCodes = new Set(mappedRows.map((r) => r.test_code));
           // Also match by original incoming code for direct matches
           const originalCodes = new Set(results.filter((r: any) => {
-            const code = r.code || r.test_code || "";
+            const code = normalizeInterfaceResultCode(r.code || r.test_code || "", r.name || r.test_name || "");
             const first = codeMap[code]?.[0];
             return first && (first.mapped_param_code || first.mapped_test_code);
-          }).map((r: any) => r.code || r.test_code || ""));
+          }).map((r: any) => normalizeInterfaceResultCode(r.code || r.test_code || "", r.name || r.test_name || "")));
 
           const updatedTests = tests.map((t: any) => ({
             ...t,
@@ -1703,6 +1808,14 @@ Deno.serve(async (req) => {
         }
       }
 
+      const histStats = await storeAnalyzerHistograms(
+        supabase,
+        sample_id,
+        machineId,
+        String(body.format || ""),
+        Array.isArray(body.histograms) ? body.histograms : [],
+      );
+
       const responseBody = {
         success: true,
         sample_id,
@@ -1715,6 +1828,8 @@ Deno.serve(async (req) => {
         patient_results_written: patientResultsWritten,
         skipped_no_accepted_owner: skippedNoAcceptedOwner,
         auto_entered_tests: autoEnteredTests,
+        histograms_received: histStats.received,
+        histograms_stored: histStats.stored,
       };
 
       await supabase.from("lims_interface_logs").insert({
