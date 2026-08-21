@@ -388,6 +388,32 @@ async function reclaimStuckClaims(supabase: ReturnType<typeof sb>) {
 const CLAIM_OUTBOX_COLS =
   "id, kind, phone, patient_name, invoice_number, caption, media_url, media_mime, payload, status, attempts, max_attempts, next_retry_at, created_at, last_error";
 
+function normalizeOutboxPhone(raw: unknown): string {
+  return String(raw || "").replace(/\D/g, "").slice(-10);
+}
+
+/** Oldest-first, at most one job per phone; skip phones that already have a claimed job. */
+function pickOutboxJobsSerializingPhone<T extends { phone?: string | null }>(
+  pending: T[],
+  alreadyClaimedPhones: Iterable<string>,
+  limit: number,
+): T[] {
+  const cap = Math.min(Math.max(Math.floor(Number(limit) || 0), 0), pending.length);
+  if (cap <= 0) return [];
+  const busy = new Set(
+    [...alreadyClaimedPhones].map((p) => normalizeOutboxPhone(p)).filter(Boolean),
+  );
+  const picked: T[] = [];
+  for (const row of pending) {
+    if (picked.length >= cap) break;
+    const phone = normalizeOutboxPhone(row.phone);
+    if (!phone || busy.has(phone)) continue;
+    picked.push(row);
+    busy.add(phone);
+  }
+  return picked;
+}
+
 /** Atomically claim pending outbox rows for WhatsApp Console. */
 async function claimOutbox(limit = 5, claimedBy = "whatsapp-console") {
   const supabase = sb();
@@ -395,14 +421,14 @@ async function claimOutbox(limit = 5, claimedBy = "whatsapp-console") {
   await reclaimStuckClaims(supabase);
 
   const nowIso = new Date().toISOString();
-  // Due pending rows: never-scheduled OR retry time reached
+  // Fetch extra pending rows so same-phone filtering can still fill the claim batch.
   const { data: pending, error } = await supabase
     .from("whatsapp_console_outbox")
     .select(CLAIM_OUTBOX_COLS)
     .eq("status", "pending")
     .or(`next_retry_at.is.null,next_retry_at.lte."${nowIso}"`)
     .order("created_at", { ascending: true })
-    .limit(lim);
+    .limit(Math.max(lim * 10, 50));
   if (error) throw error;
   const rows = pending || [];
 
@@ -410,9 +436,20 @@ async function claimOutbox(limit = 5, claimedBy = "whatsapp-console") {
   // Pruning here caused ~145k cloudinary_accounts PostgREST calls (Database Egress).
   if (!rows.length) return [];
 
+  const { data: inFlight } = await supabase
+    .from("whatsapp_console_outbox")
+    .select("phone")
+    .eq("status", "claimed");
+  const selected = pickOutboxJobsSerializingPhone(
+    rows,
+    (inFlight || []).map((r) => String(r.phone || "")),
+    lim,
+  );
+  if (!selected.length) return [];
+
   const now = new Date().toISOString();
   const claimed: any[] = [];
-  for (const row of rows) {
+  for (const row of selected) {
     const { data, error: updErr } = await supabase
       .from("whatsapp_console_outbox")
       .update({

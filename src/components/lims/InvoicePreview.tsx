@@ -16,6 +16,10 @@ import {
   fetchPackageIncludedTestNamesFromLines,
   formatPackageIncludedTests,
 } from "@/lib/invoicePackageTests";
+import {
+  shouldFireBoundInvoiceQueue,
+  type InvoiceQueueToken,
+} from "@/lib/whatsappOutboxQueue";
 
 interface InvoicePreviewProps {
   data: any;
@@ -25,10 +29,15 @@ interface InvoicePreviewProps {
   autoQueueWhatsApp?: boolean;
   /** Hide Print (e.g. home-visit completion receipt — WhatsApp only). */
   hidePrint?: boolean;
-  /** Increment to trigger a WhatsApp queue from parent (batch send). */
-  queueRequestId?: number;
+  /**
+   * Parent-driven sequential queue (home-visit multi-patient). Bound to invoice
+   * number so a leftover token cannot fire the next patient's capture.
+   */
+  queueRequest?: InvoiceQueueToken | null;
+  /** Called when fonts + package names for the current invoice are ready to capture. */
+  onReady?: (invoiceNumber: string) => void;
   /** Called when a triggered / button queue finishes. */
-  onQueueSettled?: (result: { ok: boolean; error?: string }) => void;
+  onQueueSettled?: (result: { ok: boolean; error?: string; invoiceNumber?: string }) => void;
   /** Optional status line shown above actions (e.g. batch send progress). */
   statusHint?: string;
 }
@@ -230,7 +239,8 @@ const InvoicePreview = ({
   onClose,
   autoQueueWhatsApp = false,
   hidePrint = false,
-  queueRequestId = 0,
+  queueRequest = null,
+  onReady,
   onQueueSettled,
   statusHint,
 }: InvoicePreviewProps) => {
@@ -246,6 +256,9 @@ const InvoicePreview = ({
   const [packageNamesReady, setPackageNamesReady] = useState(false);
   const [fontsReady, setFontsReady] = useState(false);
 
+  const onReadyRef = useRef(onReady);
+  onReadyRef.current = onReady;
+
   useEffect(() => {
     if (!open) {
       setConsoleQueued(false);
@@ -254,21 +267,35 @@ const InvoicePreview = ({
       setFontsReady(false);
       return;
     }
-    setConsoleQueued(queuedInvoiceRef.current === String(data?.invoice_number || ""));
+    const invoiceNo = String(data?.invoice_number || "").trim();
+    setConsoleQueued(queuedInvoiceRef.current === invoiceNo);
     setPackageNamesReady(false);
     setFontsReady(false);
     let cancelled = false;
+    let fontsOk = false;
+    let packagesOk = false;
+    const maybeReady = () => {
+      if (cancelled || !fontsOk || !packagesOk || !invoiceNo) return;
+      onReadyRef.current?.(invoiceNo);
+    };
     void ensureInvoiceFontsReady().then(() => {
-      if (!cancelled) setFontsReady(true);
+      if (cancelled) return;
+      fontsOk = true;
+      setFontsReady(true);
+      maybeReady();
     });
     (async () => {
       const lines = Array.isArray(data?.tests) ? data.tests : [];
       try {
-        setPackageTestsById(await fetchPackageIncludedTestNamesFromLines(lines));
+        const map = await fetchPackageIncludedTestNamesFromLines(lines);
+        if (!cancelled) setPackageTestsById(map);
       } catch {
-        setPackageTestsById(new Map());
+        if (!cancelled) setPackageTestsById(new Map());
       }
-      if (!cancelled) setPackageNamesReady(true);
+      if (cancelled) return;
+      packagesOk = true;
+      setPackageNamesReady(true);
+      maybeReady();
       const { data: rows } = await supabase
         .from("app_settings")
         .select("setting_key, setting_value")
@@ -328,7 +355,7 @@ const InvoicePreview = ({
     const invoiceNo = String(data?.invoice_number || "");
     const patientLabel = patientDisplayName(data) || data?.patient_name || "patient";
     const settle = (ok: boolean, error?: string) => {
-      onQueueSettled?.({ ok, error });
+      onQueueSettled?.({ ok, error, invoiceNumber: invoiceNo });
     };
     if (!open || !invoiceNo || !data?.mobile_number) {
       toast.error("Mobile number required to send on WhatsApp");
@@ -480,14 +507,24 @@ const InvoicePreview = ({
     }
   }, [open, data, brand, renderBarcode, isPickupInvoice, onQueueSettled]);
 
-  // Parent-driven batch queue (e.g. home-visit multi-invoice send).
-  const lastQueueReq = useRef(0);
+  // Parent-driven sequential queue (home-visit multi-patient). Bound to invoice #.
+  const lastQueueNonce = useRef(0);
   useEffect(() => {
-    if (!queueRequestId || queueRequestId === lastQueueReq.current) return;
-    if (!open || !data?.invoice_number || !packageNamesReady || !fontsReady) return;
-    lastQueueReq.current = queueRequestId;
+    const invoiceNo = String(data?.invoice_number || "").trim();
+    const ready = open && packageNamesReady && fontsReady;
+    if (
+      !shouldFireBoundInvoiceQueue({
+        token: queueRequest,
+        lastNonce: lastQueueNonce.current,
+        currentInvoiceNumber: invoiceNo,
+        ready,
+      })
+    ) {
+      return;
+    }
+    lastQueueNonce.current = Number(queueRequest?.nonce || 0);
     void queueInvoiceViaWaApi();
-  }, [queueRequestId, open, data?.invoice_number, packageNamesReady, fontsReady, queueInvoiceViaWaApi]);
+  }, [queueRequest, open, data?.invoice_number, packageNamesReady, fontsReady, queueInvoiceViaWaApi]);
 
   // New registration: queue invoice to durable outbox once barcode/layout is ready.
   useEffect(() => {
