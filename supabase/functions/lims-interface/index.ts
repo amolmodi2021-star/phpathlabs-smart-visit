@@ -1,7 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.97.0";
 import {
+  collapseInterfaceResultRows,
+  interfaceResultCodeFromRow,
+  isDilutionToken,
   machineIdAliases,
-  normalizeInterfaceResultCode,
   orderTestsMatchMachine,
 } from "./interfaceResultCode.ts";
 
@@ -1101,10 +1103,7 @@ Deno.serve(async (req) => {
             const reqBody: any = lr.request_body || {};
             const items: any[] = Array.isArray(reqBody.results) ? reqBody.results : [];
             for (const it of items) {
-              const code = normalizeInterfaceResultCode(
-                it.code || it.test_code || "",
-                it.name || it.test_name || "",
-              );
+              const code = interfaceResultCodeFromRow(it);
               if (!code || latestByCode[code] !== undefined) continue;
               latestByCode[code] = { ...it, code };
             }
@@ -1505,6 +1504,8 @@ Deno.serve(async (req) => {
       }
 
       const machineId = bodyMachineId || "";
+      // Prefer mapped codes (008); fall back from ASTM 0.0 / ^^^008^0.0.
+      const ingestResults = collapseInterfaceResultRows(results);
 
       // Find matching order — prefer the analyzer that posted (CBC vs chemistry
       // share one barcode / sample_id).
@@ -1519,9 +1520,7 @@ Deno.serve(async (req) => {
       }
 
       // Fetch all code mappings for the incoming codes (1 machine_code → N internal codes allowed)
-      const incomingCodes = results
-        .map((r: any) => normalizeInterfaceResultCode(r.code || r.test_code || "", r.name || r.test_name || ""))
-        .filter(Boolean);
+      const incomingCodes = ingestResults.map((r: any) => r.code).filter(Boolean);
       let codeMap: Record<string, Array<{ mapped_param_code: string; mapped_test_code: string; parameter_name: string }>> = {};
       if (incomingCodes.length > 0) {
         const { data: mappings } = await supabase
@@ -1555,8 +1554,8 @@ Deno.serve(async (req) => {
       const mappedRows: any[] = [];
       const unmappedRows: any[] = [];
 
-      for (const r of results) {
-        const code = normalizeInterfaceResultCode(r.code || r.test_code || "", r.name || r.test_name || "");
+      for (const r of ingestResults) {
+        const code = r.code || "";
         const candidates = codeMap[code] || [];
         // Pick the mapping whose internal code is present in this order;
         // otherwise fall back to the first mapping.
@@ -1789,11 +1788,14 @@ Deno.serve(async (req) => {
           const tests = (order.tests as any[]) || [];
           const mappedCodes = new Set(mappedRows.map((r) => r.test_code));
           // Also match by original incoming code for direct matches
-          const originalCodes = new Set(results.filter((r: any) => {
-            const code = normalizeInterfaceResultCode(r.code || r.test_code || "", r.name || r.test_name || "");
-            const first = codeMap[code]?.[0];
-            return first && (first.mapped_param_code || first.mapped_test_code);
-          }).map((r: any) => normalizeInterfaceResultCode(r.code || r.test_code || "", r.name || r.test_name || "")));
+          const originalCodes = new Set(
+            ingestResults
+              .filter((r: any) => {
+                const first = codeMap[r.code]?.[0];
+                return first && (first.mapped_param_code || first.mapped_test_code);
+              })
+              .map((r: any) => r.code),
+          );
 
           const updatedTests = tests.map((t: any) => ({
             ...t,
@@ -1816,6 +1818,13 @@ Deno.serve(async (req) => {
         Array.isArray(body.histograms) ? body.histograms : [],
       );
 
+      const dilutionFallback = (results as any[]).filter((r) => {
+        const original = String(r?.code ?? r?.test_code ?? "").trim();
+        if (!isDilutionToken(original) && !original.includes("^")) return false;
+        const recovered = interfaceResultCodeFromRow(r);
+        return !!recovered && recovered !== original;
+      }).length;
+
       const responseBody = {
         success: true,
         sample_id,
@@ -1823,6 +1832,7 @@ Deno.serve(async (req) => {
         mapped: mappedRows.length,
         unmapped: finalUnmappedRows.length,
         ignored: ignoredCount,
+        dilution_fallback: dilutionFallback,
         order_id: orderId,
         registration_resolved: registrationResolved,
         patient_results_written: patientResultsWritten,

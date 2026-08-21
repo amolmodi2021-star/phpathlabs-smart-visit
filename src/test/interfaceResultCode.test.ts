@@ -4,6 +4,7 @@ import {
   isDilutionToken,
   machineIdAliases,
   normalizeInterfaceResultCode,
+  collapseInterfaceResultRows,
   orderTestsMatchMachine,
 } from "../../supabase/functions/lims-interface/interfaceResultCode";
 
@@ -32,6 +33,45 @@ describe("normalizeInterfaceResultCode", () => {
   it("leaves an unmatched dilution code unchanged", () => {
     expect(normalizeInterfaceResultCode("0.0", "dilution")).toBe("0.0");
     expect(normalizeInterfaceResultCode("0.0", "")).toBe("0.0");
+  });
+});
+
+describe("collapseInterfaceResultRows", () => {
+  it("keeps a proper Indiko mapped code as-is", () => {
+    const out = collapseInterfaceResultRows([
+      { code: "008", name: "C-REACTIVE PROTEIN (CRP)", value: "5.39" },
+      { code: "022", name: "Urea", value: "18.9" },
+    ]);
+    expect(out.map((r) => r.code)).toEqual(["008", "022"]);
+  });
+
+  it("falls back from 0.0 to the ASTM assay code", () => {
+    const out = collapseInterfaceResultRows([
+      { code: "0.0", name: "^^^008^0.0", value: "9.55" },
+      { code: "0.0", name: "^^^022^0.0", value: "22.1" },
+    ]);
+    expect(out).toEqual([
+      { code: "008", name: "^^^008^0.0", value: "9.55" },
+      { code: "022", name: "^^^022^0.0", value: "22.1" },
+    ]);
+  });
+
+  it("prefers the proper mapped code when 008 and 0.0 both arrive", () => {
+    const out = collapseInterfaceResultRows([
+      { code: "0.0", name: "^^^008^0.0", value: "old" },
+      { code: "008", name: "C-REACTIVE PROTEIN (CRP)", value: "5.39" },
+    ]);
+    expect(out).toEqual([
+      { code: "008", name: "C-REACTIVE PROTEIN (CRP)", value: "5.39" },
+    ]);
+  });
+
+  it("still uses 0.0 fallback when that is the only row", () => {
+    const out = collapseInterfaceResultRows([
+      { code: "0.0", name: "^^^008^0.0", value: "5.39" },
+    ]);
+    expect(out[0].code).toBe("008");
+    expect(out[0].value).toBe("5.39");
   });
 });
 
