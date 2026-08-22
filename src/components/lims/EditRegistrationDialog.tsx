@@ -29,8 +29,9 @@ import {
 } from "@/lib/billPayment";
 import { syncPatientDemographicsByUmr, invalidatePatientCaches } from "@/lib/syncPatientDemographics";
 import DoctorAutocomplete, { ensureDoctor } from "@/components/lims/DoctorAutocomplete";
+import { genderFromTitle, PATIENT_TITLES } from "@/lib/normalizePatientFields";
 
-const TITLES = ["Mr.", "Mrs.", "Ms.", "Master", "Miss", "Baby Of", "Dr."];
+const TITLES = [...PATIENT_TITLES];
 
 interface EditRegistrationDialogProps {
   open: boolean;
@@ -174,8 +175,8 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
 
   // Title → Gender auto
   useEffect(() => {
-    if (["Mr.", "Master"].includes(title)) setGender("Male");
-    else if (["Mrs.", "Ms.", "Miss"].includes(title)) setGender("Female");
+    const g = genderFromTitle(title);
+    if (g) setGender(g);
   }, [title]);
 
   const tests: any[] = reg ? (Array.isArray(reg.tests) ? reg.tests : []) : [];

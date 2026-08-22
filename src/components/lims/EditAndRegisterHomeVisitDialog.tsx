@@ -17,6 +17,7 @@ import { format, parse, isValid, differenceInYears } from "date-fns";
 import { getCurrentUserName } from "@/lib/auth";
 import { registerPatientAtomic } from "@/lib/registerPatientAtomic";
 import { homeVisitHasPatientChoice, umrForHomeVisitRegistration } from "@/lib/findPatientUmr";
+import { genderFromTitle, PATIENT_TITLES_DOTTED } from "@/lib/normalizePatientFields";
 
 interface EditTest {
   test_id: string;
@@ -66,9 +67,12 @@ const EditAndRegisterHomeVisitDialog = ({ visit, open, onClose }: Props) => {
 
   const handleTitleChange = (val: string) => {
     setTitle(val);
-    if (val === "Mr." || val === "Master.") setGender("Male");
-    else if (val === "Mrs." || val === "Ms." || val === "Miss.") setGender("Female");
-    else if (val === "Dr." || val === "Baby Of.") { setGenderConfirmOpen(true); setPendingGender(""); }
+    const g = genderFromTitle(val);
+    if (g) setGender(g);
+    else if (val === "Dr." || val === "Baby Of.") {
+      setGenderConfirmOpen(true);
+      setPendingGender("");
+    }
   };
 
   const { data: allTests = [] } = useQuery({ queryKey: ["all_selectable_tests"], queryFn: getAllSelectableTests });
@@ -279,6 +283,7 @@ const EditAndRegisterHomeVisitDialog = ({ visit, open, onClose }: Props) => {
         test_id: t.test_id, test_name: t.test_name, price: t.price,
         discounted_price: t.discountedPrice,
         discount_applicable: t.discount_applicable, fasting_required: t.fasting_required,
+        item_type: (t as any).item_type || "test",
       }));
 
       // Build payments
@@ -392,7 +397,7 @@ const EditAndRegisterHomeVisitDialog = ({ visit, open, onClose }: Props) => {
               <Select value={title} onValueChange={handleTitleChange}>
                 <SelectTrigger className="h-10"><SelectValue placeholder="Title" /></SelectTrigger>
                 <SelectContent>
-                  {["Mr.", "Mrs.", "Ms.", "Miss.", "Master.", "Baby Of.", "Dr."].map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                  {PATIENT_TITLES_DOTTED.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>

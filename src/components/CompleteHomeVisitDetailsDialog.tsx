@@ -20,6 +20,7 @@ import {
   maskDmyDob,
   normalizeGender,
   normalizeTitle,
+  genderFromTitle,
   PATIENT_TITLES,
   toDateInputValue,
 } from "@/lib/normalizePatientFields";
@@ -79,7 +80,7 @@ async function generateReceiptNumber(): Promise<string> {
     .gte("updated_at", `${todayStart}T00:00:00`);
   const seq = ((count || 0) + 1).toString().padStart(4, "0");
   return `HVR${datePrefix}${seq}`;
-};
+}
 
 const CompleteHomeVisitDetailsDialog = ({ visit, open, onClose, onCompleted }: Props) => {
   const qc = useQueryClient();
@@ -173,8 +174,8 @@ const CompleteHomeVisitDetailsDialog = ({ visit, open, onClose, onCompleted }: P
   }, [open]);
 
   useEffect(() => {
-    if (["Mr.", "Master"].includes(title)) setGender("Male");
-    else if (["Mrs.", "Ms.", "Miss"].includes(title)) setGender("Female");
+    const g = genderFromTitle(title);
+    if (g) setGender(g);
     else if (["Baby Of", "Dr."].includes(title)) setGender("");
   }, [title]);
 

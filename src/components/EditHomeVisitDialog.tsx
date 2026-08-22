@@ -22,6 +22,7 @@ import {
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
   AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
 } from "@/components/ui/alert-dialog";
+import { genderFromTitle, PATIENT_TITLES_DOTTED } from "@/lib/normalizePatientFields";
 
 interface EditTest {
   id?: string;
@@ -110,11 +111,9 @@ const EditHomeVisitDialog = ({ visit, open, onClose, completionMode, onCompletio
 
   const handleTitleChange = (val: string) => {
     setTitle(val);
-    if (val === "Mr." || val === "Master.") {
-      setGender("Male");
-    } else if (val === "Mrs." || val === "Ms." || val === "Miss.") {
-      setGender("Female");
-    } else if (val === "Dr." || val === "Baby Of.") {
+    const g = genderFromTitle(val);
+    if (g) setGender(g);
+    else if (val === "Dr." || val === "Baby Of.") {
       setGenderConfirmOpen(true);
       setPendingGender("");
     }
@@ -431,13 +430,9 @@ const EditHomeVisitDialog = ({ visit, open, onClose, completionMode, onCompletio
                   <Select value={title} onValueChange={handleTitleChange}>
                     <SelectTrigger className="h-10"><SelectValue placeholder="Title *" /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="Mr.">Mr.</SelectItem>
-                      <SelectItem value="Mrs.">Mrs.</SelectItem>
-                      <SelectItem value="Ms.">Ms.</SelectItem>
-                      <SelectItem value="Miss.">Miss.</SelectItem>
-                      <SelectItem value="Master.">Master.</SelectItem>
-                      <SelectItem value="Baby Of.">Baby Of.</SelectItem>
-                      <SelectItem value="Dr.">Dr.</SelectItem>
+                      {PATIENT_TITLES_DOTTED.map((t) => (
+                        <SelectItem key={t} value={t}>{t}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>

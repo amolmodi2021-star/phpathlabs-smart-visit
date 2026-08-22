@@ -1,10 +1,36 @@
 /** Canonical titles used by LIMS registration selects. */
-export const PATIENT_TITLES = ["Mr.", "Mrs.", "Ms.", "Master", "Miss", "Baby Of", "Dr."] as const;
+export const PATIENT_TITLES = [
+  "Mr.",
+  "Mrs.",
+  "Ms.",
+  "Master",
+  "Miss",
+  "Baby Of",
+  "Dr.",
+  "M. S.",
+  "S. S.",
+] as const;
+
+/** Titles with trailing period variants used by some home-visit dialogs. */
+export const PATIENT_TITLES_DOTTED = [
+  "Mr.",
+  "Mrs.",
+  "Ms.",
+  "Miss.",
+  "Master.",
+  "Baby Of.",
+  "Dr.",
+  "M. S.",
+  "S. S.",
+] as const;
 
 /** Map legacy / messy title strings (e.g. MR., MRS) onto the registration select. */
 export function normalizeTitle(raw: string | null | undefined): string {
   const t = String(raw ?? "").replace(/\s+/g, " ").trim();
   if (!t) return "";
+  // Initials with a period after the first letter (must run before "ms" -> Ms.)
+  if (/^m\.\s*s\.?$/i.test(t)) return "M. S.";
+  if (/^s\.\s*s\.?$/i.test(t)) return "S. S.";
   const compact = t.replace(/\./g, "").replace(/\s+/g, "").toLowerCase();
   const aliases: Record<string, string> = {
     mr: "Mr.",
@@ -24,6 +50,15 @@ export function normalizeTitle(raw: string | null | undefined): string {
     (x) => x.toLowerCase() === t.toLowerCase() || x.replace(/\./g, "").replace(/\s+/g, "").toLowerCase() === compact,
   );
   return exact || "";
+}
+
+/** Auto gender from title. Empty string = leave / ask (Dr., Baby Of). */
+export function genderFromTitle(raw: string | null | undefined): "Male" | "Female" | "" {
+  const normalized = normalizeTitle(raw);
+  const t = normalized || String(raw ?? "").replace(/\s+/g, " ").trim();
+  if (t === "Mr." || t === "Master" || t === "Master." || t === "M. S.") return "Male";
+  if (t === "Mrs." || t === "Ms." || t === "Miss" || t === "Miss." || t === "S. S.") return "Female";
+  return "";
 }
 
 export function normalizeGender(raw: string | null | undefined): string {
@@ -49,7 +84,7 @@ export function toDateInputValue(raw: string | null | undefined): string {
   return "";
 }
 
-/** yyyy-mm-dd → dd-mm-yyyy without timezone shifts. */
+/** yyyy-mm-dd -> dd-mm-yyyy without timezone shifts. */
 export function isoToDmy(raw: string | null | undefined): string {
   const iso = toDateInputValue(raw);
   if (!iso) return "";

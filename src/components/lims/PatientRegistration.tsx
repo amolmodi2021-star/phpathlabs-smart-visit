@@ -21,7 +21,7 @@ import InvoicePreview from "./InvoicePreview";
 import PatientSelectDialog, { type PatientPick } from "./PatientSelectDialog";
 import DoctorAutocomplete, { ensureDoctor } from "./DoctorAutocomplete";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { isoToDmy, maskDmyDob, normalizeGender, normalizeTitle, PATIENT_TITLES, toDateInputValue } from "@/lib/normalizePatientFields";
+import { isoToDmy, maskDmyDob, normalizeGender, normalizeTitle, genderFromTitle, PATIENT_TITLES, toDateInputValue } from "@/lib/normalizePatientFields";
 import {
   clearRegistrationDraft,
   loadRegistrationDraft,
@@ -368,8 +368,8 @@ const PatientRegistration = ({
 
   // Title → Gender auto-link
   useEffect(() => {
-    if (["Mr.", "Master"].includes(title)) setGender("Male");
-    else if (["Mrs.", "Ms.", "Miss"].includes(title)) setGender("Female");
+    const g = genderFromTitle(title);
+    if (g) setGender(g);
     else if (["Baby Of", "Dr."].includes(title)) setGender("");
   }, [title]);
 
