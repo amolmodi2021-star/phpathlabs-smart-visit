@@ -25,6 +25,10 @@ import {
 } from "@/lib/billPayment";
 import { useResetPaymentsWhenBillChanges } from "@/hooks/useResetPaymentsWhenBillChanges";
 import OverpaymentAlertDialog from "@/components/lims/OverpaymentAlertDialog";
+import {
+  nextInvoiceQueueToken,
+  type InvoiceQueueToken,
+} from "@/lib/whatsappOutboxQueue";
 
 const PAYMENT_MODES = ["Cash", "GPay", "Paytm", "Credit Card", "NEFT"];
 
@@ -74,7 +78,7 @@ function mapVisitToPrefill(
 
 /**
  * Home Visits → Completed: same New Registration form (trimmed), multi-patient session,
- * cumulative payment, then LIMS invoice numbers + WhatsApp queue via InvoicePreview.
+ * sequential LIMS invoice/UMR allocation, then WhatsApp outbox in that same order.
  */
 const HomeVisitRegistrationWizard = ({ visit, open, onClose }: Props) => {
   const qc = useQueryClient();
@@ -88,11 +92,18 @@ const HomeVisitRegistrationWizard = ({ visit, open, onClose }: Props) => {
   const [modeAmounts, setModeAmounts] = useState<Record<string, number>>({});
   const [invoiceBatch, setInvoiceBatch] = useState<any[]>([]);
   const [previewIndex, setPreviewIndex] = useState(0);
-  const [queueRequestId, setQueueRequestId] = useState(0);
+  const [queueRequest, setQueueRequest] = useState<InvoiceQueueToken | null>(null);
   const [batchSending, setBatchSending] = useState(false);
   const [sendStatus, setSendStatus] = useState("");
+  const [sendMarks, setSendMarks] = useState<Array<"pending" | "sending" | "queued" | "failed">>([]);
+  const [previewOpen, setPreviewOpen] = useState(true);
   const [overpaymentInfo, setOverpaymentInfo] = useState<{ collected: number; bill: number } | null>(null);
-  const batchWaitRef = useRef<{ resolve: (ok: boolean) => void } | null>(null);
+  const batchWaitRef = useRef<{ invoiceNumber: string; resolve: (ok: boolean) => void } | null>(null);
+  const readyInvoiceRef = useRef<string | null>(null);
+  const readyWaitersRef = useRef<Map<string, () => void>>(new Map());
+  const queueNonceRef = useRef(0);
+  const sendAllInvoicesRef = useRef<(regs?: any[]) => Promise<void>>(async () => {});
+  const sendingLockRef = useRef(false);
 
   const primaryMobile = String(visit?.estimates?.whatsapp_number || "").replace(/\D/g, "").slice(-10);
 
@@ -322,6 +333,9 @@ const HomeVisitRegistrationWizard = ({ visit, open, onClose }: Props) => {
         );
 
         const isPrimary = i === 0;
+        // Always link extra family members to this visit. Invoice + UMR numbers
+        // are allocated inside register_patient_atomic (row-locked counters) and
+        // this loop awaits each patient so allocations stay in session order.
         const regData = {
           mobile_number: draft.mobile,
           patient_name: draft.patientName,
@@ -360,7 +374,8 @@ const HomeVisitRegistrationWizard = ({ visit, open, onClose }: Props) => {
           report_language: (draft.reportLanguage || "English").toUpperCase(),
           registered_by: stampedBy,
           completing_phlebo_name: phlebo,
-          home_visit_id: isPrimary ? visit.id : null,
+          // Link every patient on this visit; only primary patches the visit row.
+          home_visit_id: visit.id,
         };
 
         const paymentModeStr = patientPayments.map((p) => `${p.mode}: ₹${p.amount}`).join(", ");
@@ -444,7 +459,11 @@ const HomeVisitRegistrationWizard = ({ visit, open, onClose }: Props) => {
       setInvoiceBatch(regs);
       setPreviewIndex(0);
       setSendStatus("");
+      setSendMarks(regs.map(() => "pending"));
+      setPreviewOpen(true);
+      setQueueRequest(null);
       setStep("invoices");
+      void sendAllInvoicesRef.current(regs);
     },
     onError: (e: Error) => {
       if (isOverpaymentMessage(e.message)) {
@@ -457,40 +476,158 @@ const HomeVisitRegistrationWizard = ({ visit, open, onClose }: Props) => {
     },
   });
 
-  const onQueueSettled = useCallback((result: { ok: boolean; error?: string }) => {
-    batchWaitRef.current?.resolve(!!result.ok);
+  const onPreviewReady = useCallback((invoiceNumber: string) => {
+    const no = String(invoiceNumber || "").trim();
+    if (!no) return;
+    readyInvoiceRef.current = no;
+    const waiter = readyWaitersRef.current.get(no);
+    if (waiter) {
+      readyWaitersRef.current.delete(no);
+      waiter();
+    }
+  }, []);
+
+  const onQueueSettled = useCallback((result: { ok: boolean; error?: string; invoiceNumber?: string }) => {
+    const waiting = batchWaitRef.current;
+    if (!waiting) return;
+    const settledNo = String(result.invoiceNumber || "").trim();
+    if (settledNo && waiting.invoiceNumber !== settledNo) return;
+    waiting.resolve(!!result.ok);
     batchWaitRef.current = null;
   }, []);
 
-  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const waitForPreviewReady = (invoiceNumber: string, timeoutMs = 20000) => {
+    const no = String(invoiceNumber || "").trim();
+    return new Promise<boolean>((resolve) => {
+      if (readyInvoiceRef.current === no) {
+        resolve(true);
+        return;
+      }
+      let settled = false;
+      const finish = (ok: boolean) => {
+        if (settled) return;
+        settled = true;
+        if (readyWaitersRef.current.get(no) === fire) readyWaitersRef.current.delete(no);
+        resolve(ok);
+      };
+      const fire = () => {
+        window.clearTimeout(timer);
+        finish(true);
+      };
+      const timer = window.setTimeout(() => finish(false), timeoutMs);
+      readyWaitersRef.current.set(no, fire);
+      if (readyInvoiceRef.current === no) fire();
+    });
+  };
 
-  const sendAllInvoices = async () => {
-    if (!invoiceBatch.length || batchSending) return;
+  const sendAllInvoices = async (regs?: any[]) => {
+    const batch = Array.isArray(regs) && regs.length ? regs : invoiceBatch;
+    if (!batch.length || sendingLockRef.current) return;
+    sendingLockRef.current = true;
+    const resendAll = sendMarks.length === batch.length && sendMarks.every((m) => m === "queued");
     setBatchSending(true);
+    setPreviewOpen(true);
+    setSendMarks((prev) => {
+      if (resendAll) return batch.map(() => "pending");
+      if (prev.length === batch.length) return prev.map((m) => (m === "queued" ? "queued" : "pending"));
+      return batch.map(() => "pending");
+    });
     try {
-      for (let i = 0; i < invoiceBatch.length; i++) {
-        const inv = invoiceBatch[i];
+      let queued = 0;
+      let failed = 0;
+      let shownInvoice = previewOpen
+        ? String(invoiceBatch[previewIndex]?.invoice_number || "").trim()
+        : "";
+      for (let i = 0; i < batch.length; i++) {
+        const inv = batch[i];
+        const invoiceNo = String(inv?.invoice_number || "").trim();
         const name = `${inv.title || ""} ${inv.patient_name || ""}`.trim() || inv.patient_name || "patient";
-        setPreviewIndex(i);
-        setSendStatus(`Sending invoice to ${name}…`);
-        await sleep(400);
-        const wait = new Promise<boolean>((resolve) => {
-          batchWaitRef.current = { resolve };
+        if (!invoiceNo) {
+          failed += 1;
+          setSendMarks((prev) => {
+            const next = [...prev];
+            next[i] = "failed";
+            return next;
+          });
+          toast.error(`Missing invoice number for ${name}`);
+          continue;
+        }
+        if (!resendAll && sendMarks[i] === "queued") {
+          queued += 1;
+          continue;
+        }
+
+        setSendMarks((prev) => {
+          const next = prev.length === batch.length ? [...prev] : batch.map(() => "pending" as const);
+          next[i] = "sending";
+          return next;
         });
-        setQueueRequestId((n) => n + 1);
-        const ok = await Promise.race([wait, sleep(45000).then(() => false)]);
-        if (!ok) toast.error(`Failed queuing invoice for ${name}`);
-        if (i < invoiceBatch.length - 1) {
-          setSendStatus(`Queued for ${name}. Next in 3 seconds…`);
-          await sleep(3000);
+        if (shownInvoice !== invoiceNo) readyInvoiceRef.current = null;
+        setPreviewIndex(i);
+        setQueueRequest(null);
+        setPreviewOpen(true);
+        setSendStatus(`Queuing invoice ${i + 1} of ${batch.length} — ${name}`);
+        await new Promise((r) => window.setTimeout(r, 0));
+
+        const ready = await waitForPreviewReady(invoiceNo);
+        shownInvoice = invoiceNo;
+        if (ready) await new Promise((r) => window.setTimeout(r, 60));
+        if (!ready) {
+          failed += 1;
+          setSendMarks((prev) => {
+            const next = [...prev];
+            next[i] = "failed";
+            return next;
+          });
+          toast.error(`Invoice preview not ready for ${name}`);
+          continue;
+        }
+
+        const token = nextInvoiceQueueToken(invoiceNo, queueNonceRef.current);
+        queueNonceRef.current = token.nonce;
+        const wait = new Promise<boolean>((resolve) => {
+          batchWaitRef.current = { invoiceNumber: invoiceNo, resolve };
+        });
+        setQueueRequest(token);
+        const ok = await Promise.race([
+          wait,
+          new Promise<boolean>((resolve) => window.setTimeout(() => resolve(false), 45000)),
+        ]);
+        if (batchWaitRef.current?.invoiceNumber === invoiceNo) batchWaitRef.current = null;
+        setSendMarks((prev) => {
+          const next = [...prev];
+          next[i] = ok ? "queued" : "failed";
+          return next;
+        });
+        if (!ok) {
+          failed += 1;
+          toast.error(`Failed queuing invoice for ${name}`);
+        } else {
+          queued += 1;
         }
       }
-      setSendStatus("All invoices queued for WhatsApp");
-      toast.success("All invoices queued one by one");
+      if (failed === 0) {
+        setSendStatus(
+          batch.length === 1
+            ? "Invoice queued for WhatsApp"
+            : `All ${batch.length} invoices queued for WhatsApp in order`,
+        );
+        toast.success(
+          batch.length === 1
+            ? "Invoice queued for WhatsApp"
+            : `${batch.length} invoices queued in order for WhatsApp`,
+        );
+      } else {
+        setSendStatus(`Queued ${queued} of ${batch.length} — ${failed} failed`);
+        toast.error(`${failed} invoice${failed === 1 ? "" : "s"} failed to queue`);
+      }
     } finally {
+      sendingLockRef.current = false;
       setBatchSending(false);
+      setQueueRequest(null);
     }
   };
+  sendAllInvoicesRef.current = sendAllInvoices;
 
   if (!visit || !prefill) return null;
   const activeInvoice = invoiceBatch[previewIndex] || null;
@@ -732,7 +869,14 @@ const HomeVisitRegistrationWizard = ({ visit, open, onClose }: Props) => {
           {step === "invoices" && (
             <div className="space-y-4">
               <div className="space-y-2">
-                {invoiceBatch.map((inv, idx) => (
+                {invoiceBatch.map((inv, idx) => {
+                  const mark = sendMarks[idx] || "pending";
+                  const markLabel =
+                    mark === "queued" ? "Queued"
+                    : mark === "sending" ? "Queuing…"
+                    : mark === "failed" ? "Failed"
+                    : "Waiting";
+                  return (
                   <div
                     key={inv.id || idx}
                     className={`flex justify-between rounded-lg border p-3 text-sm ${previewIndex === idx ? "border-primary bg-primary/5" : ""}`}
@@ -741,12 +885,24 @@ const HomeVisitRegistrationWizard = ({ visit, open, onClose }: Props) => {
                       <p className="font-medium">{inv.title} {inv.patient_name}</p>
                       <p className="text-xs text-muted-foreground">{inv.mobile_number}</p>
                       <p className="text-xs font-mono mt-0.5">{inv.invoice_number}</p>
+                      <p className={`mt-0.5 text-[10px] font-medium ${
+                        mark === "failed" ? "text-destructive"
+                        : mark === "queued" ? "text-primary"
+                        : "text-muted-foreground"
+                      }`}>
+                        {markLabel}
+                      </p>
                     </div>
                     <p className="font-semibold">₹{inv.final_amount}</p>
                   </div>
-                ))}
+                  );
+                })}
               </div>
-              {sendStatus ? <p className="text-sm font-medium text-primary">{sendStatus}</p> : null}
+              {sendStatus ? <p className="text-sm font-medium text-primary">{sendStatus}</p> : (
+                <p className="text-xs text-muted-foreground">
+                  Invoices send automatically in registration order. WhatsApp keeps one message per number in flight so family invoices stay in sequence.
+                </p>
+              )}
               <div className="flex gap-2">
                 <Button type="button" variant="outline" disabled={batchSending} onClick={onClose}>
                   Done
@@ -758,10 +914,14 @@ const HomeVisitRegistrationWizard = ({ visit, open, onClose }: Props) => {
                 >
                   {batchSending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
                   {batchSending
-                    ? "Sending…"
-                    : invoiceBatch.length > 1
-                      ? "Send all invoices (WhatsApp)"
-                      : "Send invoice (WhatsApp)"}
+                    ? `Queuing ${Math.min(previewIndex + 1, invoiceBatch.length)} of ${invoiceBatch.length}…`
+                    : sendMarks.some((m) => m === "failed")
+                      ? "Retry failed invoices"
+                      : sendMarks.every((m) => m === "queued") && sendMarks.length === invoiceBatch.length
+                        ? "Resend all invoices"
+                        : invoiceBatch.length > 1
+                          ? "Send all invoices (WhatsApp)"
+                          : "Send invoice (WhatsApp)"}
                 </Button>
               </div>
             </div>
@@ -772,12 +932,14 @@ const HomeVisitRegistrationWizard = ({ visit, open, onClose }: Props) => {
 
       {step === "invoices" && activeInvoice && (
         <InvoicePreview
-          key={String(activeInvoice.invoice_number || previewIndex)}
           data={activeInvoice}
-          open={!!activeInvoice}
-          onClose={() => {}}
+          open={previewOpen && !!activeInvoice}
+          onClose={() => {
+            if (!batchSending) setPreviewOpen(false);
+          }}
           hidePrint
-          queueRequestId={queueRequestId}
+          queueRequest={queueRequest}
+          onReady={onPreviewReady}
           onQueueSettled={onQueueSettled}
           statusHint={sendStatus}
         />
