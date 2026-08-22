@@ -6,6 +6,7 @@ import {
   normalizeInterfaceResultCode,
   collapseInterfaceResultRows,
   orderTestsMatchMachine,
+  pickParamRowForBridge,
 } from "../../supabase/functions/lims-interface/interfaceResultCode";
 
 describe("normalizeInterfaceResultCode", () => {
@@ -89,5 +90,51 @@ describe("machineIdAliases / orderTestsMatchMachine", () => {
     expect(orderTestsMatchMachine([{ machine_id: "Sysmex" }], "XP-300")).toBe(true);
     expect(orderTestsMatchMachine([{ machine_id: "Indiko" }], "XP-300")).toBe(false);
     expect(orderTestsMatchMachine([{ machine_id: "Indiko" }], "Indiko")).toBe(true);
+  });
+});
+
+describe("pickParamRowForBridge", () => {
+  const albumin = { id: "alb", param_code: "PRM0008", parameter_name: "Albumin" };
+  const interpretation = { id: "interp", param_code: "PRM0008", parameter_name: "Interpretation" };
+  const alp = { id: "alp", param_code: "PRM0009", parameter_name: "Alkaline Phosphatase" };
+  const proteinsD = { id: "prot", param_code: "PRM0009", parameter_name: "Proteins (Biuret) (D)" };
+  const lft = "lft-test-id";
+  const hb = "hb-test-id";
+  const pe = "pe-test-id";
+
+  it("prefers Albumin over Interpretation for PRM0008 by name + accepted LFT", () => {
+    const picked = pickParamRowForBridge([interpretation, albumin], {
+      preferredName: "Albumin",
+      testIdsByParamId: {
+        alb: [lft, "s-albumin"],
+        interp: [hb],
+      },
+      acceptedTestIds: new Set([lft]),
+    });
+    expect(picked?.id).toBe("alb");
+  });
+
+  it("prefers Alkaline Phosphatase over Proteins (Biuret) for PRM0009", () => {
+    const picked = pickParamRowForBridge([proteinsD, alp], {
+      preferredName: "Alkaline Phosphatase",
+      testIdsByParamId: {
+        alp: [lft],
+        prot: [pe],
+      },
+      acceptedTestIds: new Set([lft]),
+    });
+    expect(picked?.id).toBe("alp");
+  });
+
+  it("falls back to accepted-tube owner when names do not match", () => {
+    const picked = pickParamRowForBridge([interpretation, albumin], {
+      preferredName: "",
+      testIdsByParamId: {
+        alb: [lft],
+        interp: [hb],
+      },
+      acceptedTestIds: new Set([lft]),
+    });
+    expect(picked?.id).toBe("alb");
   });
 });

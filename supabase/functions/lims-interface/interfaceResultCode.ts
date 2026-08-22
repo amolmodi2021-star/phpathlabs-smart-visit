@@ -107,3 +107,62 @@ export function orderTestsMatchMachine(tests: Array<{ machine_id?: string }> | n
   }
   return false;
 }
+
+/** Collapse "Albumin", "S. Albumin", "ALBUMIN" → "albumin" for fuzzy match. */
+export function normalizeParamNameKey(raw: string | null | undefined): string {
+  return String(raw ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+/**
+ * When several report_test_parameters share one param_code (legacy data),
+ * pick the row that matches the mapping/analyzer name and/or owns an
+ * accepted-tube test. Last-wins by code alone wrongly chose Interpretation
+ * over Albumin for PRM0008 and skipped the LFT write.
+ */
+export function pickParamRowForBridge<T extends {
+  id: string;
+  param_code?: string | null;
+  parameter_name?: string | null;
+}>(
+  candidates: T[] | null | undefined,
+  opts: {
+    preferredName?: string | null;
+    testIdsByParamId: Record<string, string[]>;
+    acceptedTestIds: Set<string>;
+  },
+): T | null {
+  const list = (candidates || []).filter(Boolean);
+  if (list.length === 0) return null;
+  if (list.length === 1) return list[0];
+
+  const preferred = normalizeParamNameKey(opts.preferredName);
+  let best: T | null = null;
+  let bestScore = -1;
+
+  for (const c of list) {
+    let score = 0;
+    const name = normalizeParamNameKey(c.parameter_name);
+    if (preferred) {
+      if (name === preferred) score += 100;
+      else if (name.includes(preferred) || preferred.includes(name)) score += 50;
+    }
+    const owners = (opts.testIdsByParamId[c.id] || []).filter((tid) =>
+      opts.acceptedTestIds.has(tid),
+    );
+    if (owners.length > 0) score += 20 + owners.length;
+    if (score > bestScore) {
+      bestScore = score;
+      best = c;
+    }
+  }
+
+  if (best && bestScore > 0) return best;
+
+  for (const c of list) {
+    const owners = (opts.testIdsByParamId[c.id] || []).filter((tid) =>
+      opts.acceptedTestIds.has(tid),
+    );
+    if (owners.length > 0) return c;
+  }
+  return list[0];
+}

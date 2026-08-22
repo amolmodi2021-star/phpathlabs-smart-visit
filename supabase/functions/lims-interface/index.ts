@@ -5,6 +5,7 @@ import {
   isDilutionToken,
   machineIdAliases,
   orderTestsMatchMachine,
+  pickParamRowForBridge,
 } from "./interfaceResultCode.ts";
 
 const corsHeaders = {
@@ -1156,7 +1157,7 @@ Deno.serve(async (req) => {
           }
 
           // Build mapped result list
-          const mappedItems: Array<{ test_code: string; result_value: string; unit: string }> = [];
+          const mappedItems: Array<{ test_code: string; test_name: string; result_value: string; unit: string }> = [];
           for (const r of reprocessResults) {
             const code = r.code || "";
             const candidates = codeMap[code] || [];
@@ -1167,6 +1168,7 @@ Deno.serve(async (req) => {
             if (!mapping || !(mapping.mapped_param_code || mapping.mapped_test_code)) continue;
             mappedItems.push({
               test_code: mapping.mapped_param_code || mapping.mapped_test_code || code,
+              test_name: mapping.parameter_name || r.name || r.test_name || "",
               result_value: String(r.value ?? r.result_value ?? ""),
               unit: r.unit || "",
             });
@@ -1180,8 +1182,11 @@ Deno.serve(async (req) => {
             .select("id, param_code, parameter_name, unit, normal_range_low, normal_range_high, normal_range_text, unit_conversion_enabled, unit_conversion_operator, unit_conversion_value")
             .in("param_code", paramCodes);
           await attachRangeMeta(supabase, paramRows || [], { gender: registration.gender, dob: registration.dob });
-          const paramByCode: Record<string, any> = {};
-          for (const p of paramRows || []) paramByCode[p.param_code] = p;
+          const paramsByCode: Record<string, any[]> = {};
+          for (const p of paramRows || []) {
+            if (!paramsByCode[p.param_code]) paramsByCode[p.param_code] = [];
+            paramsByCode[p.param_code].push(p);
+          }
 
           const paramIds = (paramRows || []).map((p) => p.id);
           let tpRows: any[] = [];
@@ -1211,7 +1216,11 @@ Deno.serve(async (req) => {
           const keepTestsByParam: Record<string, string[]> = {};
           let skippedNoAcceptedOwner = 0;
           for (const sr of mappedItems) {
-            const param = paramByCode[sr.test_code];
+            const param = pickParamRowForBridge(paramsByCode[sr.test_code] || [], {
+              preferredName: sr.test_name,
+              testIdsByParamId: testIdsByParam,
+              acceptedTestIds,
+            });
             if (!param) continue;
             const candidateTestIds = testIdsByParam[param.id] || [];
             const targetTestIds = resolveAcceptedBridgeTestIds(candidateTestIds, acceptedTestIds);
@@ -1641,15 +1650,18 @@ Deno.serve(async (req) => {
           const registrationId = registration.id;
           const acceptedTestIds = await loadAcceptedTestIds(supabase, registrationId);
 
-          // 2) Resolve parameters by param_code
+          // 2) Resolve parameters by param_code (may have duplicates — disambiguate below)
           const paramCodes = Array.from(new Set(mappedRows.map((r) => r.test_code).filter(Boolean)));
           const { data: paramRows } = await supabase
             .from("report_test_parameters")
             .select("id, param_code, parameter_name, unit, normal_range_low, normal_range_high, normal_range_text, unit_conversion_enabled, unit_conversion_operator, unit_conversion_value")
             .in("param_code", paramCodes);
           await attachRangeMeta(supabase, paramRows || [], { gender: registration.gender, dob: registration.dob });
-          const paramByCode: Record<string, any> = {};
-          for (const p of paramRows || []) paramByCode[p.param_code] = p;
+          const paramsByCode: Record<string, any[]> = {};
+          for (const p of paramRows || []) {
+            if (!paramsByCode[p.param_code]) paramsByCode[p.param_code] = [];
+            paramsByCode[p.param_code].push(p);
+          }
 
           // Resolve test_id via test_parameters junction; prefer tests present in registration
           const paramIds = (paramRows || []).map((p) => p.id);
@@ -1680,7 +1692,11 @@ Deno.serve(async (req) => {
           const insertPayload: any[] = [];
           const keepTestsByParam: Record<string, string[]> = {};
           for (const mr of mappedRows) {
-            const param = paramByCode[mr.test_code];
+            const param = pickParamRowForBridge(paramsByCode[mr.test_code] || [], {
+              preferredName: mr.test_name,
+              testIdsByParamId: testIdsByParam,
+              acceptedTestIds,
+            });
             if (!param) continue;
             const candidateTestIds = testIdsByParam[param.id] || [];
             const targetTestIds = resolveAcceptedBridgeTestIds(candidateTestIds, acceptedTestIds);
