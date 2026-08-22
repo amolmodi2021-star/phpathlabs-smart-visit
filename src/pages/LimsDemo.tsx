@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { invokeLimsReprocess } from "@/lib/invokeLimsReprocess";
 import { toast } from "@/hooks/use-toast";
 import { Plus, Trash2, ChevronDown, ChevronRight, Copy, RefreshCw, Link2, AlertTriangle, ChevronsUpDown, Check, Pencil, X } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -154,10 +155,11 @@ const LimsDemo = () => {
   const handleRefreshActiveOrders = async () => {
     setIsRefreshing(true);
     try {
-      const { data, error } = await supabase.functions.invoke("lims-interface", {
-        body: { action: "reprocess" },
-      });
-      if (error) throw error;
+      const { data, errorMessage } = await invokeLimsReprocess();
+      if (errorMessage) {
+        toast({ title: "Refresh failed", description: errorMessage, variant: "destructive" });
+        return;
+      }
       const processed = data?.processed ?? 0;
       const pushed = data?.pushed ?? data?.results_pushed ?? 0;
       const completed = data?.completed ?? data?.marked_completed ?? 0;
@@ -398,7 +400,7 @@ const LimsDemo = () => {
 
       // Re-bridge: invoke reprocess so the newly-mapped historical readings flow
       // straight into patient_results (no separate lims_test_results table).
-      await supabase.functions.invoke("lims-interface", { body: { action: "reprocess" } });
+      await invokeLimsReprocess();
     },
     onSuccess: () => {
       toast({ title: "Mapped & resolved", description: "Mapping saved; historical readings re-bridged into Results Entry" });

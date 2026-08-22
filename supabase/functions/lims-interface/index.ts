@@ -89,24 +89,13 @@ function resolveJwtSecret(): string {
   return secretRaw;
 }
 
-function extractStaffToken(req: Request): string | null {
-  // Preferred: custom staff JWT header (PostgREST Authorization stays as anon key).
-  const ph = req.headers.get("x-ph-access-token")?.trim();
-  if (ph && ph.split(".").length === 3) return ph;
-  const auth = req.headers.get("Authorization") || "";
-  const m = auth.match(/^Bearer\s+(.+)$/i);
-  if (!m) return null;
-  const bearer = m[1].trim();
-  // Ignore anon/publishable API keys — only treat JWT-shaped values as staff tokens.
-  if (bearer.split(".").length === 3) return bearer;
-  return null;
-}
-
 async function verifyStaffJwt(req: Request): Promise<boolean> {
-  const token = extractStaffToken(req);
-  if (!token) return false;
+  // Staff actions (reprocess / Pull from LIMS) MUST use x-ph-access-token.
+  // Do not fall back to Authorization — that header is the anon/publishable
+  // API key JWT and will always fail HMAC verify against JWT_SECRET.
+  const token = req.headers.get("x-ph-access-token")?.trim();
+  if (!token || token.split(".").length !== 3) return false;
   const parts = token.split(".");
-  if (parts.length !== 3) return false;
   const secretRaw = resolveJwtSecret();
   if (!secretRaw) return false;
   const body = `${parts[0]}.${parts[1]}`;
@@ -1052,10 +1041,13 @@ Deno.serve(async (req) => {
       if (peekBody && peekBody.action === "reprocess") {
         const staffOk = await verifyStaffJwt(req);
         if (!staffOk) {
-          return new Response(JSON.stringify({ error: "Unauthorized" }), {
-            status: 401,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          });
+          return new Response(
+            JSON.stringify({ error: "Unauthorized — please log out and sign in again" }),
+            {
+              status: 401,
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            },
+          );
         }
         const filterRegistrationId: string | null = peekBody.registration_id || null;
 

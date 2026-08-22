@@ -38,6 +38,7 @@ import { useNewArrivalsBadge } from "@/hooks/useNewArrivalsBadge";
 import { signalSync } from "@/lib/limsSyncSignal";
 import { propagateRegistrationChange } from "@/lib/limsPropagation";
 import { isResultPastPending, resolveResultForResultsEntry, healOrphanPatientResults, restoreMissingApprovedFromReports } from "@/lib/patientResultLookup";
+import { invokeLimsReprocess } from "@/lib/invokeLimsReprocess";
 import { fetchResultsEntryCandidateIds, fetchResultsEntryMachineCandidateIds, fetchFilteredSortedIds } from "@/lib/limsPendingCandidates";
 import { shortIdsKey } from "@/lib/queryKeys";
 import { readLimsPageSize, type LimsPageSize } from "@/lib/limsListPrefs";
@@ -206,10 +207,11 @@ const ResultsEntry = () => {
     if (refreshingRegId) return;
     setRefreshingRegId(regId);
     try {
-      const { data, error } = await supabase.functions.invoke("lims-interface", {
-        body: { action: "reprocess", registration_id: regId },
-      });
-      if (error) throw error;
+      const { data, errorMessage } = await invokeLimsReprocess(regId);
+      if (errorMessage) {
+        toast.error(errorMessage);
+        return;
+      }
       const pushed = (data as any)?.pushed ?? 0;
       if (pushed > 0) {
         toast.success(`Pulled ${pushed} new result${pushed > 1 ? "s" : ""} from LIMS`);
