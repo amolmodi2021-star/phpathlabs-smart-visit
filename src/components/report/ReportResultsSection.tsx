@@ -104,14 +104,6 @@ const isDescriptiveResult = (r: TestResult): boolean => {
   return !hasRefText && !hasRefBounds;
 };
 
-/** Long free-text (no ref) may span Result+Reference left-aligned; short values stay centered. */
-const isWideDescriptiveText = (value?: string): boolean => {
-  const v = String(value || "").trim();
-  if (!v) return false;
-  if (/\r?\n/.test(v)) return true;
-  return v.length > 40;
-};
-
 const isAbnormalFlag = (flag?: string): boolean => {
   return flag === "H" || flag === "L" || flag === "High" || flag === "Low" || flag === "X" || flag === "A";
 };
@@ -137,10 +129,9 @@ const ParamRow = ({ r, rowKey, compact, isMorph, showFlagText, rowFontSize, colC
   const hasRefText = !!(r.normal_range_text && String(r.normal_range_text).trim());
   const hasRefBounds = r.normal_range_low != null && r.normal_range_high != null;
   const hasReference = hasRefText || hasRefBounds;
-  // Blank Display Text: only widen for morphology / long free-text.
-  // Short undefined-range values (e.g. Quantity "10 ml") stay in Result, centered.
-  const widenResult =
-    isMorph || (!hasReference && isDescriptiveResult(r) && isWideDescriptiveText(r.result_value));
+  // Descriptive / free-text with no reference (or Flag): span Result + empty columns
+  // so text like "No microorganisms are seen." does not wrap early in the narrow Result cell.
+  const widenResult = isMorph || (!hasReference && isDescriptiveResult(r));
   const py = compact ? 'py-[2px]' : 'py-0.5';
 
   // Bold styling only for abnormal rows
