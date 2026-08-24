@@ -7,22 +7,28 @@ interface ReportTrendChartsProps {
   forPdf?: boolean;
 }
 
-const isNormal = (value: number, low?: number, high?: number) => {
-  if (low != null && value < low) return false;
-  if (high != null && value > high) return false;
-  return true;
+type AbnormalFlag = "H" | "L" | null;
+
+const getFlag = (value: number, low?: number, high?: number): AbnormalFlag => {
+  if (low != null && value < low) return "L";
+  if (high != null && value > high) return "H";
+  return null;
 };
+
+const formatValue = (value: number) =>
+  Number(value).toFixed(Number.isInteger(value) ? 0 : 2);
 
 const CustomDot = (props: any) => {
   const { cx, cy, payload, low, high } = props;
   if (cx == null || cy == null) return null;
-  const normal = isNormal(payload.value, low ?? payload.low, high ?? payload.high);
+  const flag = getFlag(payload.value, low ?? payload.low, high ?? payload.high);
+  const normal = !flag;
   return (
     <circle
       cx={cx}
       cy={cy}
-      r={4.5}
-      fill={normal ? "#15803d" : "#b91c1c"}
+      r={5}
+      fill={normal ? "#16a34a" : "#dc2626"}
       stroke="#fff"
       strokeWidth={1.5}
     />
@@ -30,11 +36,23 @@ const CustomDot = (props: any) => {
 };
 
 const ValueLabel = (props: any) => {
-  const { x, y, value } = props;
+  const { x, y, value, low, high } = props;
   if (x == null || y == null || value == null) return null;
+  const flag = getFlag(Number(value), low, high);
+  const text = formatValue(Number(value));
+  if (!flag) {
+    return (
+      <text x={x} y={y - 10} textAnchor="middle" fontSize={9} fill="#166534" fontWeight={600}>
+        {text}
+      </text>
+    );
+  }
   return (
-    <text x={x} y={y - 10} textAnchor="middle" fontSize={9} fill="#1f2937" fontWeight={600}>
-      {Number(value).toFixed(Number.isInteger(value) ? 0 : 2)}
+    <text x={x} y={y - 10} textAnchor="middle" fontSize={9} fontWeight={700}>
+      <tspan fill="#dc2626">{text}</tspan>
+      <tspan fill="#dc2626" dx={2} fontSize={8} fontWeight={800}>
+        {flag}
+      </tspan>
     </text>
   );
 };
@@ -64,14 +82,14 @@ function ChartCard({ trend, forPdf }: { trend: TrendSeries; forPdf?: boolean }) 
           {trend.parameter_name}
           {trend.unit ? <span className="ml-1 font-normal text-slate-500">({trend.unit})</span> : null}
         </h3>
-        <span className="shrink-0 text-[9px] text-slate-500 whitespace-nowrap">
+        <span className="shrink-0 text-[9px] text-green-700 whitespace-nowrap font-medium">
           Ref: {trend.rangeLabel}
         </span>
       </div>
 
       <div style={{ width: "100%", height: chartH }}>
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={sortedData} margin={{ left: 2, right: 8, top: 16, bottom: 2 }}>
+          <LineChart data={sortedData} margin={{ left: 2, right: 10, top: 18, bottom: 2 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
             <XAxis
               dataKey="date"
@@ -92,17 +110,31 @@ function ChartCard({ trend, forPdf }: { trend: TrendSeries; forPdf?: boolean }) 
             {trend.high != null && (
               <ReferenceLine
                 y={trend.high}
-                stroke="#ef4444"
-                strokeDasharray="4 3"
-                strokeWidth={1}
+                stroke="#16a34a"
+                strokeDasharray="5 3"
+                strokeWidth={1.5}
+                label={{
+                  value: "H",
+                  position: "insideTopRight",
+                  fill: "#16a34a",
+                  fontSize: 8,
+                  fontWeight: 700,
+                }}
               />
             )}
             {trend.low != null && (
               <ReferenceLine
                 y={trend.low}
-                stroke="#f59e0b"
-                strokeDasharray="4 3"
-                strokeWidth={1}
+                stroke="#16a34a"
+                strokeDasharray="5 3"
+                strokeWidth={1.5}
+                label={{
+                  value: "L",
+                  position: "insideBottomRight",
+                  fill: "#16a34a",
+                  fontSize: 8,
+                  fontWeight: 700,
+                }}
               />
             )}
             <Line
@@ -112,22 +144,35 @@ function ChartCard({ trend, forPdf }: { trend: TrendSeries; forPdf?: boolean }) 
               strokeWidth={2}
               isAnimationActive={false}
               dot={<CustomDot low={trend.low} high={trend.high} />}
-              label={<ValueLabel />}
+              label={<ValueLabel low={trend.low} high={trend.high} />}
             />
           </LineChart>
         </ResponsiveContainer>
       </div>
 
-      <div className="mt-1.5 grid gap-1" style={{ gridTemplateColumns: `repeat(${Math.max(sortedData.length, 1)}, minmax(0, 1fr))` }}>
+      <div
+        className="mt-1.5 grid gap-1"
+        style={{ gridTemplateColumns: `repeat(${Math.max(sortedData.length, 1)}, minmax(0, 1fr))` }}
+      >
         {sortedData.map((point, idx) => {
-          const normal = isNormal(point.value, point.low ?? trend.low, point.high ?? trend.high);
+          const flag = getFlag(point.value, point.low ?? trend.low, point.high ?? trend.high);
+          const abnormal = !!flag;
           return (
             <div key={`${point.date}-${idx}`} className="text-center min-w-0 px-0.5">
               <div className="text-[9px] text-slate-500 leading-tight truncate">{point.date}</div>
-              <div className={`text-[11px] font-semibold leading-tight ${normal ? "text-green-700" : "text-red-700"}`}>
-                {Number(point.value).toFixed(Number.isInteger(point.value) ? 0 : 2)}
+              <div
+                className={`text-[11px] font-semibold leading-tight ${
+                  abnormal ? "text-red-600" : "text-green-700"
+                }`}
+              >
+                {formatValue(point.value)}
+                {flag ? (
+                  <span className="ml-0.5 text-[10px] font-bold text-red-600">{flag}</span>
+                ) : null}
               </div>
-              <div className="text-[8px] text-slate-400 leading-tight truncate">{point.rangeLabel || trend.rangeLabel}</div>
+              <div className="text-[8px] text-green-700/80 leading-tight truncate">
+                {point.rangeLabel || trend.rangeLabel}
+              </div>
             </div>
           );
         })}
