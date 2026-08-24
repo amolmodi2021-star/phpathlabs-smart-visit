@@ -39,6 +39,12 @@ import {
   mergeHistogramSnapshots,
   normalizeHistogramRows,
 } from "@/lib/analyzerHistograms";
+import ReportTrendCharts from "@/components/report/ReportTrendCharts";
+import {
+  buildReportHistoricalTrends,
+  chunkTrendsForPages,
+  type TrendSeries,
+} from "@/lib/reportHistoricalTrends";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.2.67/pdf.worker.min.mjs";
 
@@ -78,6 +84,11 @@ const waitForCaptureReady = async (root: HTMLElement) => {
   );
   // Two RAFs to let layout/paint settle after fonts/images load
   await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+  // Recharts SVGs need a paint tick before html-to-image capture
+  if (root.querySelector("[data-historical-trends]")) {
+    await new Promise<void>((r) => setTimeout(r, 120));
+    await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+  }
 };
 
 // Detect a near-blank capture by sampling pixels from a downscaled copy.
@@ -343,10 +354,26 @@ function packStructuredTestBlocks(
 function pagesFingerprint(pages: PageContent[]): string {
   return pages
     .map((p) => {
+      if (p.type === "trends") {
+        return `t:${(p.trends || []).map((t) => t.parameter_id).join(",")}`;
+      }
       if (p.type !== "structured") return `${p.type}`;
       return `s:${p.departmentName}:${(p.testBlocks || []).map((b) => b.testId).join(",")}`;
     })
     .join("|");
+}
+
+function appendHistoricalTrendPages(pages: PageContent[], trends: TrendSeries[]): PageContent[] {
+  if (!trends.length) return pages;
+  const chunks = chunkTrendsForPages(trends);
+  return [
+    ...pages,
+    ...chunks.map((chunk) => ({
+      type: "trends" as const,
+      trends: chunk,
+      departmentName: "HISTORICAL TRENDS",
+    })),
+  ];
 }
 
 function snipPageToContent(
@@ -497,7 +524,7 @@ interface SnipPage {
 }
 
 interface PageContent {
-  type: "structured" | "snip" | "histogram";
+  type: "structured" | "snip" | "histogram" | "trends";
   departmentName?: string;
   testBlocks?: TestBlock[];
   snipImage?: string;
@@ -507,6 +534,7 @@ interface PageContent {
   snipTopMarginPct?: number;
   snipFullBleed?: boolean;
   histograms?: AnalyzerHistogram[];
+  trends?: TrendSeries[];
   approvers?: string[];
   /** Per-page sample collection datetime (ISO) — different date/time never share a page */
   sampleCollectionDate?: string | null;
@@ -594,6 +622,7 @@ const LimsReportView = () => {
   const [snipModeTestIds, setSnipModeTestIds] = useState<Set<string>>(new Set());
   const [pickupFooterNote, setPickupFooterNote] = useState<string>("");
   const [analyzerHistograms, setAnalyzerHistograms] = useState<AnalyzerHistogram[]>([]);
+  const [historicalTrends, setHistoricalTrends] = useState<TrendSeries[]>([]);
 
   const invoiceNumberForBarcode =
     approvedReports[0]?.invoice_number || registration?.invoice_number || "";
@@ -635,6 +664,7 @@ const LimsReportView = () => {
 
   const loadAllData = async () => {
     setLoading(true);
+    setHistoricalTrends([]);
     try {
 
     // Parallel fetches
@@ -1043,6 +1073,28 @@ const LimsReportView = () => {
     const snapshotHists = normalizeHistogramRows((filteredReports[0] as any)?.histograms);
     const liveHists = normalizeHistogramRows(histRows);
     setAnalyzerHistograms(mergeHistogramSnapshots(snapshotHists, liveHists));
+
+    let trends: TrendSeries[] = [];
+    try {
+      const reportParameterIds = Array.from(
+        new Set(
+          filteredReports.flatMap((r: any) =>
+            ((r.test_results || []) as TestResultEntry[])
+              .filter((tr) => tr.result_value && String(tr.result_value).trim() && tr.parameter_id)
+              .map((tr) => String(tr.parameter_id)),
+          ),
+        ),
+      );
+      trends = await buildReportHistoricalTrends({
+        umrNumber: regData?.umr_number,
+        registrationId: registrationId!,
+        reportParameterIds,
+      });
+    } catch (trendErr) {
+      console.warn("Historical trends skipped:", trendErr);
+      trends = [];
+    }
+    setHistoricalTrends(trends);
     setLoading(false);
 
     } catch (err: any) {
@@ -1289,15 +1341,16 @@ const LimsReportView = () => {
       analyzerHistograms,
       orderedTestIds: mergedIds,
     });
+    const pagesWithTrends = appendHistoricalTrendPages(pagesWithHistograms, historicalTrends);
 
     return {
-      pages: pagesWithHistograms,
-      totalPages: pagesWithHistograms.length,
+      pages: pagesWithTrends,
+      totalPages: pagesWithTrends.length,
       sortedTestBlocks: testBlocks,
       usableHeightMm: usableHeight,
-      packKey: pagesFingerprint(pagesWithHistograms) + `|u${usableHeight.toFixed(1)}`,
+      packKey: pagesFingerprint(pagesWithTrends) + `|u${usableHeight.toFixed(1)}|tr${historicalTrends.length}`,
     };
-  }, [approvedReports, departments, testsMap, testParamsMap, snipImages, snipModeTestIds, layoutSettings, pickupFooterNote, collectionDateByTestId, analyzerHistograms, enableHistograms]);
+  }, [approvedReports, departments, testsMap, testParamsMap, snipImages, snipModeTestIds, layoutSettings, pickupFooterNote, collectionDateByTestId, analyzerHistograms, enableHistograms, historicalTrends]);
 
   const [measuredPages, setMeasuredPages] = useState<PageContent[] | null>(null);
   const [paginationReady, setPaginationReady] = useState(false);
@@ -1452,11 +1505,14 @@ const LimsReportView = () => {
         Math.max(40, usableMm),
         deptHeaderMm,
       );
-      const nextPages = assembleReportPages(structured, snipsMap, {
-        enableHistograms,
-        analyzerHistograms,
-        orderedTestIds,
-      });
+      const nextPages = appendHistoricalTrendPages(
+        assembleReportPages(structured, snipsMap, {
+          enableHistograms,
+          analyzerHistograms,
+          orderedTestIds,
+        }),
+        historicalTrends,
+      );
 
       measurePassRef.current += 1;
       if (pagesFingerprint(nextPages) !== pagesFingerprint(pages)) {
@@ -1471,7 +1527,7 @@ const LimsReportView = () => {
     return () => {
       cancelled = true;
     };
-  }, [loading, packPlan, pages, enableHistograms, analyzerHistograms]);
+  }, [loading, packPlan, pages, enableHistograms, analyzerHistograms, historicalTrends]);
 
 
   const buildPdfBlob = async (opts?: {
@@ -2109,7 +2165,7 @@ const LimsReportView = () => {
               )}
 
               {/* Main Content Area — packs down to top of signature band */}
-              <div data-report-content className={page.type === "histogram" || page.type === "snip" ? "flex-1 min-h-0 overflow-hidden" : "flex-1 overflow-visible"}>{/* overflow-visible: surfaces any pagination-estimate regression instead of silently clipping rows (e.g. RFT being truncated). Histogram/snip pages must not paint over the signature. */}
+              <div data-report-content className={page.type === "histogram" || page.type === "snip" || page.type === "trends" ? "flex-1 min-h-0 overflow-hidden" : "flex-1 overflow-visible"}>{/* overflow-visible: surfaces any pagination-estimate regression instead of silently clipping rows (e.g. RFT being truncated). Histogram/snip pages must not paint over the signature. */}
                 {page.type === "structured" && page.testBlocks && (() => {
                   const hasFitToPage = page.testBlocks.some(b => b.fitToPage);
                   const resultsContent = (
@@ -2137,6 +2193,10 @@ const LimsReportView = () => {
 
                 {page.type === "histogram" && hasRenderableHistograms(page.histograms || analyzerHistograms) && (
                   <CbcHistogramCharts histograms={page.histograms || analyzerHistograms} />
+                )}
+
+                {page.type === "trends" && page.trends && page.trends.length > 0 && (
+                  <ReportTrendCharts trends={page.trends} forPdf />
                 )}
 
                 {page.type === "snip" && page.snipImage && (() => {

@@ -1,16 +1,10 @@
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer, LabelList } from "recharts";
-import { ArrowUp, ArrowDown } from "lucide-react";
-
-interface TrendData {
-  parameter_name: string;
-  data: { date: string; value: number; low?: number; high?: number }[];
-  low?: number;
-  high?: number;
-  unit?: string;
-}
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, ReferenceLine, ResponsiveContainer } from "recharts";
+import type { TrendSeries } from "@/lib/reportHistoricalTrends";
 
 interface ReportTrendChartsProps {
-  trends: TrendData[];
+  trends: TrendSeries[];
+  /** When true, render for A4 PDF capture (fixed sizes, no tooltip). */
+  forPdf?: boolean;
 }
 
 const isNormal = (value: number, low?: number, high?: number) => {
@@ -22,127 +16,145 @@ const isNormal = (value: number, low?: number, high?: number) => {
 const CustomDot = (props: any) => {
   const { cx, cy, payload, low, high } = props;
   if (cx == null || cy == null) return null;
-  const normal = isNormal(payload.value, low, high);
+  const normal = isNormal(payload.value, low ?? payload.low, high ?? payload.high);
   return (
-    <circle cx={cx} cy={cy} r={4} fill={normal ? "#16a34a" : "#2563eb"} stroke={normal ? "#16a34a" : "#2563eb"} strokeWidth={1} />
+    <circle
+      cx={cx}
+      cy={cy}
+      r={4.5}
+      fill={normal ? "#15803d" : "#b91c1c"}
+      stroke="#fff"
+      strokeWidth={1.5}
+    />
   );
 };
 
-const ReportTrendCharts = ({ trends }: ReportTrendChartsProps) => {
-  if (trends.length === 0) return null;
+const ValueLabel = (props: any) => {
+  const { x, y, value } = props;
+  if (x == null || y == null || value == null) return null;
+  return (
+    <text x={x} y={y - 10} textAnchor="middle" fontSize={9} fill="#1f2937" fontWeight={600}>
+      {Number(value).toFixed(Number.isInteger(value) ? 0 : 2)}
+    </text>
+  );
+};
+
+function ChartCard({ trend, forPdf }: { trend: TrendSeries; forPdf?: boolean }) {
+  const sortedData = trend.data;
+  const values = sortedData.map((d) => d.value);
+  const allVals = [...values];
+  if (trend.low != null) allVals.push(trend.low);
+  if (trend.high != null) allVals.push(trend.high);
+  const minVal = Math.min(...allVals);
+  const maxVal = Math.max(...allVals);
+  const range = maxVal - minVal;
+  const padding = range > 0 ? range * 0.2 : Math.abs(maxVal) * 0.15 || 1;
+  const yMin = Math.min(minVal - padding, trend.low != null ? trend.low - padding * 0.3 : minVal - padding);
+  const yMax = Math.max(maxVal + padding, trend.high != null ? trend.high + padding * 0.3 : maxVal + padding);
+  const chartH = forPdf ? 118 : 150;
 
   return (
-    <div className="print:break-before-page">
-      <h2 className="text-base font-bold text-blue-800 mb-3 border-b-2 border-blue-200 pb-1">Historical Trends</h2>
-      <div className="grid grid-cols-1 md:grid-cols-2 print:grid-cols-2 gap-4">
-        {trends.map((trend) => {
-          // Sort by date ascending, deduplicate (same date+value), limit to last 5
-          const deduped = [...trend.data]
-            .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-            .filter((item, idx, arr) => {
-              if (idx === 0) return true;
-              const prev = arr[idx - 1];
-              return !(item.date === prev.date && item.value === prev.value);
-            });
-          const sortedData = deduped.slice(-5);
+    <div
+      className="border border-slate-200 rounded-md p-2.5 bg-white"
+      style={{ breakInside: "avoid" }}
+      data-trend-param={trend.parameter_id}
+    >
+      <div className="flex items-baseline justify-between gap-2 mb-1">
+        <h3 className="text-[12px] font-bold text-slate-800 leading-tight truncate">
+          {trend.parameter_name}
+          {trend.unit ? <span className="ml-1 font-normal text-slate-500">({trend.unit})</span> : null}
+        </h3>
+        <span className="shrink-0 text-[9px] text-slate-500 whitespace-nowrap">
+          Ref: {trend.rangeLabel}
+        </span>
+      </div>
 
-          const values = sortedData.map(d => d.value);
-          const allVals = [...values];
-          if (trend.low != null) allVals.push(trend.low);
-          if (trend.high != null) allVals.push(trend.high);
-          const minVal = Math.min(...allVals);
-          const maxVal = Math.max(...allVals);
-          const range = maxVal - minVal;
-          const padding = range > 0 ? range * 0.25 : (maxVal * 0.15) || 1;
-          const yMin = Math.max(0, Math.floor((minVal - padding) * 100) / 100);
-          const yMax = Math.ceil((maxVal + padding) * 100) / 100;
-          const yAxisTicks = [...new Set([yMin, trend.low, trend.high, yMax].filter((v): v is number => v != null))].sort((a, b) => a - b);
+      <div style={{ width: "100%", height: chartH }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={sortedData} margin={{ left: 2, right: 8, top: 16, bottom: 2 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+            <XAxis
+              dataKey="date"
+              tick={{ fontSize: 9, fill: "#64748b" }}
+              tickLine={false}
+              axisLine={{ stroke: "#cbd5e1" }}
+              padding={{ left: 12, right: 12 }}
+              interval={0}
+            />
+            <YAxis
+              tick={{ fontSize: 9, fill: "#64748b" }}
+              width={42}
+              tickLine={false}
+              axisLine={{ stroke: "#cbd5e1" }}
+              domain={[yMin, yMax]}
+              tickFormatter={(val: number) => Number(val.toFixed(2)).toString()}
+            />
+            {trend.high != null && (
+              <ReferenceLine
+                y={trend.high}
+                stroke="#ef4444"
+                strokeDasharray="4 3"
+                strokeWidth={1}
+              />
+            )}
+            {trend.low != null && (
+              <ReferenceLine
+                y={trend.low}
+                stroke="#f59e0b"
+                strokeDasharray="4 3"
+                strokeWidth={1}
+              />
+            )}
+            <Line
+              type="monotone"
+              dataKey="value"
+              stroke="#1d4ed8"
+              strokeWidth={2}
+              isAnimationActive={false}
+              dot={<CustomDot low={trend.low} high={trend.high} />}
+              label={<ValueLabel />}
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
 
-          const refRange = trend.low != null && trend.high != null
-            ? `${trend.low} - ${trend.high}`
-            : trend.low != null ? `≥ ${trend.low}`
-            : trend.high != null ? `≤ ${trend.high}`
-            : "—";
-
+      <div className="mt-1.5 grid gap-1" style={{ gridTemplateColumns: `repeat(${Math.max(sortedData.length, 1)}, minmax(0, 1fr))` }}>
+        {sortedData.map((point, idx) => {
+          const normal = isNormal(point.value, point.low ?? trend.low, point.high ?? trend.high);
           return (
-            <div key={trend.parameter_name} className="trend-chart-box border rounded-lg p-3 print:break-inside-avoid">
-              <h3 className="text-sm font-semibold mb-1">{trend.parameter_name} {trend.unit && <span className="text-xs text-gray-500">({trend.unit})</span>}</h3>
-              <ResponsiveContainer width="100%" height={150}>
-                 <LineChart data={sortedData} margin={{ left: 0, right: 10, top: 15, bottom: 5 }}>
-                   <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                   <XAxis dataKey="date" tick={{ fontSize: 10 }} padding={{ left: 20, right: 10 }} />
-                   <YAxis
-                     tick={{ fontSize: 9 }}
-                     width={64}
-                     tickMargin={6}
-                     interval={0}
-                     ticks={yAxisTicks}
-                     domain={[yMin, yMax]}
-                     tickFormatter={(val: number) => Number(val.toFixed(2)).toString()}
-                     padding={{ top: 10, bottom: 10 }}
-                   />
-                  <Tooltip />
-                  <Line
-                    type="monotone"
-                    dataKey="value"
-                    stroke="#2563eb"
-                    strokeWidth={2}
-                    dot={<CustomDot low={trend.low} high={trend.high} />}
-                  >
-                    <LabelList dataKey="value" position="top" fontSize={9} fill="#374151" offset={8} />
-                  </Line>
-                   {trend.high != null && <ReferenceLine y={trend.high} stroke="#ef4444" strokeDasharray="5 5" label={{ value: "High", fontSize: 9, fill: "#ef4444", position: "right" }} />}
-                   {trend.low != null && <ReferenceLine y={trend.low} stroke="#f59e0b" strokeDasharray="5 5" label={{ value: "Low", fontSize: 9, fill: "#f59e0b", position: "right" }} />}
-                </LineChart>
-              </ResponsiveContainer>
-
-              {/* Details below graph */}
-              <div className="trend-chart-detail-row flex gap-2 mt-2 justify-between">
-                {sortedData.map((point, idx) => {
-                  const prev = idx > 0 ? sortedData[idx - 1].value : null;
-                  const pointLow = point.low ?? trend.low;
-                  const pointHigh = point.high ?? trend.high;
-                  const normal = isNormal(point.value, pointLow, pointHigh);
-                  const pointRange = pointLow != null && pointHigh != null
-                    ? `${pointLow} - ${pointHigh}`
-                    : pointLow != null ? `≥ ${pointLow}`
-                    : pointHigh != null ? `≤ ${pointHigh}`
-                    : "—";
-                  return (
-                    <div key={idx} className="trend-chart-detail-item flex flex-col items-center text-center min-w-0 flex-1">
-                      <span className="text-[11px] leading-tight text-gray-500">{point.date}</span>
-                      <span className={`text-xs leading-tight font-semibold flex items-center gap-0.5 ${normal ? "text-green-600" : "text-red-600"}`}>
-                        {point.value}
-                        {prev != null && (
-                          point.value > prev
-                            ? <ArrowUp className="w-3 h-3" />
-                            : point.value < prev
-                              ? <ArrowDown className="w-3 h-3" />
-                              : null
-                        )}
-                      </span>
-                      <span className="text-[10px] leading-tight text-gray-400">{pointRange}</span>
-                    </div>
-                  );
-                })}
+            <div key={`${point.date}-${idx}`} className="text-center min-w-0 px-0.5">
+              <div className="text-[9px] text-slate-500 leading-tight truncate">{point.date}</div>
+              <div className={`text-[11px] font-semibold leading-tight ${normal ? "text-green-700" : "text-red-700"}`}>
+                {Number(point.value).toFixed(Number.isInteger(point.value) ? 0 : 2)}
               </div>
-
-              {/* Remark if normal ranges differ across data points */}
-              {(() => {
-                const ranges = sortedData.map(p => `${p.low ?? trend.low}-${p.high ?? trend.high}`);
-                const allSame = ranges.every(r => r === ranges[0]);
-                if (!allSame) {
-                  return (
-                    <p className="text-[10px] text-red-500 font-medium mt-1 text-center italic">
-                      ⚠ Check normal range carefully.
-                    </p>
-                  );
-                }
-                return null;
-              })()}
+              <div className="text-[8px] text-slate-400 leading-tight truncate">{point.rangeLabel || trend.rangeLabel}</div>
             </div>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Historical Trends block for report PDF / screen.
+ * Caller chunks to ≤6 charts per page.
+ */
+const ReportTrendCharts = ({ trends, forPdf = true }: ReportTrendChartsProps) => {
+  if (!trends.length) return null;
+
+  return (
+    <div className="w-full" data-historical-trends>
+      <h2
+        className="text-[14px] font-bold tracking-wide text-slate-800 mb-2 pb-1"
+        style={{ borderBottom: "1.5px solid #1e3a5f" }}
+      >
+        HISTORICAL TRENDS
+      </h2>
+      <div className="grid grid-cols-2 gap-2.5">
+        {trends.map((trend) => (
+          <ChartCard key={trend.parameter_id} trend={trend} forPdf={forPdf} />
+        ))}
       </div>
     </div>
   );

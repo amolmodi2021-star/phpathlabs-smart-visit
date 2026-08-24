@@ -2481,6 +2481,9 @@ export type Database = {
           send_for_interface: boolean
           store_for_analytics: boolean | null
           test_name: string | null
+          trend_display_high: number | null
+          trend_display_label: string | null
+          trend_display_low: number | null
           unit: string | null
           unit_conversion_enabled: boolean
           unit_conversion_operator: string
@@ -2518,6 +2521,9 @@ export type Database = {
           send_for_interface?: boolean
           store_for_analytics?: boolean | null
           test_name?: string | null
+          trend_display_high?: number | null
+          trend_display_label?: string | null
+          trend_display_low?: number | null
           unit?: string | null
           unit_conversion_enabled?: boolean
           unit_conversion_operator?: string
@@ -2555,6 +2561,9 @@ export type Database = {
           send_for_interface?: boolean
           store_for_analytics?: boolean | null
           test_name?: string | null
+          trend_display_high?: number | null
+          trend_display_label?: string | null
+          trend_display_low?: number | null
           unit?: string | null
           unit_conversion_enabled?: boolean
           unit_conversion_operator?: string
