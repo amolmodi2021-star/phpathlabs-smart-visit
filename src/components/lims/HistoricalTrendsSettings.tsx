@@ -88,6 +88,7 @@ const HistoricalTrendsSettings = () => {
       trend_display_label: label,
       normal_range_low: editing.normal_range_low,
       normal_range_high: editing.normal_range_high,
+      normal_range_text: editing.normal_range_text,
       unit: editing.unit,
     }).rangeLabel;
   }, [editing, low, high, label]);
@@ -146,8 +147,9 @@ const HistoricalTrendsSettings = () => {
       <div>
         <h3 className="text-lg font-semibold">Historical Trends — Normal Range Display</h3>
         <p className="text-sm text-muted-foreground mt-1 max-w-3xl">
-          These values appear only on Historical Trends graphs in report PDFs.
-          They do not change parameter clinical ranges, flags, or printed result tables.
+          Optional overrides for Historical Trends graphs only. If nothing is set here,
+          the graph uses the parameter’s normal / reference range by default.
+          Clinical ranges on the report table are never changed.
           Only parameters with <span className="font-medium">Store for Analytics</span> are listed.
         </p>
       </div>
@@ -265,7 +267,7 @@ const HistoricalTrendsSettings = () => {
                   onChange={(e) => setLabel(e.target.value)}
                 />
                 <p className="text-[11px] text-muted-foreground">
-                  Shown under each graph point. Leave blank to auto-build from low/high + unit.
+                  Shown under each graph point. Leave all fields blank to use the normal / reference range.
                 </p>
               </div>
               <div className="rounded-md bg-muted/50 px-3 py-2 text-sm">

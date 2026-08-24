@@ -1096,6 +1096,7 @@ const LimsReportView = () => {
           unit: tr.unit,
           normal_range_low: tr.normal_range_low,
           normal_range_high: tr.normal_range_high,
+          reference_range: tr.reference_range,
         })),
       );
       const asOfIso =
