@@ -17,6 +17,7 @@ import { getAllSelectableTests } from "@/lib/allSelectableTests";
 import { buildSampleTubeGroups } from "@/lib/sampleTubeGrouping";
 import { registerPatientAtomic } from "@/lib/registerPatientAtomic";
 import { useParamConflictHighlight } from "@/hooks/useParamConflictHighlight";
+import SelectedTestContentsButton from "@/components/lims/SelectedTestContentsButton";
 import InvoicePreview from "./InvoicePreview";
 import PatientSelectDialog, { type PatientPick } from "./PatientSelectDialog";
 import DoctorAutocomplete, { ensureDoctor } from "./DoctorAutocomplete";
@@ -1346,6 +1347,7 @@ const PatientRegistration = ({
                       {!t.discount_applicable && !allowIneligibleDiscount && (
                         <span className="text-[10px] text-destructive whitespace-nowrap">No disc.</span>
                       )}
+                      <SelectedTestContentsButton item={t} />
                       <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => removeTest(t.test_id)}><X className="h-3.5 w-3.5" /></Button>
                     </div>
                   </div>

@@ -14,6 +14,7 @@ import { toast } from "sonner";
 import { Search, X, Save, ChevronDown, ChevronUp, AlertTriangle } from "lucide-react";
 import { getAllSelectableTests } from "@/lib/allSelectableTests";
 import { useParamConflictHighlight } from "@/hooks/useParamConflictHighlight";
+import SelectedTestContentsButton from "@/components/lims/SelectedTestContentsButton";
 import { findPatientMasterByMobile } from "@/lib/findPatientUmr";
 import {
   isoToDmy,
@@ -877,6 +878,7 @@ const CompleteHomeVisitDetailsDialog = ({ visit, open, onClose, onCompleted }: P
                         {!t.discount_applicable && !allowIneligibleDiscount && (
                           <span className="text-[10px] text-destructive whitespace-nowrap">No disc.</span>
                         )}
+                        <SelectedTestContentsButton item={t} />
                         <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => removeTest(t.test_id)}>
                           <X className="h-3.5 w-3.5" />
                         </Button>

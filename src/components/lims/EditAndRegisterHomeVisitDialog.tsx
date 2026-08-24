@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { X, Search, AlertTriangle } from "lucide-react";
 import { getAllSelectableTests } from "@/lib/allSelectableTests";
 import { useParamConflictHighlight } from "@/hooks/useParamConflictHighlight";
+import SelectedTestContentsButton from "@/components/lims/SelectedTestContentsButton";
 import { buildSampleTubeGroups } from "@/lib/sampleTubeGrouping";
 import { format, parse, isValid, differenceInYears } from "date-fns";
 import { getCurrentUserName } from "@/lib/auth";
@@ -513,6 +514,7 @@ const EditAndRegisterHomeVisitDialog = ({ visit, open, onClose }: Props) => {
                       </>
                     )}
                     {!t.discount_applicable && <span className="text-xs text-destructive">No disc.</span>}
+                    <SelectedTestContentsButton item={t} />
                     <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => removeTest(t.test_id)}><X className="h-3 w-3" /></Button>
                   </div>
                 );

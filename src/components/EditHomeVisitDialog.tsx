@@ -12,6 +12,7 @@ import { X, Search, Send, Lock, AlertTriangle } from "lucide-react";
 import DeletePasswordDialog from "@/components/DeletePasswordDialog";
 import { getAllSelectableTests } from "@/lib/allSelectableTests";
 import { useParamConflictHighlight } from "@/hooks/useParamConflictHighlight";
+import SelectedTestContentsButton from "@/components/lims/SelectedTestContentsButton";
 import TimeSlotPicker from "@/components/TimeSlotPicker";
 import { usePhlebotomistAvailability } from "@/hooks/usePhlebotomistAvailability";
 import { useMessageTemplates } from "@/hooks/useMessageTemplates";
@@ -683,6 +684,7 @@ const EditHomeVisitDialog = ({ visit, open, onClose, completionMode, onCompletio
                           )}
                         </>
                       )}
+                      <SelectedTestContentsButton item={t} />
                       <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => removeTest(t.test_id)}><X className="h-3.5 w-3.5" /></Button>
                     </div>
                   </div>

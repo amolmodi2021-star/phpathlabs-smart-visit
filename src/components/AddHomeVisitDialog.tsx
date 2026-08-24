@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { X, Search, Send, AlertTriangle, MapPin, Plus } from "lucide-react";
 import { getAllSelectableTests } from "@/lib/allSelectableTests";
 import { useParamConflictHighlight } from "@/hooks/useParamConflictHighlight";
+import SelectedTestContentsButton from "@/components/lims/SelectedTestContentsButton";
 import TimeSlotPicker from "@/components/TimeSlotPicker";
 import { useMessageTemplates } from "@/hooks/useMessageTemplates";
 import { usePhlebotomistAvailability } from "@/hooks/usePhlebotomistAvailability";
@@ -606,6 +607,7 @@ const AddHomeVisitDialog = ({ open, onClose }: AddHomeVisitDialogProps) => {
                           )}
                         </>
                       )}
+                      <SelectedTestContentsButton item={t} />
                       <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => removeTest(t.test_id)}><X className="h-3.5 w-3.5" /></Button>
                     </div>
                   </div>

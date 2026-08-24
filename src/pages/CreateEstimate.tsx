@@ -14,6 +14,7 @@ import { logMessageSend } from "@/lib/messageLog";
 import { Send, X, Search, ScanLine, AlertTriangle } from "lucide-react";
 import { getAllSelectableTests } from "@/lib/allSelectableTests";
 import { useParamConflictHighlight } from "@/hooks/useParamConflictHighlight";
+import SelectedTestContentsButton from "@/components/lims/SelectedTestContentsButton";
 import PrescriptionScanDialog from "@/components/PrescriptionScanDialog";
 
 interface SelectedTest {
@@ -301,6 +302,7 @@ const CreateEstimate = () => {
                           )}
                         </>
                       )}
+                      <SelectedTestContentsButton item={t} />
                       <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => removeTest(t.test_id)}><X className="h-3.5 w-3.5" /></Button>
                     </div>
                   </div>

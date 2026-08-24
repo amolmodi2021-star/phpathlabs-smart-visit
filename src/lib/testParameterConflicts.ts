@@ -8,7 +8,7 @@ export type ConflictSelectableItem = {
 /**
  * Expand one selectable billing item to leaf test IDs (same graph as sampleTubeGrouping).
  */
-async function expandItemToLeafIds(item: ConflictSelectableItem): Promise<string[]> {
+export async function expandItemToLeafIds(item: ConflictSelectableItem): Promise<string[]> {
   const type = item.item_type || "test";
   if (type === "test") return [item.test_id];
 

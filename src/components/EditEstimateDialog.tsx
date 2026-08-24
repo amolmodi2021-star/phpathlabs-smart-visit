@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { X, Search, Send, AlertTriangle } from "lucide-react";
 import { getAllSelectableTests } from "@/lib/allSelectableTests";
 import { useParamConflictHighlight } from "@/hooks/useParamConflictHighlight";
+import SelectedTestContentsButton from "@/components/lims/SelectedTestContentsButton";
 import { useMessageTemplates } from "@/hooks/useMessageTemplates";
 import { buildEstimateMessage, shareOnWhatsApp } from "@/lib/whatsapp";
 import { logMessageSend } from "@/lib/messageLog";
@@ -289,6 +290,7 @@ const EditEstimateDialog = ({ estimate, open, onClose }: EditEstimateDialogProps
                           )}
                         </>
                       )}
+                      <SelectedTestContentsButton item={t} />
                       <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => removeTest(t.test_id)}><X className="h-3.5 w-3.5" /></Button>
                     </div>
                   </div>
