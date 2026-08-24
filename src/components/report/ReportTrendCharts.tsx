@@ -1,4 +1,4 @@
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, ReferenceLine, ResponsiveContainer } from "recharts";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, ReferenceLine, ReferenceArea, ResponsiveContainer } from "recharts";
 import type { TrendSeries } from "@/lib/reportHistoricalTrends";
 
 interface ReportTrendChartsProps {
@@ -107,16 +107,26 @@ function ChartCard({ trend, forPdf }: { trend: TrendSeries; forPdf?: boolean }) 
               domain={[yMin, yMax]}
               tickFormatter={(val: number) => Number(val.toFixed(2)).toString()}
             />
+            {trend.low != null && trend.high != null && (
+              <ReferenceArea
+                y1={trend.low}
+                y2={trend.high}
+                fill="#16a34a"
+                fillOpacity={0.08}
+                strokeOpacity={0}
+              />
+            )}
             {trend.high != null && (
               <ReferenceLine
                 y={trend.high}
                 stroke="#16a34a"
                 strokeDasharray="5 3"
-                strokeWidth={1.5}
+                strokeWidth={1.75}
+                ifOverflow="extendDomain"
                 label={{
-                  value: "H",
+                  value: "High",
                   position: "insideTopRight",
-                  fill: "#16a34a",
+                  fill: "#15803d",
                   fontSize: 8,
                   fontWeight: 700,
                 }}
@@ -127,11 +137,12 @@ function ChartCard({ trend, forPdf }: { trend: TrendSeries; forPdf?: boolean }) 
                 y={trend.low}
                 stroke="#16a34a"
                 strokeDasharray="5 3"
-                strokeWidth={1.5}
+                strokeWidth={1.75}
+                ifOverflow="extendDomain"
                 label={{
-                  value: "L",
+                  value: "Low",
                   position: "insideBottomRight",
-                  fill: "#16a34a",
+                  fill: "#15803d",
                   fontSize: 8,
                   fontWeight: 700,
                 }}

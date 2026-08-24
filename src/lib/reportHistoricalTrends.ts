@@ -1,5 +1,6 @@
 import { format, parseISO, isValid } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
+import { pickBestNormalRange, type NormalRangeRow } from "@/lib/parameterNormalRange";
 
 export const TRENDS_PER_PAGE = 6;
 export const TREND_MAX_POINTS = 5;
@@ -42,10 +43,16 @@ type SnapshotResultRow = {
   parameter_name?: string;
   result_value?: string | null;
   unit?: string | null;
-  normal_range_low?: number | null;
-  normal_range_high?: number | null;
+  normal_range_low?: number | string | null;
+  normal_range_high?: number | string | null;
   reference_range?: string | null;
 };
+
+function toFiniteNumber(raw: unknown): number | undefined {
+  if (raw == null || raw === "") return undefined;
+  const n = typeof raw === "number" ? raw : Number(String(raw).trim());
+  return Number.isFinite(n) ? n : undefined;
+}
 
 function parseNumeric(raw: string | null | undefined): number | null {
   if (raw == null) return null;
@@ -58,7 +65,7 @@ function parseNumeric(raw: string | null | undefined): number | null {
 }
 
 function formatShortRange(low?: number | null, high?: number | null, unit?: string | null): string {
-  const u = unit ? ` ${unit}` : "";
+  const u = unit && String(unit).trim() ? ` ${String(unit).trim()}` : "";
   if (low != null && high != null) return `${low} - ${high}${u}`;
   if (low != null) return `≥ ${low}${u}`;
   if (high != null) return `≤ ${high}${u}`;
@@ -70,7 +77,6 @@ function shortenReferenceLabel(text: string | null | undefined, maxLen = 42): st
   const raw = String(text || "").replace(/\r\n/g, "\n").trim();
   if (!raw) return "";
   const firstLine = raw.split(/\n/)[0].trim();
-  // Prefer a numeric span if present in the first line (e.g. HbA1c advisory)
   const span = firstLine.match(/(-?\d+(?:\.\d+)?)\s*[-–—to]+\s*(-?\d+(?:\.\d+)?)/i);
   if (span) {
     const unitMatch = firstLine.match(/%|mg\/dL|g\/dL|mmol|IU|U\/L|ng\/mL|pg\/mL|µIU|uIU/i);
@@ -105,8 +111,8 @@ function parseBoundsFromRangeText(rangeText?: string | null): { low?: number; hi
 
 /**
  * Resolve display bounds for historical trends.
- * Settings override (trend_display_*) wins; otherwise use the parameter reference /
- * normal range (numeric → text → parsed bounds).
+ * Settings override (trend_display_*) wins; otherwise use reference / normal range
+ * from snapshot → param → age/gender table.
  */
 export function resolveTrendDisplayRange(meta: {
   trend_display_low?: number | null;
@@ -115,54 +121,40 @@ export function resolveTrendDisplayRange(meta: {
   normal_range_low?: number | null;
   normal_range_high?: number | null;
   normal_range_text?: string | null;
-  /** Snapshot / report reference range when param-level range is empty */
   reference_range?: string | null;
   unit?: string | null;
 }): { low?: number; high?: number; rangeLabel: string } {
   const hasTrendOverride =
-    (meta.trend_display_low != null && Number.isFinite(Number(meta.trend_display_low)))
-    || (meta.trend_display_high != null && Number.isFinite(Number(meta.trend_display_high)))
+    toFiniteNumber(meta.trend_display_low) != null
+    || toFiniteNumber(meta.trend_display_high) != null
     || !!(meta.trend_display_label || "").trim();
 
   if (hasTrendOverride) {
-    const low =
-      meta.trend_display_low != null && Number.isFinite(Number(meta.trend_display_low))
-        ? Number(meta.trend_display_low)
-        : undefined;
-    const high =
-      meta.trend_display_high != null && Number.isFinite(Number(meta.trend_display_high))
-        ? Number(meta.trend_display_high)
-        : undefined;
+    const low = toFiniteNumber(meta.trend_display_low);
+    const high = toFiniteNumber(meta.trend_display_high);
     const label = (meta.trend_display_label || "").trim()
       || formatShortRange(low, high, meta.unit)
       || "—";
     return { low, high, rangeLabel: label };
   }
 
-  // Default: parameter / report reference range (clinical — not modified by Settings)
-  let low =
-    meta.normal_range_low != null && Number.isFinite(Number(meta.normal_range_low))
-      ? Number(meta.normal_range_low)
-      : undefined;
-  let high =
-    meta.normal_range_high != null && Number.isFinite(Number(meta.normal_range_high))
-      ? Number(meta.normal_range_high)
-      : undefined;
+  let low = toFiniteNumber(meta.normal_range_low);
+  let high = toFiniteNumber(meta.normal_range_high);
 
   const refText =
-    (meta.normal_range_text || "").trim()
-    || (meta.reference_range || "").trim()
+    (meta.reference_range || "").trim()
+    || (meta.normal_range_text || "").trim()
     || "";
 
-  if (low == null && high == null && refText) {
+  if ((low == null || high == null) && refText) {
     const parsed = parseBoundsFromRangeText(refText);
-    low = parsed.low;
-    high = parsed.high;
+    if (low == null) low = parsed.low;
+    if (high == null) high = parsed.high;
   }
 
   const label =
-    formatShortRange(low, high, meta.unit)
-    || shortenReferenceLabel(refText)
+    shortenReferenceLabel(refText)
+    || formatShortRange(low, high, meta.unit)
     || "—";
 
   return { low, high, rangeLabel: label };
@@ -191,6 +183,17 @@ function asTrendSeriesArray(raw: unknown): TrendSeries[] | null {
   return out.length ? out : null;
 }
 
+function seriesHasUsableRange(s: TrendSeries): boolean {
+  if (toFiniteNumber(s.low) != null || toFiniteNumber(s.high) != null) return true;
+  if ((s.rangeLabel || "").trim() && s.rangeLabel !== "—") return true;
+  return s.data.some(
+    (d) =>
+      toFiniteNumber(d.low) != null
+      || toFiniteNumber(d.high) != null
+      || ((d.rangeLabel || "").trim() && d.rangeLabel !== "—"),
+  );
+}
+
 function snapshotSortKey(row: {
   approval_date?: string | null;
   sample_collection_date?: string | null;
@@ -209,30 +212,19 @@ function snapshotSortKey(row: {
 /**
  * Build historical trend series for report PDF from approved_reports snapshots only
  * (not live patient_results), so values match printed approved reports.
- *
- * For final reports: prefer frozen `historical_trends` on the current approved row;
- * if missing, build from snapshots up to this visit and optionally persist (caller).
- * For provisional: past approved snapshots + current provisional results.
  */
 export async function buildReportHistoricalTrends(opts: {
   umrNumber: string | null | undefined;
   registrationId: string;
-  /** parameter_ids present on the current report */
   reportParameterIds: string[];
   isProvisional?: boolean;
-  /** Frozen series from approved_reports.historical_trends (if any) */
   frozenTrends?: unknown;
-  /**
-   * Cutoff: only include approved snapshots at or before this visit
-   * (approval_date / sample_collection / registration_date).
-   */
   asOfIso?: string | null;
-  /**
-   * Current visit results (from approved snapshot or provisional synthesis).
-   * Used when this visit must contribute a point.
-   */
   currentVisitResults?: SnapshotResultRow[];
   currentVisitDateIso?: string | null;
+  /** Patient gender for age/gender normal-range fallback */
+  gender?: string | null;
+  dob?: string | null;
 }): Promise<{ trends: TrendSeries[]; fromFrozen: boolean }> {
   const umr = String(opts.umrNumber || "").trim();
   const reportParamIds = Array.from(new Set(opts.reportParameterIds.filter(Boolean)));
@@ -252,15 +244,78 @@ export async function buildReportHistoricalTrends(opts: {
   const analyticsIds = new Set(metaList.map((p) => p.id));
   const metaById = new Map(metaList.map((p) => [p.id, p]));
 
-  const applyDisplayRange = (series: TrendSeries): TrendSeries => {
-    const meta = metaById.get(series.parameter_id);
-    if (!meta) return series;
-    const range = resolveTrendDisplayRange(meta);
+  // Age/gender clinical ranges (most params store ranges here, not on the param row)
+  const { data: rangeRows } = await (supabase as any)
+    .from("parameter_normal_ranges")
+    .select(
+      "parameter_id, gender, age_min, age_max, range_type, normal_range_text, normal_range_low, normal_range_high",
+    )
+    .in("parameter_id", metaList.map((p) => p.id));
+
+  const rangesByParam = new Map<string, NormalRangeRow[]>();
+  for (const row of rangeRows || []) {
+    const pid = String(row.parameter_id || "");
+    if (!pid) continue;
+    if (!rangesByParam.has(pid)) rangesByParam.set(pid, []);
+    rangesByParam.get(pid)!.push(row as NormalRangeRow);
+  }
+
+  const genderFallback = new Map<string, { low?: number; high?: number; text: string }>();
+  for (const meta of metaList) {
+    const best = pickBestNormalRange(rangesByParam.get(meta.id) || [], {
+      gender: opts.gender,
+      dob: opts.dob,
+    });
+    if (!best) continue;
+    genderFallback.set(meta.id, {
+      low: toFiniteNumber(best.normal_range_low),
+      high: toFiniteNumber(best.normal_range_high),
+      text: String(best.normal_range_text || "").trim(),
+    });
+  }
+
+  const resolveForParam = (
+    parameterId: string,
+    snapshotRange?: {
+      reference_range?: string | null;
+      normal_range_low?: number | string | null;
+      normal_range_high?: number | string | null;
+      unit?: string | null;
+    },
+  ) => {
+    const meta = metaById.get(parameterId)!;
+    const fb = genderFallback.get(parameterId);
+    const snapLow = toFiniteNumber(snapshotRange?.normal_range_low);
+    const snapHigh = toFiniteNumber(snapshotRange?.normal_range_high);
+    return resolveTrendDisplayRange({
+      trend_display_low: meta.trend_display_low,
+      trend_display_high: meta.trend_display_high,
+      trend_display_label: meta.trend_display_label,
+      normal_range_low: snapLow ?? toFiniteNumber(meta.normal_range_low) ?? fb?.low ?? null,
+      normal_range_high: snapHigh ?? toFiniteNumber(meta.normal_range_high) ?? fb?.high ?? null,
+      normal_range_text: meta.normal_range_text,
+      reference_range: snapshotRange?.reference_range || fb?.text || null,
+      unit: (snapshotRange?.unit && String(snapshotRange.unit).trim()) || meta.unit,
+    });
+  };
+
+  const applyResolvedRange = (series: TrendSeries): TrendSeries => {
+    // Prefer current Settings / clinical fallback; keep frozen values/dates
+    const range = resolveForParam(series.parameter_id, {
+      reference_range:
+        series.rangeLabel && series.rangeLabel !== "—"
+          ? series.rangeLabel
+          : series.data.find((d) => d.rangeLabel && d.rangeLabel !== "—")?.rangeLabel,
+      normal_range_low: series.low ?? series.data.find((d) => d.low != null)?.low,
+      normal_range_high: series.high ?? series.data.find((d) => d.high != null)?.high,
+      unit: series.unit,
+    });
     return {
       ...series,
       low: range.low,
       high: range.high,
       rangeLabel: range.rangeLabel,
+      unit: series.unit || metaById.get(series.parameter_id)?.unit || undefined,
       data: series.data.map((d) => ({
         ...d,
         low: range.low,
@@ -271,12 +326,16 @@ export async function buildReportHistoricalTrends(opts: {
   };
 
   const frozen = asTrendSeriesArray(opts.frozenTrends);
-  if (frozen && !opts.isProvisional) {
-    // Keep frozen values/dates; refresh Ref lines/labels from Settings or default reference range
+  const frozenUsable =
+    !!frozen
+    && !opts.isProvisional
+    && frozen.some(seriesHasUsableRange);
+
+  if (frozen && frozenUsable) {
     return {
       trends: frozen
         .filter((s) => reportParamIds.includes(s.parameter_id))
-        .map(applyDisplayRange),
+        .map(applyResolvedRange),
       fromFrozen: true,
     };
   }
@@ -301,8 +360,8 @@ export async function buildReportHistoricalTrends(opts: {
     whenIso: string | null | undefined,
     snapshotRange?: {
       reference_range?: string | null;
-      normal_range_low?: number | null;
-      normal_range_high?: number | null;
+      normal_range_low?: number | string | null;
+      normal_range_high?: number | string | null;
       unit?: string | null;
     },
   ) => {
@@ -311,14 +370,7 @@ export async function buildReportHistoricalTrends(opts: {
     if (!meta) return;
     const value = parseNumeric(resultValue);
     if (value == null) return;
-    const range = resolveTrendDisplayRange({
-      ...meta,
-      // Prefer snapshot reference when settings override is empty
-      normal_range_low: snapshotRange?.normal_range_low ?? meta.normal_range_low,
-      normal_range_high: snapshotRange?.normal_range_high ?? meta.normal_range_high,
-      reference_range: snapshotRange?.reference_range,
-      unit: snapshotRange?.unit ?? meta.unit,
-    });
+    const range = resolveForParam(parameterId, snapshotRange);
     const sortKey = Date.parse(String(whenIso || "")) || 0;
     const point: RawPoint = {
       date: formatTrendDate(whenIso),
@@ -336,8 +388,6 @@ export async function buildReportHistoricalTrends(opts: {
   for (const ar of approvedRows || []) {
     const regId = String(ar.registration_id || "");
     if (!regId) continue;
-    // Always include this visit's approved snapshot; for other visits enforce as-of cutoff
-    // so later approvals cannot rewrite an older report's graphs.
     const sk = snapshotSortKey(ar);
     if (regId !== opts.registrationId && sk > asOfMs) continue;
 
@@ -359,7 +409,6 @@ export async function buildReportHistoricalTrends(opts: {
     }
   }
 
-  // Provisional (or missing current snapshot): add current visit from provided results
   const currentRows = opts.currentVisitResults || [];
   if (currentRows.length > 0) {
     const when = opts.currentVisitDateIso || opts.asOfIso || new Date().toISOString();
@@ -391,22 +440,22 @@ export async function buildReportHistoricalTrends(opts: {
       .slice(-TREND_MAX_POINTS)
       .map(({ sortKey: _s, registrationId: _r, ...rest }) => rest);
     if (ordered.length === 0) continue;
-    const range = resolveTrendDisplayRange(meta);
+    const last = ordered[ordered.length - 1];
     series.push({
       parameter_id: pid,
       parameter_name: meta.parameter_name,
       param_code: meta.param_code,
       unit: meta.unit || undefined,
-      low: range.low,
-      high: range.high,
-      rangeLabel: range.rangeLabel,
+      low: last.low,
+      high: last.high,
+      rangeLabel: last.rangeLabel,
       data: ordered,
     });
   }
   return { trends: series, fromFrozen: false };
 }
 
-/** Persist frozen trends onto approved_reports (no-op if already frozen or empty). */
+/** Persist frozen trends onto approved_reports (overwrite empty/broken freeze). */
 export async function freezeApprovedReportHistoricalTrends(
   registrationId: string,
   trends: TrendSeries[],
@@ -419,12 +468,14 @@ export async function freezeApprovedReportHistoricalTrends(
     .maybeSingle();
   if (readErr) throw new Error(readErr.message);
   if (!row?.id) return;
-  if (asTrendSeriesArray(row.historical_trends)) return; // already frozen
+
+  const existing = asTrendSeriesArray(row.historical_trends);
+  if (existing && existing.some(seriesHasUsableRange)) return;
+
   const { error } = await (supabase as any)
     .from("approved_reports")
     .update({ historical_trends: trends })
-    .eq("id", row.id)
-    .is("historical_trends", null);
+    .eq("id", row.id);
   if (error) throw new Error(error.message);
 }
 

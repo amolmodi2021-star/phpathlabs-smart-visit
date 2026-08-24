@@ -1114,6 +1114,8 @@ const LimsReportView = () => {
         asOfIso,
         currentVisitResults,
         currentVisitDateIso: asOfIso,
+        gender: primaryReport?.gender || regData?.gender || null,
+        dob: primaryReport?.dob || regData?.dob || null,
       });
       trends = built.trends;
       // Freeze onto approved snapshot so years later the same graphs reopen
