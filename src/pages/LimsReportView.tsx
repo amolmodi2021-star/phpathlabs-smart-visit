@@ -42,6 +42,7 @@ import {
 import ReportTrendCharts from "@/components/report/ReportTrendCharts";
 import {
   buildReportHistoricalTrends,
+  freezeApprovedReportHistoricalTrends,
   chunkTrendsForPages,
   type TrendSeries,
 } from "@/lib/reportHistoricalTrends";
@@ -1085,11 +1086,43 @@ const LimsReportView = () => {
           ),
         ),
       );
-      trends = await buildReportHistoricalTrends({
-        umrNumber: regData?.umr_number,
+      const primaryReport = filteredReports[0] as any;
+      const currentVisitResults = filteredReports.flatMap((r: any) =>
+        ((r.test_results || []) as TestResultEntry[]).map((tr) => ({
+          parameter_id: tr.parameter_id,
+          param_code: (tr as any).param_code,
+          parameter_name: tr.parameter_name,
+          result_value: tr.result_value,
+          unit: tr.unit,
+          normal_range_low: tr.normal_range_low,
+          normal_range_high: tr.normal_range_high,
+        })),
+      );
+      const asOfIso =
+        primaryReport?.sample_collection_date
+        || primaryReport?.approval_date
+        || primaryReport?.registration_date
+        || regData?.created_at
+        || null;
+      const built = await buildReportHistoricalTrends({
+        umrNumber: regData?.umr_number || primaryReport?.umr_number,
         registrationId: registrationId!,
         reportParameterIds,
+        isProvisional,
+        frozenTrends: primaryReport?.historical_trends,
+        asOfIso,
+        currentVisitResults,
+        currentVisitDateIso: asOfIso,
       });
+      trends = built.trends;
+      // Freeze onto approved snapshot so years later the same graphs reopen
+      if (!isProvisional && !built.fromFrozen && trends.length > 0 && registrationId) {
+        try {
+          await freezeApprovedReportHistoricalTrends(registrationId, trends);
+        } catch (freezeErr) {
+          console.warn("Could not freeze historical trends:", freezeErr);
+        }
+      }
     } catch (trendErr) {
       console.warn("Historical trends skipped:", trendErr);
       trends = [];

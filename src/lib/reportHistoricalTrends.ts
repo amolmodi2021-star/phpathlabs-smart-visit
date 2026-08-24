@@ -36,6 +36,16 @@ type TrendParamMeta = {
   trend_display_label: string | null;
 };
 
+type SnapshotResultRow = {
+  parameter_id?: string;
+  param_code?: string;
+  parameter_name?: string;
+  result_value?: string | null;
+  unit?: string | null;
+  normal_range_low?: number | null;
+  normal_range_high?: number | null;
+};
+
 function parseNumeric(raw: string | null | undefined): number | null {
   if (raw == null) return null;
   const s = String(raw).trim().replace(/,/g, "");
@@ -94,20 +104,69 @@ function formatTrendDate(iso: string | null | undefined): string {
   }
 }
 
+function asTrendSeriesArray(raw: unknown): TrendSeries[] | null {
+  if (!Array.isArray(raw) || raw.length === 0) return null;
+  const out: TrendSeries[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const s = item as TrendSeries;
+    if (!s.parameter_id || !Array.isArray(s.data) || s.data.length === 0) continue;
+    out.push(s);
+  }
+  return out.length ? out : null;
+}
+
+function snapshotSortKey(row: {
+  approval_date?: string | null;
+  sample_collection_date?: string | null;
+  registration_date?: string | null;
+  created_at?: string | null;
+}): number {
+  const iso =
+    row.sample_collection_date
+    || row.approval_date
+    || row.registration_date
+    || row.created_at
+    || "";
+  return Date.parse(String(iso)) || 0;
+}
+
 /**
- * Build historical trend series for report PDF.
- * Only parameters with store_for_analytics that appear on this report (numeric).
- * Last TREND_MAX_POINTS visits per parameter (oldest→newest on chart).
+ * Build historical trend series for report PDF from approved_reports snapshots only
+ * (not live patient_results), so values match printed approved reports.
+ *
+ * For final reports: prefer frozen `historical_trends` on the current approved row;
+ * if missing, build from snapshots up to this visit and optionally persist (caller).
+ * For provisional: past approved snapshots + current provisional results.
  */
 export async function buildReportHistoricalTrends(opts: {
   umrNumber: string | null | undefined;
   registrationId: string;
   /** parameter_ids present on the current report */
   reportParameterIds: string[];
-}): Promise<TrendSeries[]> {
+  isProvisional?: boolean;
+  /** Frozen series from approved_reports.historical_trends (if any) */
+  frozenTrends?: unknown;
+  /**
+   * Cutoff: only include approved snapshots at or before this visit
+   * (approval_date / sample_collection / registration_date).
+   */
+  asOfIso?: string | null;
+  /**
+   * Current visit results (from approved snapshot or provisional synthesis).
+   * Used when this visit must contribute a point.
+   */
+  currentVisitResults?: SnapshotResultRow[];
+  currentVisitDateIso?: string | null;
+}): Promise<{ trends: TrendSeries[]; fromFrozen: boolean }> {
+  const frozen = asTrendSeriesArray(opts.frozenTrends);
+  if (frozen && !opts.isProvisional) {
+    return { trends: frozen, fromFrozen: true };
+  }
+
   const umr = String(opts.umrNumber || "").trim();
   const reportParamIds = Array.from(new Set(opts.reportParameterIds.filter(Boolean)));
-  if (!umr || reportParamIds.length === 0) return [];
+  if (!umr || reportParamIds.length === 0) return { trends: [], fromFrozen: false };
 
   const { data: analyticsParams, error: pErr } = await (supabase as any)
     .from("report_test_parameters")
@@ -118,75 +177,97 @@ export async function buildReportHistoricalTrends(opts: {
     .in("id", reportParamIds);
   if (pErr) throw new Error(pErr.message);
   const metaList = (analyticsParams || []) as TrendParamMeta[];
-  if (metaList.length === 0) return [];
+  if (metaList.length === 0) return { trends: [], fromFrozen: false };
 
-  const analyticsIds = metaList.map((p) => p.id);
+  const analyticsIds = new Set(metaList.map((p) => p.id));
   const metaById = new Map(metaList.map((p) => [p.id, p]));
 
-  const { data: regs, error: rErr } = await supabase
-    .from("patient_registrations")
-    .select("id, created_at")
-    .eq("umr_number", umr)
-    .order("created_at", { ascending: true });
-  if (rErr) throw new Error(rErr.message);
-  const regRows = regs || [];
-  if (regRows.length === 0) return [];
-  const regIds = regRows.map((r) => r.id);
-  const regDateById = new Map(regRows.map((r) => [r.id, r.created_at as string]));
+  const { data: approvedRows, error: aErr } = await (supabase as any)
+    .from("approved_reports")
+    .select(
+      "id, registration_id, approval_date, sample_collection_date, registration_date, created_at, test_results",
+    )
+    .eq("umr_number", umr);
+  if (aErr) throw new Error(aErr.message);
 
-  const { data: results, error: resErr } = await supabase
-    .from("patient_results")
-    .select("parameter_id, result_value, registration_id, created_at, status")
-    .in("registration_id", regIds)
-    .in("parameter_id", analyticsIds)
-    .not("result_value", "is", null)
-    .in("status", ["entered", "pending", "results_entered", "verified", "approved", "dispatched"]);
-  if (resErr) throw new Error(resErr.message);
+  const asOfMs = opts.asOfIso ? (Date.parse(String(opts.asOfIso)) || Number.POSITIVE_INFINITY) : Number.POSITIVE_INFINITY;
 
-  type RawPoint = TrendPoint & { sortKey: number; registrationId: string; resultAt: number };
+  type RawPoint = TrendPoint & { sortKey: number; registrationId: string };
   const byParam = new Map<string, RawPoint[]>();
-  for (const row of results || []) {
-    const pid = row.parameter_id as string;
-    const meta = metaById.get(pid);
-    if (!meta) continue;
-    const value = parseNumeric(row.result_value as string);
-    if (value == null) continue;
+
+  const pushPoint = (
+    registrationId: string,
+    parameterId: string,
+    resultValue: string | null | undefined,
+    whenIso: string | null | undefined,
+  ) => {
+    if (!analyticsIds.has(parameterId)) return;
+    const meta = metaById.get(parameterId);
+    if (!meta) return;
+    const value = parseNumeric(resultValue);
+    if (value == null) return;
     const range = resolveTrendDisplayRange(meta);
-    const regId = row.registration_id as string;
-    const when = regDateById.get(regId) || (row.created_at as string);
-    const sortKey = Date.parse(when) || 0;
-    const resultAt = Date.parse(String(row.created_at || when)) || sortKey;
+    const sortKey = Date.parse(String(whenIso || "")) || 0;
     const point: RawPoint = {
-      date: formatTrendDate(when),
+      date: formatTrendDate(whenIso),
       value,
       low: range.low,
       high: range.high,
       rangeLabel: range.rangeLabel,
       sortKey,
-      registrationId: regId,
-      resultAt,
+      registrationId,
     };
-    if (!byParam.has(pid)) byParam.set(pid, []);
-    byParam.get(pid)!.push(point);
+    if (!byParam.has(parameterId)) byParam.set(parameterId, []);
+    byParam.get(parameterId)!.push(point);
+  };
+
+  for (const ar of approvedRows || []) {
+    const regId = String(ar.registration_id || "");
+    if (!regId) continue;
+    // Always include this visit's approved snapshot; for other visits enforce as-of cutoff
+    // so later approvals cannot rewrite an older report's graphs.
+    const sk = snapshotSortKey(ar);
+    if (regId !== opts.registrationId && sk > asOfMs) continue;
+
+    const rows = Array.isArray(ar.test_results) ? (ar.test_results as SnapshotResultRow[]) : [];
+    const when =
+      ar.sample_collection_date
+      || ar.approval_date
+      || ar.registration_date
+      || ar.created_at;
+    for (const tr of rows) {
+      const pid = String(tr.parameter_id || "");
+      if (!pid) continue;
+      pushPoint(regId, pid, tr.result_value, when);
+    }
+  }
+
+  // Provisional (or missing current snapshot): add current visit from provided results
+  const currentRows = opts.currentVisitResults || [];
+  if (currentRows.length > 0) {
+    const when = opts.currentVisitDateIso || opts.asOfIso || new Date().toISOString();
+    for (const tr of currentRows) {
+      const pid = String(tr.parameter_id || "");
+      if (!pid) continue;
+      pushPoint(opts.registrationId, pid, tr.result_value, when);
+    }
   }
 
   const series: TrendSeries[] = [];
-  // Keep report parameter order
   for (const pid of reportParamIds) {
     const meta = metaById.get(pid);
     if (!meta) continue;
     const points = byParam.get(pid) || [];
     if (points.length === 0) continue;
-    // One point per registration (keep latest result if duplicates)
     const byReg = new Map<string, RawPoint>();
     for (const p of points) {
       const prev = byReg.get(p.registrationId);
-      if (!prev || p.resultAt >= prev.resultAt) byReg.set(p.registrationId, p);
+      if (!prev || p.sortKey >= prev.sortKey) byReg.set(p.registrationId, p);
     }
     const ordered = Array.from(byReg.values())
-      .sort((a, b) => a.sortKey - b.sortKey || a.resultAt - b.resultAt)
+      .sort((a, b) => a.sortKey - b.sortKey)
       .slice(-TREND_MAX_POINTS)
-      .map(({ sortKey: _s, registrationId: _r, resultAt: _t, ...rest }) => rest);
+      .map(({ sortKey: _s, registrationId: _r, ...rest }) => rest);
     if (ordered.length === 0) continue;
     const range = resolveTrendDisplayRange(meta);
     series.push({
@@ -200,7 +281,29 @@ export async function buildReportHistoricalTrends(opts: {
       data: ordered,
     });
   }
-  return series;
+  return { trends: series, fromFrozen: false };
+}
+
+/** Persist frozen trends onto approved_reports (no-op if already frozen or empty). */
+export async function freezeApprovedReportHistoricalTrends(
+  registrationId: string,
+  trends: TrendSeries[],
+): Promise<void> {
+  if (!registrationId || !trends.length) return;
+  const { data: row, error: readErr } = await (supabase as any)
+    .from("approved_reports")
+    .select("id, historical_trends")
+    .eq("registration_id", registrationId)
+    .maybeSingle();
+  if (readErr) throw new Error(readErr.message);
+  if (!row?.id) return;
+  if (asTrendSeriesArray(row.historical_trends)) return; // already frozen
+  const { error } = await (supabase as any)
+    .from("approved_reports")
+    .update({ historical_trends: trends })
+    .eq("id", row.id)
+    .is("historical_trends", null);
+  if (error) throw new Error(error.message);
 }
 
 export function chunkTrendsForPages(trends: TrendSeries[], perPage = TRENDS_PER_PAGE): TrendSeries[][] {

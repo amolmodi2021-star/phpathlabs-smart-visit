@@ -223,6 +223,8 @@ export type Database = {
           doctor_name: string | null
           email: string | null
           gender: string | null
+          histograms: Json | null
+          historical_trends: Json | null
           id: string
           invoice_number: string | null
           is_held: boolean
@@ -250,6 +252,8 @@ export type Database = {
           doctor_name?: string | null
           email?: string | null
           gender?: string | null
+          histograms?: Json | null
+          historical_trends?: Json | null
           id?: string
           invoice_number?: string | null
           is_held?: boolean
@@ -277,6 +281,8 @@ export type Database = {
           doctor_name?: string | null
           email?: string | null
           gender?: string | null
+          histograms?: Json | null
+          historical_trends?: Json | null
           id?: string
           invoice_number?: string | null
           is_held?: boolean
