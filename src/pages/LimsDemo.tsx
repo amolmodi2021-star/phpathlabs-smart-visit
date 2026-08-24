@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -9,12 +9,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { invokeLimsReprocess } from "@/lib/invokeLimsReprocess";
 import { toast } from "@/hooks/use-toast";
-import { Plus, Trash2, ChevronDown, ChevronRight, Copy, RefreshCw, Link2, AlertTriangle, ChevronsUpDown, Check, Pencil, X } from "lucide-react";
+import { Plus, Trash2, ChevronDown, ChevronRight, Copy, RefreshCw, Link2, AlertTriangle, ChevronsUpDown, Check, Pencil, X, Search } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandInput, CommandList, CommandEmpty, CommandItem } from "@/components/ui/command";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
+import { useMasterLookup } from "@/hooks/useMasterLookup";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -148,9 +149,13 @@ const LimsDemo = () => {
   
   const [newParamCode, setNewParamCode] = useState("");
   const [orderSearch, setOrderSearch] = useState("");
+  const [logInvoiceSearch, setLogInvoiceSearch] = useState("");
+  const [logMachineFilter, setLogMachineFilter] = useState("all");
   const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set());
   const [selectedUnmappedIds, setSelectedUnmappedIds] = useState<Set<string>>(new Set());
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const { data: masterMachines = [] } = useMasterLookup("machine_name");
 
   const handleRefreshActiveOrders = async () => {
     setIsRefreshing(true);
@@ -259,6 +264,47 @@ const LimsDemo = () => {
       (o.patient_name || "").toLowerCase().includes(q)
     );
   });
+
+  const machineDisplayName = (machineId: string | null | undefined) => {
+    const id = String(machineId || "").trim();
+    if (!id) return "—";
+    const hit = masterMachines.find(
+      (m) =>
+        String(m.mapped_value || "").trim() === id
+        || String(m.value || "").trim().toLowerCase() === id.toLowerCase(),
+    );
+    if (!hit) return id;
+    const name = String(hit.value || "").trim();
+    if (!name || name.toLowerCase() === id.toLowerCase()) return id;
+    return `${name} (${id})`;
+  };
+
+  const logMachineOptions = useMemo(() => {
+    const ids = Array.from(
+      new Set(
+        (logs as InterfaceLogSummary[])
+          .map((l) => String(l.machine_id || "").trim())
+          .filter(Boolean),
+      ),
+    );
+    return ids.sort((a, b) => machineDisplayName(a).localeCompare(machineDisplayName(b)));
+  }, [logs, masterMachines]);
+
+  const filteredLogs = useMemo(() => {
+    const q = logInvoiceSearch.trim().toLowerCase();
+    return (logs as InterfaceLogSummary[]).filter((log) => {
+      if (q && !(log.sample_id || "").toLowerCase().includes(q)) return false;
+      if (logMachineFilter !== "all") {
+        const mid = String(log.machine_id || "").trim();
+        if (logMachineFilter === "__none__") {
+          if (mid) return false;
+        } else if (mid !== logMachineFilter) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [logs, logInvoiceSearch, logMachineFilter]);
 
   // Auto-delete active orders older than 15 days
   useEffect(() => {
@@ -800,8 +846,10 @@ const LimsDemo = () => {
         <TabsContent value="logs">
           <Card>
             <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-base">Interface Logs</CardTitle>
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <CardTitle className="text-base">
+                  Interface Logs ({filteredLogs.length}{logInvoiceSearch || logMachineFilter !== "all" ? ` of ${logs.length}` : ""})
+                </CardTitle>
                 <div className="flex gap-2">
                   <Button size="sm" variant="outline" onClick={() => queryClient.invalidateQueries({ queryKey: ["lims-logs"] })}>
                     <RefreshCw className="h-4 w-4 mr-1" /> Refresh
@@ -811,11 +859,50 @@ const LimsDemo = () => {
               </div>
             </CardHeader>
             <CardContent>
+              <div className="flex flex-wrap items-center gap-2 mb-3">
+                <div className="relative max-w-xs w-full sm:w-64">
+                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    className="pl-9"
+                    placeholder="Search invoice / sample ID…"
+                    value={logInvoiceSearch}
+                    onChange={(e) => setLogInvoiceSearch(e.target.value)}
+                  />
+                </div>
+                <Select value={logMachineFilter} onValueChange={setLogMachineFilter}>
+                  <SelectTrigger className="w-[220px]">
+                    <SelectValue placeholder="Machine name" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All machines</SelectItem>
+                    <SelectItem value="__none__">No machine ID</SelectItem>
+                    {logMachineOptions.map((mid) => (
+                      <SelectItem key={mid} value={mid}>
+                        {machineDisplayName(mid)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {(logInvoiceSearch || logMachineFilter !== "all") && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      setLogInvoiceSearch("");
+                      setLogMachineFilter("all");
+                    }}
+                  >
+                    Clear filters
+                  </Button>
+                )}
+              </div>
               {logs.length === 0 ? (
                 <p className="text-sm text-muted-foreground">No logs yet. Middleware interactions will appear here.</p>
+              ) : filteredLogs.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No logs match the current invoice / machine filters.</p>
               ) : (
                 <div className="space-y-2 max-h-[600px] overflow-y-auto">
-                  {logs.map((log: InterfaceLogSummary) => (
+                  {filteredLogs.map((log: InterfaceLogSummary) => (
                     <InterfaceLogEntry key={log.id} log={log} />
                   ))}
                 </div>
