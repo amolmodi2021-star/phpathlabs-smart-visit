@@ -123,13 +123,6 @@ function ChartCard({ trend, forPdf }: { trend: TrendSeries; forPdf?: boolean }) 
                 strokeDasharray="5 3"
                 strokeWidth={1.75}
                 ifOverflow="extendDomain"
-                label={{
-                  value: "High",
-                  position: "insideTopRight",
-                  fill: "#15803d",
-                  fontSize: 8,
-                  fontWeight: 700,
-                }}
               />
             )}
             {trend.low != null && (
@@ -139,13 +132,6 @@ function ChartCard({ trend, forPdf }: { trend: TrendSeries; forPdf?: boolean }) 
                 strokeDasharray="5 3"
                 strokeWidth={1.75}
                 ifOverflow="extendDomain"
-                label={{
-                  value: "Low",
-                  position: "insideBottomRight",
-                  fill: "#15803d",
-                  fontSize: 8,
-                  fontWeight: 700,
-                }}
               />
             )}
             <Line
