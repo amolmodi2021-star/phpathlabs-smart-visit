@@ -142,9 +142,10 @@ function ChartCard({ trend, forPdf }: { trend: TrendSeries; forPdf?: boolean }) 
   if (trend.high != null) allVals.push(trend.high);
   const minVal = Math.min(...allVals);
   const maxVal = Math.max(...allVals);
-  const range = maxVal - minVal;
+  const range = maxVal - Math.min(0, minVal);
   const padding = range > 0 ? range * 0.2 : Math.abs(maxVal) * 0.15 || 1;
-  const yMin = Math.min(minVal - padding, trend.low != null ? trend.low - padding * 0.3 : minVal - padding);
+  // Always start at 0; keep headroom above data / ref high only.
+  const yMin = 0;
   const yMax = Math.max(maxVal + padding, trend.high != null ? trend.high + padding * 0.3 : maxVal + padding);
   const yTicks = buildLabeledYTicks(yMin, yMax, 3);
   // Slightly shorter plot so multi-line Ref + 6 cards can fit; AutoScale shrinks further if needed.
