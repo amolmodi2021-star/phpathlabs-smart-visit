@@ -18,96 +18,38 @@ const getFlag = (value: number, low?: number, high?: number): AbnormalFlag => {
 const formatValue = (value: number) =>
   Number(value).toFixed(Number.isInteger(value) ? 0 : 2);
 
-/** Nice step size (1/2/5 × 10^n) for round axis ticks. */
-function niceNum(range: number, round: boolean): number {
-  const r = Math.max(Math.abs(range), Number.EPSILON);
-  const exp = Math.floor(Math.log10(r));
-  const frac = r / 10 ** exp;
-  let nice: number;
-  if (round) {
-    if (frac < 1.5) nice = 1;
-    else if (frac < 3) nice = 2;
-    else if (frac < 7) nice = 5;
-    else nice = 10;
-  } else if (frac <= 1) nice = 1;
-  else if (frac <= 2) nice = 2;
-  else if (frac <= 5) nice = 5;
-  else nice = 10;
-  return nice * 10 ** exp;
+/** Domain from 0 with natural padding (no forced round tick steps). */
+function buildYDomain(values: number[], low?: number, high?: number): { yMin: number; yMax: number } {
+  const nums = [...values, low, high].filter(
+    (v): v is number => v != null && Number.isFinite(v),
+  );
+  const dataMax = Math.max(0, ...(nums.length ? nums : [1]));
+  const span = Math.max(dataMax, Number.EPSILON);
+  const padding = span * 0.15 || 1;
+  return { yMin: 0, yMax: dataMax + padding };
 }
 
-function formatAxisTick(value: number, step: number): string {
+const formatAxisTick = (value: number) => {
   if (!Number.isFinite(value)) return "";
-  // Avoid float dust (e.g. 0.30000000004)
-  const cleaned = Math.abs(step) >= 1
-    ? Math.round(value)
-    : Number(value.toFixed(Math.max(0, Math.ceil(-Math.log10(Math.abs(step))) + 1)));
-  if (Math.abs(step) >= 1) return String(Math.round(cleaned));
-  if (Math.abs(step) >= 0.1) return cleaned.toFixed(1).replace(/\.0$/, "");
-  if (Math.abs(step) >= 0.01) return cleaned.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
-  return String(cleaned);
-}
+  if (Math.abs(value) >= 100) return String(Math.round(value));
+  if (Math.abs(value - Math.round(value)) < 1e-6) return String(Math.round(value));
+  return Number(value.toFixed(2)).toString();
+};
 
-/**
- * Y domain from 0 with fine round ticks so the green ref band stays visually large.
- * Avoid coarse steps (e.g. 0/5/10/15 for Calcium 8.6–10.3) that crush the band.
- */
-function buildYAxisScale(values: number[], low?: number, high?: number) {
-  const positives = [...values, low, high]
-    .filter((v): v is number => v != null && Number.isFinite(v))
-    .map((v) => Math.max(0, v));
-  const dataMax = Math.max(...(positives.length ? positives : [1]), Number.EPSILON);
-  const yMin = 0;
-  // Keep ceiling tight — only ~8–10% headroom above data / ref high
-  const padded = Math.max(dataMax * 1.08, dataMax + Number.EPSILON);
-
-  // Aim for ~8–10 intervals so steps stay small (1 or 2, not 5/10)
-  let step = niceNum(padded / 9, true);
-  let yMax = Math.max(step, Math.ceil(padded / step) * step);
-
-  // If coarse rounding still inflated the axis, force a finer step
-  if (yMax > dataMax * 1.35) {
-    step = niceNum(padded / 12, true);
-    yMax = Math.max(step, Math.ceil(padded / step) * step);
-  }
-
-  // When a ref band exists, keep shrinking the step until the band is a
-  // meaningful share of the plot (or we hit a sensible minimum step).
-  if (low != null && high != null && high > low) {
-    const band = high - low;
-    let guard = 0;
-    while ((band / yMax) < 0.2 && guard < 6) {
-      const next = niceNum(step / 2, true);
-      if (!(next > 0) || next >= step) break;
-      step = next;
-      yMax = Math.max(step, Math.ceil(padded / step) * step);
-      guard += 1;
-    }
-  }
-
-  const ticks: number[] = [];
-  for (let v = yMin; v <= yMax + step * 1e-9; v += step) {
-    ticks.push(Number((Math.round(v / step) * step).toFixed(10)));
-  }
-  if (ticks.length && ticks[ticks.length - 1] < yMax - step * 1e-6) ticks.push(yMax);
-  return { yMin, yMax, ticks, step };
-}
-
-/** Y tick centered on its grid line (PDF/html-to-image friendly). */
+/** Keep Y labels vertically centered on their grid lines. */
 const AlignedYTick = (props: any) => {
-  const { x, y, payload, step } = props;
+  const { x, y, payload } = props;
   if (x == null || y == null || payload?.value == null) return null;
   return (
     <text
       x={x - 4}
       y={y}
-      dy={0}
       textAnchor="end"
       dominantBaseline="central"
       fontSize={8}
       fill="#64748b"
     >
-      {formatAxisTick(Number(payload.value), Number(step) || 1)}
+      {formatAxisTick(Number(payload.value))}
     </text>
   );
 };
@@ -152,15 +94,11 @@ const pickLabelSide = (
   const clearance = span * 0.12;
   const nearHigh = high != null && Number.isFinite(high) && Math.abs(value - high) <= clearance;
   const nearLow = low != null && Number.isFinite(low) && Math.abs(value - low) <= clearance;
-  // Near high from below → label below the high line (below the point)
   if (nearHigh && high != null && value <= high && !(nearLow && low != null && value >= low)) {
     return "below";
   }
-  // Near low → keep label above so it doesn't sit on the low dashed line
   if (nearLow) return "above";
-  // Point below low line → label above would cross low; put below point
   if (low != null && value < low && low - value <= clearance) return "below";
-  // Close under high (wider clearance) without being near low
   if (
     high != null
     && value < high
@@ -202,8 +140,7 @@ const ValueLabel = (props: any) => {
 function ChartCard({ trend, forPdf }: { trend: TrendSeries; forPdf?: boolean }) {
   const sortedData = trend.data;
   const values = sortedData.map((d) => d.value);
-  const { yMin, yMax, ticks, step } = buildYAxisScale(values, trend.low, trend.high);
-  // Slightly shorter plot so multi-line Ref + 6 cards can fit; AutoScale shrinks further if needed.
+  const { yMin, yMax } = buildYDomain(values, trend.low, trend.high);
   const chartH = forPdf ? 96 : 140;
   const refText = (trend.rangeLabel || "").trim() || "—";
 
@@ -246,10 +183,9 @@ function ChartCard({ trend, forPdf }: { trend: TrendSeries; forPdf?: boolean }) 
               tickLine={false}
               axisLine={{ stroke: "#cbd5e1" }}
               domain={[yMin, yMax]}
-              ticks={ticks}
-              interval={0}
+              tickCount={5}
               allowDecimals
-              tick={(props: any) => <AlignedYTick {...props} step={step} />}
+              tick={(props: any) => <AlignedYTick {...props} />}
             />
             {trend.low != null && trend.high != null ? (
               <ReferenceArea
