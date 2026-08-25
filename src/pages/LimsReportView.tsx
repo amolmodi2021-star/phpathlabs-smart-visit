@@ -625,7 +625,7 @@ const LimsReportView = () => {
   const [pickupFooterNote, setPickupFooterNote] = useState<string>("");
   const [analyzerHistograms, setAnalyzerHistograms] = useState<AnalyzerHistogram[]>([]);
   const [historicalTrends, setHistoricalTrends] = useState<TrendSeries[]>([]);
-  /** Hide trend/CBC green fills for print & PDF capture (React unmount — never removeChild). */
+  /** Hide trend/CBC fills for print & PDF (React omit — never removeChild). */
   const [hideChartFills, setHideChartFills] = useState(false);
 
   const invoiceNumberForBarcode =
@@ -2255,7 +2255,10 @@ const LimsReportView = () => {
                 })()}
 
                 {page.type === "histogram" && hasRenderableHistograms(page.histograms || analyzerHistograms) && (
-                  <CbcHistogramCharts histograms={page.histograms || analyzerHistograms} />
+                  <CbcHistogramCharts
+                    histograms={page.histograms || analyzerHistograms}
+                    hideFill={hideChartFills}
+                  />
                 )}
 
                 {page.type === "trends" && page.trends && page.trends.length > 0 && (

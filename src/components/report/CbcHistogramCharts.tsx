@@ -20,11 +20,13 @@ const KIND_COLORS: Record<string, string> = {
 
 interface HistogramSvgProps extends AnalyzerHistogram {
   color: string;
+  /** Omit under-curve shade for print / PDF capture. */
+  hideFill?: boolean;
 }
 
 const CURVE_STROKE = 1.6;
 
-const HistogramSvg = ({ kind, bins, discriminators, estimated, color }: HistogramSvgProps) => {
+const HistogramSvg = ({ kind, bins, discriminators, estimated, color, hideFill }: HistogramSvgProps) => {
   const width = 640;
   const height = 200;
   const left = 28;
@@ -85,7 +87,9 @@ const HistogramSvg = ({ kind, bins, discriminators, estimated, color }: Histogra
           className="w-full"
           style={{ display: "block", width: "100%", height: "42mm" }}
         >
-        <polygon className="hist-fill" points={area} fill={color} fillOpacity="0.28" />
+        {!hideFill ? (
+          <polygon className="hist-fill" points={area} fill={color} fillOpacity="0.28" />
+        ) : null}
         {curvePoints.length >= 2 && (
           <polyline
             points={curvePoints.join(" ")}
@@ -150,7 +154,14 @@ export const pageHasCbcTest = (testBlocks: { testName?: string }[] | undefined):
   return testBlocks.some((b) => isCbcTestName(b.testName || ""));
 };
 
-const CbcHistogramCharts = ({ histograms }: { histograms: AnalyzerHistogram[] }) => {
+const CbcHistogramCharts = ({
+  histograms,
+  hideFill = false,
+}: {
+  histograms: AnalyzerHistogram[];
+  /** Hide under-curve shade for print / PDF (React omit — CSS alone is unreliable in html-to-image). */
+  hideFill?: boolean;
+}) => {
   const order: Array<"WBC" | "RBC" | "PLT"> = ["WBC", "RBC", "PLT"];
   const byKind = Object.fromEntries(
     (histograms || []).map((h) => [String(h.kind).toUpperCase(), h]),
@@ -170,6 +181,7 @@ const CbcHistogramCharts = ({ histograms }: { histograms: AnalyzerHistogram[] })
             {...byKind[kind]}
             kind={kind}
             color={KIND_COLORS[kind]}
+            hideFill={hideFill}
           />
         ))}
       </div>
