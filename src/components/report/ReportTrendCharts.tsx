@@ -1,4 +1,5 @@
-﻿import { LineChart, Line, XAxis, YAxis, CartesianGrid, ReferenceLine, ReferenceArea, ResponsiveContainer } from "recharts";
+﻿import { Component, type ReactNode } from "react";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, ReferenceLine, ReferenceArea, ResponsiveContainer } from "recharts";
 import type { TrendSeries } from "@/lib/reportHistoricalTrends";
 
 interface ReportTrendChartsProps {
@@ -76,23 +77,31 @@ function buildYDomain(
   low?: number,
   high?: number,
 ): { yMin: number; yMax: number } {
-  const nums = [...values];
+  const nums = values.filter((v) => Number.isFinite(v));
   if (low != null && Number.isFinite(low)) nums.push(low);
   if (high != null && Number.isFinite(high)) nums.push(high);
-  const minVal = Math.min(...(nums.length ? nums : [0]));
-  const maxVal = Math.max(...(nums.length ? nums : [1]));
+  if (!nums.length) return { yMin: 0, yMax: 1 };
+
+  const minVal = Math.min(...nums);
+  const maxVal = Math.max(...nums);
+  if (!Number.isFinite(minVal) || !Number.isFinite(maxVal)) return { yMin: 0, yMax: 1 };
+
   const span = Math.max(maxVal - minVal, Math.abs(maxVal) * 0.08, 0.2);
   const pad = span * 0.35;
 
   // Upper-limit only (Triglycerides < 150): green from 0 → keep zero baseline
   if ((low == null || !Number.isFinite(low)) && high != null && Number.isFinite(high)) {
-    return { yMin: 0, yMax: Math.max(maxVal, high) + pad };
+    const yMax = Math.max(maxVal, high) + pad;
+    return { yMin: 0, yMax: Number.isFinite(yMax) && yMax > 0 ? yMax : 1 };
   }
 
   // Lower-limit only (HDL > 60): zoom just below the floor
   if (low != null && Number.isFinite(low) && (high == null || !Number.isFinite(high))) {
     const yMin = low <= pad ? 0 : Math.max(0, Math.min(minVal, low) - pad);
     const yMax = Math.max(maxVal, low) + pad;
+    if (!Number.isFinite(yMin) || !Number.isFinite(yMax) || !(yMax > yMin)) {
+      return { yMin: Math.max(0, low - pad), yMax: low + pad };
+    }
     return { yMin, yMax };
   }
 
@@ -120,6 +129,10 @@ function buildYDomain(
   // Ref literally starts at 0 (Bilirubin 0–1.2)
   if (low === 0) yMin = 0;
 
+  if (!Number.isFinite(yMin) || !Number.isFinite(yMax) || !(yMax > yMin)) {
+    yMin = Math.max(0, minVal - pad);
+    yMax = maxVal + pad;
+  }
   if (!(yMax > yMin)) yMax = yMin + Math.max(span, 1);
   return { yMin, yMax };
 }
@@ -214,20 +227,27 @@ const ValueLabel = (props: any) => {
 };
 
 function ChartCard({ trend, forPdf }: { trend: TrendSeries; forPdf?: boolean }) {
-  const sortedData = trend.data;
-  const values = sortedData.map((d) => d.value);
+  const sortedData = Array.isArray(trend?.data)
+    ? trend.data.filter((d) => d != null && Number.isFinite(Number(d.value)))
+    : [];
+  if (!sortedData.length) return null;
+
+  const values = sortedData.map((d) => Number(d.value));
   // Prefer series bounds; fall back to per-point snapshot bounds
   const boundLow =
-    trend.low
+    (trend.low != null && Number.isFinite(trend.low) ? trend.low : undefined)
     ?? sortedData.map((d) => d.low).find((v) => v != null && Number.isFinite(v));
   const boundHigh =
-    trend.high
+    (trend.high != null && Number.isFinite(trend.high) ? trend.high : undefined)
     ?? sortedData.map((d) => d.high).find((v) => v != null && Number.isFinite(v));
-  const { yMin: rawMin, yMax: rawMax } = buildYDomain(values, boundLow, boundHigh);
-  const { yMin, yMax, ticks: yTicks, step: yStep } = buildRoundedYAxis(rawMin, rawMax, 5);
+  const { yMin, yMax } = buildYDomain(values, boundLow, boundHigh);
+  const yDecimals = axisDecimals(yMax - yMin);
+  const yTicks = buildLabeledYTicks(yMin, yMax, 3);
   // Slightly shorter plot so multi-line Ref + 6 cards can fit; AutoScale shrinks further if needed.
   const chartH = forPdf ? 96 : 140;
   const refText = (trend.rangeLabel || "").trim() || "—";
+  const areaLow = boundLow ?? trend.low;
+  const areaHigh = boundHigh ?? trend.high;
 
   return (
     <div
@@ -276,46 +296,46 @@ function ChartCard({ trend, forPdf }: { trend: TrendSeries; forPdf?: boolean }) 
               axisLine={{ stroke: "#cbd5e1" }}
               domain={[yMin, yMax]}
               ticks={yTicks}
-              tickFormatter={(val: number) => formatAxisTick(val, yStep)}
+              tickFormatter={(val: number) => formatAxisTick(val, yDecimals)}
               interval={0}
             />
-            {trend.low != null && trend.high != null ? (
+            {areaLow != null && Number.isFinite(areaLow) && areaHigh != null && Number.isFinite(areaHigh) ? (
               <ReferenceArea
-                y1={trend.low}
-                y2={trend.high}
+                y1={areaLow}
+                y2={areaHigh}
                 fill="#16a34a"
                 fillOpacity={0.08}
                 strokeOpacity={0}
               />
-            ) : trend.high != null ? (
+            ) : areaHigh != null && Number.isFinite(areaHigh) ? (
               <ReferenceArea
                 y1={yMin}
-                y2={trend.high}
+                y2={areaHigh}
                 fill="#16a34a"
                 fillOpacity={0.08}
                 strokeOpacity={0}
               />
-            ) : trend.low != null ? (
+            ) : areaLow != null && Number.isFinite(areaLow) ? (
               <ReferenceArea
-                y1={trend.low}
+                y1={areaLow}
                 y2={yMax}
                 fill="#16a34a"
                 fillOpacity={0.08}
                 strokeOpacity={0}
               />
             ) : null}
-            {trend.high != null && (
+            {areaHigh != null && Number.isFinite(areaHigh) && (
               <ReferenceLine
-                y={trend.high}
+                y={areaHigh}
                 stroke="#16a34a"
                 strokeDasharray="5 3"
                 strokeWidth={1.75}
                 ifOverflow="extendDomain"
               />
             )}
-            {trend.low != null && (
+            {areaLow != null && Number.isFinite(areaLow) && (
               <ReferenceLine
-                y={trend.low}
+                y={areaLow}
                 stroke="#16a34a"
                 strokeDasharray="5 3"
                 strokeWidth={1.75}
@@ -328,8 +348,8 @@ function ChartCard({ trend, forPdf }: { trend: TrendSeries; forPdf?: boolean }) 
               stroke="#1d4ed8"
               strokeWidth={2}
               isAnimationActive={false}
-              dot={<CustomDot low={trend.low} high={trend.high} />}
-              label={<ValueLabel low={trend.low} high={trend.high} yMin={yMin} yMax={yMax} />}
+              dot={<CustomDot low={areaLow} high={areaHigh} />}
+              label={<ValueLabel low={areaLow} high={areaHigh} yMin={yMin} yMax={yMax} />}
             />
           </LineChart>
         </ResponsiveContainer>
@@ -375,23 +395,41 @@ function ChartCard({ trend, forPdf }: { trend: TrendSeries; forPdf?: boolean }) 
  * Historical Trends block for report PDF / screen.
  * Caller chunks to ≤6 charts per page and may wrap in AutoScaleContent.
  */
+class TrendChartsErrorBoundary extends Component<
+  { children: ReactNode },
+  { hasError: boolean }
+> {
+  state = { hasError: false };
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  render() {
+    if (this.state.hasError) return null;
+    return this.props.children;
+  }
+}
+
 const ReportTrendCharts = ({ trends, forPdf = true }: ReportTrendChartsProps) => {
   if (!trends.length) return null;
 
   return (
-    <div className="w-full" data-historical-trends>
-      <h2
-        className="text-[13px] font-bold tracking-wide text-slate-800 mb-1.5 pb-1"
-        style={{ borderBottom: "1.5px solid #1e3a5f" }}
-      >
-        HISTORICAL TRENDS
-      </h2>
-      <div className="grid grid-cols-2 gap-2">
-        {trends.map((trend) => (
-          <ChartCard key={trend.parameter_id} trend={trend} forPdf={forPdf} />
-        ))}
+    <TrendChartsErrorBoundary>
+      <div className="w-full" data-historical-trends>
+        <h2
+          className="text-[13px] font-bold tracking-wide text-slate-800 mb-1.5 pb-1"
+          style={{ borderBottom: "1.5px solid #1e3a5f" }}
+        >
+          HISTORICAL TRENDS
+        </h2>
+        <div className="grid grid-cols-2 gap-2">
+          {trends.map((trend) => (
+            <TrendChartsErrorBoundary key={trend.parameter_id}>
+              <ChartCard trend={trend} forPdf={forPdf} />
+            </TrendChartsErrorBoundary>
+          ))}
+        </div>
       </div>
-    </div>
+    </TrendChartsErrorBoundary>
   );
 };
 
