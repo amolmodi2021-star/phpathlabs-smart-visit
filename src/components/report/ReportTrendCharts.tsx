@@ -1,11 +1,12 @@
-﻿import { Component, type ReactNode } from "react";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, ReferenceLine, Customized, ResponsiveContainer } from "recharts";
+﻿import { LineChart, Line, XAxis, YAxis, CartesianGrid, ReferenceLine, Customized, ResponsiveContainer } from "recharts";
 import type { TrendSeries } from "@/lib/reportHistoricalTrends";
 
 interface ReportTrendChartsProps {
   trends: TrendSeries[];
   /** When true, render for A4 PDF capture (fixed sizes, no tooltip). */
   forPdf?: boolean;
+  /** Hide green normal-range band (print / PDF capture). */
+  hideRefFill?: boolean;
 }
 
 type AbnormalFlag = "H" | "L" | null;
@@ -254,7 +255,6 @@ const FullWidthNormalBand = (props: {
   if (!(height > 0)) return null;
   return (
     <rect
-      className="hist-fill trend-ref-fill"
       data-print-strip-fill="trend"
       x={left}
       y={top}
@@ -268,7 +268,15 @@ const FullWidthNormalBand = (props: {
   );
 };
 
-function ChartCard({ trend, forPdf }: { trend: TrendSeries; forPdf?: boolean }) {
+function ChartCard({
+  trend,
+  forPdf,
+  hideRefFill,
+}: {
+  trend: TrendSeries;
+  forPdf?: boolean;
+  hideRefFill?: boolean;
+}) {
   const sortedData = Array.isArray(trend?.data)
     ? trend.data.filter((d) => d != null && Number.isFinite(Number(d.value)))
     : [];
@@ -342,19 +350,19 @@ function ChartCard({ trend, forPdf }: { trend: TrendSeries; forPdf?: boolean }) 
               tickFormatter={(val: number) => formatAxisTick(val, yDecimals)}
               interval={0}
             />
-            {areaLow != null && Number.isFinite(areaLow) && areaHigh != null && Number.isFinite(areaHigh) ? (
+            {!hideRefFill && areaLow != null && Number.isFinite(areaLow) && areaHigh != null && Number.isFinite(areaHigh) ? (
               <Customized
                 component={(p: any) => (
                   <FullWidthNormalBand {...p} y1={areaLow} y2={areaHigh} />
                 )}
               />
-            ) : areaHigh != null && Number.isFinite(areaHigh) ? (
+            ) : !hideRefFill && areaHigh != null && Number.isFinite(areaHigh) ? (
               <Customized
                 component={(p: any) => (
                   <FullWidthNormalBand {...p} y1={yMin} y2={areaHigh} />
                 )}
               />
-            ) : areaLow != null && Number.isFinite(areaLow) ? (
+            ) : !hideRefFill && areaLow != null && Number.isFinite(areaLow) ? (
               <Customized
                 component={(p: any) => (
                   <FullWidthNormalBand {...p} y1={areaLow} y2={yMax} />
@@ -432,41 +440,32 @@ function ChartCard({ trend, forPdf }: { trend: TrendSeries; forPdf?: boolean }) 
  * Historical Trends block for report PDF / screen.
  * Caller chunks to ≤6 charts per page and may wrap in AutoScaleContent.
  */
-class TrendChartsErrorBoundary extends Component<
-  { children: ReactNode },
-  { hasError: boolean }
-> {
-  state = { hasError: false };
-  static getDerivedStateFromError() {
-    return { hasError: true };
-  }
-  render() {
-    if (this.state.hasError) return null;
-    return this.props.children;
-  }
-}
-
-const ReportTrendCharts = ({ trends, forPdf = true }: ReportTrendChartsProps) => {
+const ReportTrendCharts = ({
+  trends,
+  forPdf = true,
+  hideRefFill = false,
+}: ReportTrendChartsProps) => {
   if (!trends.length) return null;
 
   return (
-    <TrendChartsErrorBoundary>
-      <div className="w-full" data-historical-trends>
-        <h2
-          className="text-[13px] font-bold tracking-wide text-slate-800 mb-1.5 pb-1"
-          style={{ borderBottom: "1.5px solid #1e3a5f" }}
-        >
-          HISTORICAL TRENDS
-        </h2>
-        <div className="grid grid-cols-2 gap-2">
-          {trends.map((trend) => (
-            <TrendChartsErrorBoundary key={trend.parameter_id}>
-              <ChartCard trend={trend} forPdf={forPdf} />
-            </TrendChartsErrorBoundary>
-          ))}
-        </div>
+    <div className="w-full" data-historical-trends>
+      <h2
+        className="text-[13px] font-bold tracking-wide text-slate-800 mb-1.5 pb-1"
+        style={{ borderBottom: "1.5px solid #1e3a5f" }}
+      >
+        HISTORICAL TRENDS
+      </h2>
+      <div className="grid grid-cols-2 gap-2">
+        {trends.map((trend) => (
+          <ChartCard
+            key={trend.parameter_id}
+            trend={trend}
+            forPdf={forPdf}
+            hideRefFill={hideRefFill}
+          />
+        ))}
       </div>
-    </TrendChartsErrorBoundary>
+    </div>
   );
 };
 

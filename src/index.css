@@ -133,7 +133,8 @@ input[type="number"] {
   background: transparent !important;
   color: black !important;
 }
-/* CBC histogram fills + historical-trend normal bands */
+/* CBC histogram fills (display:none). Trend bands are unmounted via React
+   hideRefFill — never removeChild React SVG or charts go blank. */
 .print-strip-colors .hist-fill,
 .print-strip-colors .trend-ref-fill,
 .print-strip-colors [data-print-strip-fill] {

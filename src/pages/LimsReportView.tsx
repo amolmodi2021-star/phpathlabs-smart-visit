@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useLayoutEffect } from "react";
+import { flushSync } from "react-dom";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { useParams, useNavigate, useSearchParams, useLocation } from "react-router-dom";
@@ -624,6 +625,8 @@ const LimsReportView = () => {
   const [pickupFooterNote, setPickupFooterNote] = useState<string>("");
   const [analyzerHistograms, setAnalyzerHistograms] = useState<AnalyzerHistogram[]>([]);
   const [historicalTrends, setHistoricalTrends] = useState<TrendSeries[]>([]);
+  /** Hide trend/CBC green fills for print & PDF capture (React unmount — never removeChild). */
+  const [hideChartFills, setHideChartFills] = useState(false);
 
   const invoiceNumberForBarcode =
     approvedReports[0]?.invoice_number || registration?.invoice_number || "";
@@ -1567,6 +1570,32 @@ const LimsReportView = () => {
   }, [loading, packPlan, pages, enableHistograms, analyzerHistograms, historicalTrends]);
 
 
+  /**
+   * Hide green chart fills for capture without mutating React-owned SVG nodes.
+   * (removeChild on Recharts rects desyncs React and blanks the whole trend graph.)
+   */
+  const withChartFillsHiddenForCapture = async <T,>(
+    fn: () => Promise<T>,
+    opts?: { stripLetterhead?: boolean },
+  ): Promise<T> => {
+    const root = printRef.current;
+    flushSync(() => setHideChartFills(true));
+    if (root) {
+      root.classList.add("print-strip-colors");
+      if (opts?.stripLetterhead) root.classList.add("print-no-letterhead");
+    }
+    await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+    try {
+      return await fn();
+    } finally {
+      if (root) {
+        root.classList.remove("print-strip-colors", "print-no-letterhead");
+      }
+      flushSync(() => setHideChartFills(false));
+      await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+    }
+  };
+
   const buildPdfBlob = async (opts?: {
     /** Faster capture for Dispatch WhatsApp queue (still includes histograms + snips). */
     queueMode?: boolean;
@@ -1579,32 +1608,34 @@ const LimsReportView = () => {
       await new Promise((r) => setTimeout(r, 40));
     }
 
-    const pageElements = printRef.current.querySelectorAll("[data-page]");
-    if (pageElements.length === 0) return null;
+    return withChartFillsHiddenForCapture(async () => {
+      const pageElements = printRef.current!.querySelectorAll("[data-page]");
+      if (pageElements.length === 0) return null;
 
-    await waitForCaptureReady(printRef.current);
+      await waitForCaptureReady(printRef.current!);
 
-    const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-    const NATIVE_W = Math.round((PAGE_WIDTH_MM / 25.4) * 96);
-    const NATIVE_H = Math.round((PAGE_HEIGHT_MM / 25.4) * 96);
-    const queueCapture = opts?.queueMode
-      ? { pixelRatio: 2, attempts: 2, quality: 0.88, cacheBust: false } satisfies PageCaptureOptions
-      : undefined;
-    for (let i = 0; i < pageElements.length; i++) {
-      if (i > 0) pdf.addPage();
-      const el = pageElements[i] as HTMLElement;
-      // Snip pages use lower pixelRatio inside captureWithRetry (photos hang at PR3).
-      const jpeg = await captureWithRetry(el, NATIVE_W, NATIVE_H, "jpeg", queueCapture);
-      pdf.addImage(jpeg, "JPEG", 0, 0, PAGE_WIDTH_MM, PAGE_HEIGHT_MM, undefined, "FAST");
-    }
+      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      const NATIVE_W = Math.round((PAGE_WIDTH_MM / 25.4) * 96);
+      const NATIVE_H = Math.round((PAGE_HEIGHT_MM / 25.4) * 96);
+      const queueCapture = opts?.queueMode
+        ? { pixelRatio: 2, attempts: 2, quality: 0.88, cacheBust: false } satisfies PageCaptureOptions
+        : undefined;
+      for (let i = 0; i < pageElements.length; i++) {
+        if (i > 0) pdf.addPage();
+        const el = pageElements[i] as HTMLElement;
+        // Snip pages use lower pixelRatio inside captureWithRetry (photos hang at PR3).
+        const jpeg = await captureWithRetry(el, NATIVE_W, NATIVE_H, "jpeg", queueCapture);
+        pdf.addImage(jpeg, "JPEG", 0, 0, PAGE_WIDTH_MM, PAGE_HEIGHT_MM, undefined, "FAST");
+      }
 
-    const patientNameRaw = patientDisplayName(approvedReports[0]);
-    const patientName = !approvedReports[0] || patientNameRaw === "—" ? "Report" : patientNameRaw;
-    const invoiceNum = approvedReports[0]?.invoice_number || "";
-    const filename = [patientName, invoiceNum].filter(Boolean).join(" ").replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim() + ".pdf";
-    const blob = pdf.output("blob") as Blob;
-    cachedPdfRef.current = { blob, filename };
-    return { blob, filename };
+      const patientNameRaw = patientDisplayName(approvedReports[0]);
+      const patientName = !approvedReports[0] || patientNameRaw === "—" ? "Report" : patientNameRaw;
+      const invoiceNum = approvedReports[0]?.invoice_number || "";
+      const filename = [patientName, invoiceNum].filter(Boolean).join(" ").replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim() + ".pdf";
+      const blob = pdf.output("blob") as Blob;
+      cachedPdfRef.current = { blob, filename };
+      return { blob, filename };
+    });
   };
 
   const notifyQueueWa = (ok: boolean, error?: string) => {
@@ -1915,24 +1946,6 @@ const LimsReportView = () => {
   const handlePrint = async () => {
     if (!printRef.current) return;
     setDownloading(true);
-    type StrippedFill = {
-      el: HTMLElement;
-      parent: Node;
-      next: ChildNode | null;
-    };
-    const histFills: StrippedFill[] = [];
-    const restoreStrippedFills = () => {
-      histFills.forEach(({ el, parent, next }) => {
-        try {
-          parent.insertBefore(el, next);
-        } catch {
-          parent.appendChild(el);
-        }
-      });
-      histFills.length = 0;
-      printRef.current?.classList.remove("print-strip-colors", "print-no-letterhead");
-    };
-    const root = printRef.current;
     try {
       // Wait for measure-then-repack so printed pages match on-screen layout.
       const waitStart = Date.now();
@@ -1940,38 +1953,30 @@ const LimsReportView = () => {
         await new Promise((r) => setTimeout(r, 40));
       }
 
-      // Hide letterhead / strip fills via CSS+DOM only — avoid React re-render of every page.
-      // Remove fill nodes entirely so html-to-image cannot paint SVG/HTML bands.
-      root.classList.add("print-strip-colors", "print-no-letterhead");
-      Array.from(
-        root.querySelectorAll<HTMLElement>(
-          ".hist-fill, .trend-ref-fill, [data-print-strip-fill]",
-        ),
-      ).forEach((el) => {
-        if (!el.parentNode) return;
-        histFills.push({ el, parent: el.parentNode, next: el.nextSibling });
-        el.parentNode.removeChild(el);
-      });
-      await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+      const imageUrls = await withChartFillsHiddenForCapture(async () => {
+        const root = printRef.current!;
+        await waitForCaptureReady(root);
 
-      await waitForCaptureReady(root);
+        const pageElements = Array.from(root.querySelectorAll<HTMLElement>("[data-page]"));
+        if (pageElements.length === 0) return null;
 
-      const pageElements = Array.from(root.querySelectorAll<HTMLElement>("[data-page]"));
-      if (pageElements.length === 0) { toast.error("No pages to print"); return; }
+        const NATIVE_W = Math.round((PAGE_WIDTH_MM / 25.4) * 96);
+        const NATIVE_H = Math.round((PAGE_HEIGHT_MM / 25.4) * 96);
+        // Print: PR2 (~2× fewer pixels than PDF PR3) + parallel capture. Still sharp on laser.
+        return mapPool(pageElements, 2, (el) =>
+          captureWithRetry(el, NATIVE_W, NATIVE_H, "jpeg", {
+            pixelRatio: 2,
+            quality: 0.88,
+            cacheBust: false,
+            attempts: 2,
+          }),
+        );
+      }, { stripLetterhead: true });
 
-      const NATIVE_W = Math.round((PAGE_WIDTH_MM / 25.4) * 96);
-      const NATIVE_H = Math.round((PAGE_HEIGHT_MM / 25.4) * 96);
-      // Print: PR2 (~2× fewer pixels than PDF PR3) + parallel capture. Still sharp on laser.
-      const imageUrls = await mapPool(pageElements, 2, (el) =>
-        captureWithRetry(el, NATIVE_W, NATIVE_H, "jpeg", {
-          pixelRatio: 2,
-          quality: 0.88,
-          cacheBust: false,
-          attempts: 2,
-        }),
-      );
-
-      restoreStrippedFills();
+      if (!imageUrls || imageUrls.length === 0) {
+        toast.error("No pages to print");
+        return;
+      }
 
       // Create hidden iframe for printing (no new tab)
       const iframe = document.createElement("iframe");
@@ -2038,7 +2043,6 @@ const LimsReportView = () => {
     } catch (err: any) {
       toast.error("Print failed: " + (err.message || "Unknown error"));
     } finally {
-      restoreStrippedFills();
       setDownloading(false);
     }
   };
@@ -2256,7 +2260,11 @@ const LimsReportView = () => {
 
                 {page.type === "trends" && page.trends && page.trends.length > 0 && (
                   <AutoScaleContent fillParent>
-                    <ReportTrendCharts trends={page.trends} forPdf />
+                    <ReportTrendCharts
+                      trends={page.trends}
+                      forPdf
+                      hideRefFill={hideChartFills}
+                    />
                   </AutoScaleContent>
                 )}
 
