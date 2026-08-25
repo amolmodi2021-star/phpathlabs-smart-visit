@@ -93,3 +93,39 @@ export async function cancelOrphanDuplicateHomeVisits(registeredVisitId: string)
   if (updErr) throw new Error(updErr.message);
   return orphanIds.length;
 }
+
+/**
+ * If a visit was marked Completed/Registered but no patient_registrations link to it
+ * (wizard abandoned), put it back to Pending.
+ */
+export async function revertHomeVisitToPendingIfUnregistered(visitId: string): Promise<boolean> {
+  if (!visitId) return false;
+
+  const { data: visit, error: vErr } = await supabase
+    .from("home_visits")
+    .select("id, status")
+    .eq("id", visitId)
+    .maybeSingle();
+  if (vErr) throw new Error(vErr.message);
+  if (!visit) return false;
+
+  const status = String(visit.status || "");
+  if (status !== "Completed" && status !== "Registered") return false;
+
+  const { count, error: cErr } = await supabase
+    .from("patient_registrations")
+    .select("id", { count: "exact", head: true })
+    .eq("home_visit_id", visitId);
+  if (cErr) throw new Error(cErr.message);
+  if ((count || 0) > 0) return false;
+
+  const { error: uErr } = await supabase
+    .from("home_visits")
+    .update({
+      status: "Pending",
+      updated_at: new Date().toISOString(),
+    } as any)
+    .eq("id", visitId);
+  if (uErr) throw new Error(uErr.message);
+  return true;
+}

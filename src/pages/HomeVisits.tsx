@@ -14,7 +14,7 @@ import { toast } from "sonner";
 import { Download, Phone, MapPin, ChevronDown, ChevronUp, Pencil, Trash2, Plus, AlertTriangle, Clock, FileImage, Eye } from "lucide-react";
 import { exportToExcel } from "@/lib/excel";
 import { formatDateDDMMYYYY } from "@/lib/utils";
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import ExportPasswordDialog from "@/components/ExportPasswordDialog";
@@ -22,6 +22,7 @@ import DeletePasswordDialog from "@/components/DeletePasswordDialog";
 import EditHomeVisitDialog from "@/components/EditHomeVisitDialog";
 import HomeVisitRegistrationWizard from "@/components/lims/HomeVisitRegistrationWizard";
 import AddHomeVisitDialog from "@/components/AddHomeVisitDialog";
+import { revertHomeVisitToPendingIfUnregistered } from "@/lib/homeVisitDuplicates";
 import PaymentDetailsDialog from "@/components/PaymentDetailsDialog";
 import ReceiptViewDialog from "@/components/ReceiptViewDialog";
 import MessagePreviewDialog from "@/components/MessagePreviewDialog";
@@ -109,6 +110,31 @@ const HomeVisits = () => {
       return data || [];
     },
   });
+
+  // Heal abandoned Completed/Registered cards with zero patient registrations → Pending
+  useEffect(() => {
+    const candidates = (visits as any[]).filter(
+      (v) => v?.id && (v.status === "Completed" || v.status === "Registered"),
+    );
+    if (!candidates.length) return;
+    let cancelled = false;
+    (async () => {
+      let changed = 0;
+      for (const v of candidates) {
+        try {
+          if (await revertHomeVisitToPendingIfUnregistered(v.id)) changed += 1;
+        } catch (e) {
+          console.warn("revertHomeVisitToPendingIfUnregistered failed", v.id, e);
+        }
+      }
+      if (!cancelled && changed > 0) {
+        qc.invalidateQueries({ queryKey: ["home_visits"] });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [visits, qc]);
 
   const { getForMobile, sendMutation: abnormalSend } = useAbnormalHistory((visits as any[]).map((v: any) => v.estimates?.whatsapp_number));
 
@@ -913,8 +939,17 @@ const HomeVisits = () => {
         <HomeVisitRegistrationWizard
           visit={completionEditVisit}
           open={!!completionEditVisit}
-          onClose={() => {
+          onClose={async () => {
+            const visitId = completionEditVisit?.id;
             setCompletionEditVisit(null);
+            // Abandoned wizard with no patient registered → stay / revert to Pending
+            if (visitId) {
+              try {
+                await revertHomeVisitToPendingIfUnregistered(visitId);
+              } catch (e) {
+                console.warn("Could not revert unregistered home visit to Pending:", e);
+              }
+            }
             qc.invalidateQueries({ queryKey: ["home_visits"] });
           }}
         />
