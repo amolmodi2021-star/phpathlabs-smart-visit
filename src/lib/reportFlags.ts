@@ -89,29 +89,32 @@ const NORMAL_CATEGORY_KEYWORDS = [
   "no risk", "norisk", "acceptable", "negative", "reference",
 ];
 
-const findNormalCategoryBounds = (text: string): { low: number | null; high: number | null } | null => {
-  const lower = text.toLowerCase();
+/**
+ * Extract bounds from the desirable / "No Risk" / "Optimal" line of a
+ * multi-band advisory (e.g. HDL "No Risk: > 60" → low=60, open high).
+ * Scans line-by-line so Moderate/High Risk bands on other lines are ignored.
+ */
+export const findNormalCategoryBounds = (text: string): { low: number | null; high: number | null } | null => {
+  const lines = String(text).split(/\r?\n/);
 
-  for (const keyword of NORMAL_CATEGORY_KEYWORDS) {
-    const idx = lower.indexOf(keyword);
-    if (idx === -1) continue;
+  for (const line of lines) {
+    const lower = line.toLowerCase();
+    if (!NORMAL_CATEGORY_KEYWORDS.some((keyword) => lower.includes(keyword))) continue;
 
-    const segment = text.substring(Math.max(0, idx - 10), idx + keyword.length + 80);
-
-    const rangeMatch = segment.match(/(-?\d*\.?\d+)\s*(?:to|-|–|—)\s*(-?\d*\.?\d+)/i);
+    const rangeMatch = line.match(/(-?\d*\.?\d+)\s*(?:to|-|–|—)\s*(-?\d*\.?\d+)/i);
     if (rangeMatch) {
       const lo = Number.parseFloat(rangeMatch[1]);
       const hi = Number.parseFloat(rangeMatch[2]);
       if (Number.isFinite(lo) && Number.isFinite(hi)) return { low: lo, high: hi };
     }
 
-    const upperMatch = segment.match(/(?:<=|≤|<)\s*(-?\d*\.?\d+)/);
+    const upperMatch = line.match(/(?:<=|≤|<)\s*(-?\d*\.?\d+)/);
     if (upperMatch) {
       const hi = Number.parseFloat(upperMatch[1]);
       if (Number.isFinite(hi)) return { low: null, high: hi };
     }
 
-    const lowerMatch = segment.match(/(?:>=|≥|>)\s*(-?\d*\.?\d+)/);
+    const lowerMatch = line.match(/(?:>=|≥|>)\s*(-?\d*\.?\d+)/);
     if (lowerMatch) {
       const lo = Number.parseFloat(lowerMatch[1]);
       if (Number.isFinite(lo)) return { low: lo, high: null };

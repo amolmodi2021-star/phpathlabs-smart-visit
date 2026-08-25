@@ -1,6 +1,7 @@
 import { format, parseISO, isValid } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { pickBestNormalRange, type NormalRangeRow } from "@/lib/parameterNormalRange";
+import { findNormalCategoryBounds } from "@/lib/reportFlags";
 
 export const TRENDS_PER_PAGE = 6;
 export const TREND_MAX_POINTS = 5;
@@ -74,23 +75,40 @@ function formatShortRange(low?: number | null, high?: number | null, unit?: stri
 
 function parseBoundsFromRangeText(rangeText?: string | null): { low?: number; high?: number } {
   if (!rangeText) return {};
-  const text = String(rangeText).replace(/,/g, " ");
-  const pair = text.match(/(-?\d+(?:\.\d+)?)\s*[-–—to]+\s*(-?\d+(?:\.\d+)?)/i);
-  if (pair) {
-    const a = Number(pair[1]);
-    const b = Number(pair[2]);
-    if (Number.isFinite(a) && Number.isFinite(b)) {
-      return { low: Math.min(a, b), high: Math.max(a, b) };
-    }
+  // Prefer "No Risk / Desirable / Optimal" band (HDL: > 60 is normal — open high).
+  const category = findNormalCategoryBounds(rangeText);
+  if (category && (category.low != null || category.high != null)) {
+    return {
+      low: category.low ?? undefined,
+      high: category.high ?? undefined,
+    };
   }
+
+  const text = String(rangeText).replace(/,/g, " ");
   const upper = Array.from(text.matchAll(/(?:<=|≤|<|less\s*than|up\s*to|upto)\s*(-?\d*\.?\d+)/gi))
     .map((m) => Number.parseFloat(m[1]))
     .filter((n) => Number.isFinite(n));
   const lower = Array.from(text.matchAll(/(?:>=|≥|>|greater\s*than|more\s*than)\s*(-?\d*\.?\d+)/gi))
     .map((m) => Number.parseFloat(m[1]))
     .filter((n) => Number.isFinite(n));
-  const low = lower.length ? Math.max(...lower) : undefined;
-  const high = upper.length ? Math.min(...upper) : undefined;
+  let low = lower.length ? Math.max(...lower) : undefined;
+  let high = upper.length ? Math.min(...upper) : undefined;
+
+  if (low == null && high == null) {
+    const pair = text.match(/(-?\d+(?:\.\d+)?)\s*[-–—to]+\s*(-?\d+(?:\.\d+)?)/i);
+    if (pair) {
+      const a = Number(pair[1]);
+      const b = Number(pair[2]);
+      if (Number.isFinite(a) && Number.isFinite(b)) {
+        return { low: Math.min(a, b), high: Math.max(a, b) };
+      }
+    }
+  }
+
+  if (low != null && high != null && low > high) {
+    const swapped = { low: high, high: low };
+    return swapped;
+  }
   return { low, high };
 }
 
@@ -136,10 +154,28 @@ export function resolveTrendDisplayRange(meta: {
     meta.reference_range,
   );
 
-  if ((low == null || high == null) && refText) {
+  // Multi-band advisories (HDL No Risk: > 60) must win over snapshot bounds that
+  // incorrectly set both low and high to the same threshold (e.g. 60/60 → false H).
+  const category = refText ? findNormalCategoryBounds(refText) : null;
+  if (category && (category.low != null || category.high != null)) {
+    low = category.low ?? undefined;
+    high = category.high ?? undefined;
+  } else if (refText && (low == null || high == null || low === high)) {
     const parsed = parseBoundsFromRangeText(refText);
     if (low == null) low = parsed.low;
     if (high == null) high = parsed.high;
+    if (low != null && high != null && low === high) {
+      if (parsed.low != null && parsed.high == null) {
+        low = parsed.low;
+        high = undefined;
+      } else if (parsed.high != null && parsed.low == null) {
+        high = parsed.high;
+        low = undefined;
+      } else {
+        // Keep the value as a lower floor; do not treat it as an upper cap.
+        high = undefined;
+      }
+    }
   }
 
   const label =

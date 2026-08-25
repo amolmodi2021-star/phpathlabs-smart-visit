@@ -171,6 +171,14 @@ function ChartCard({ trend, forPdf }: { trend: TrendSeries; forPdf?: boolean }) 
                 fillOpacity={0.08}
                 strokeOpacity={0}
               />
+            ) : trend.low != null ? (
+              <ReferenceArea
+                y1={trend.low}
+                y2={yMax}
+                fill="#16a34a"
+                fillOpacity={0.08}
+                strokeOpacity={0}
+              />
             ) : null}
             {trend.high != null && (
               <ReferenceLine
