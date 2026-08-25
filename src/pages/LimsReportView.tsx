@@ -1926,7 +1926,9 @@ const LimsReportView = () => {
 
       // Hide letterhead / strip fills via CSS+DOM only — avoid React re-render of every page.
       root.classList.add("print-strip-colors", "print-no-letterhead");
-      histFills.push(...Array.from(root.querySelectorAll<SVGElement>(".hist-fill")));
+      histFills.push(
+        ...Array.from(root.querySelectorAll<SVGElement>(".hist-fill, .trend-ref-fill")),
+      );
       histFills.forEach((el) => { el.style.display = "none"; });
       await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
 
