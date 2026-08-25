@@ -46,61 +46,62 @@ function buildLabeledYTicks(yMin: number, yMax: number, count = 3): number[] {
 }
 
 /**
- * Prefer yMin=0 when the normal (green) band still fills enough of the chart
- * (e.g. Bilirubin 0–1.2, TSH 0.3–4.5). If starting at 0 would crush a high
- * narrow band (e.g. Hb 12–15), zoom around data + ref like the unbound scale.
+ * Zoom Y around data + normal band so the green ref area gets most of the plot.
+ * Do NOT force [0, max] for high ranges (Calcium 8.6–10.3, Hb 12–15) — that
+ * crushes the band. Only anchor at 0 when the clinical range itself starts at 0
+ * or is an upper-limit-only range (< N).
  */
 function buildYDomain(
   values: number[],
   low?: number,
   high?: number,
 ): { yMin: number; yMax: number } {
-  const allVals = [...values];
-  if (low != null) allVals.push(low);
-  if (high != null) allVals.push(high);
-  const minVal = Math.min(...(allVals.length ? allVals : [0]));
-  const maxVal = Math.max(...(allVals.length ? allVals : [1]));
-  const span = Math.max(maxVal - minVal, Number.EPSILON);
-  const padding = span * 0.2 || Math.abs(maxVal) * 0.15 || 1;
+  const nums = [...values];
+  if (low != null && Number.isFinite(low)) nums.push(low);
+  if (high != null && Number.isFinite(high)) nums.push(high);
+  const minVal = Math.min(...(nums.length ? nums : [0]));
+  const maxVal = Math.max(...(nums.length ? nums : [1]));
+  const span = Math.max(maxVal - minVal, Math.abs(maxVal) * 0.08, 0.2);
+  const pad = span * 0.35;
 
-  let zoomMin = Math.min(
-    minVal - padding,
-    low != null ? low - padding * 0.3 : minVal - padding,
-  );
-  const zoomMax = Math.max(
-    maxVal + padding,
-    high != null ? high + padding * 0.3 : maxVal + padding,
-  );
+  // Upper-limit only (Triglycerides < 150): green from 0 → keep zero baseline
+  if ((low == null || !Number.isFinite(low)) && high != null && Number.isFinite(high)) {
+    return { yMin: 0, yMax: Math.max(maxVal, high) + pad };
+  }
+
+  // Lower-limit only (HDL > 60): zoom just below the floor
+  if (low != null && Number.isFinite(low) && (high == null || !Number.isFinite(high))) {
+    const yMin = low <= pad ? 0 : Math.max(0, Math.min(minVal, low) - pad);
+    const yMax = Math.max(maxVal, low) + pad;
+    return { yMin, yMax };
+  }
+
+  // Two-sided normal band — zoom tightly so green stays large
+  let yMin = Math.min(minVal, low ?? minVal) - pad * 0.45;
+  let yMax = Math.max(maxVal, high ?? maxVal) + pad * 0.45;
+
+  if (low != null && high != null && high > low) {
+    const band = high - low;
+    const domain = Math.max(yMax - yMin, Number.EPSILON);
+    const TARGET = 0.5; // aim for green ≥ half the plot height
+    if (band / domain < TARGET) {
+      const need = band / TARGET;
+      const extra = (need - domain) / 2;
+      yMin -= extra;
+      yMax += extra;
+    }
+  }
+
+  // Never draw negative axis for non-negative labs — but do not expand down to 0
   if (minVal >= 0 && (low == null || low >= 0)) {
-    zoomMin = Math.max(0, zoomMin);
+    yMin = Math.max(0, yMin);
   }
 
-  const zeroMax = Math.max(zoomMax, Number.EPSILON);
+  // Ref literally starts at 0 (Bilirubin 0–1.2)
+  if (low === 0) yMin = 0;
 
-  // How tall is the green band if the axis is [0, zeroMax]?
-  let greenOnZero = 0;
-  if (low != null && high != null) {
-    greenOnZero = Math.max(0, Math.min(high, zeroMax) - Math.max(low, 0));
-  } else if (high != null) {
-    greenOnZero = Math.max(0, Math.min(high, zeroMax));
-  } else if (low != null) {
-    greenOnZero = Math.max(0, zeroMax - Math.max(low, 0));
-  } else {
-    // No ref band — zero baseline is fine
-    return { yMin: 0, yMax: zeroMax };
-  }
-
-  const greenFraction = greenOnZero / zeroMax;
-  // Keep ~1/3+ of the plot for the normal band when starting at 0
-  const MIN_GREEN_FRACTION = 0.3;
-  const lowNearZero = low != null && low <= zeroMax * 0.12;
-
-  if (greenFraction >= MIN_GREEN_FRACTION || lowNearZero || (low == null && high != null)) {
-    return { yMin: 0, yMax: zeroMax };
-  }
-
-  // High narrow bands (Hb 12–15): zoom so green gets maximum space
-  return { yMin: zoomMin, yMax: zoomMax };
+  if (!(yMax > yMin)) yMax = yMin + Math.max(span, 1);
+  return { yMin, yMax };
 }
 
 /** One-line caption under each point (full advisory stays under the title). */
@@ -195,7 +196,14 @@ const ValueLabel = (props: any) => {
 function ChartCard({ trend, forPdf }: { trend: TrendSeries; forPdf?: boolean }) {
   const sortedData = trend.data;
   const values = sortedData.map((d) => d.value);
-  const { yMin, yMax } = buildYDomain(values, trend.low, trend.high);
+  // Prefer series bounds; fall back to per-point snapshot bounds
+  const boundLow =
+    trend.low
+    ?? sortedData.map((d) => d.low).find((v) => v != null && Number.isFinite(v));
+  const boundHigh =
+    trend.high
+    ?? sortedData.map((d) => d.high).find((v) => v != null && Number.isFinite(v));
+  const { yMin, yMax } = buildYDomain(values, boundLow, boundHigh);
   const yTicks = buildLabeledYTicks(yMin, yMax, 3);
   // Slightly shorter plot so multi-line Ref + 6 cards can fit; AutoScale shrinks further if needed.
   const chartH = forPdf ? 96 : 140;
