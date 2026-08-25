@@ -1,7 +1,6 @@
 import { format, parseISO, isValid } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { pickBestNormalRange, type NormalRangeRow } from "@/lib/parameterNormalRange";
-import { findNormalCategoryBounds } from "@/lib/reportFlags";
 
 export const TRENDS_PER_PAGE = 6;
 export const TREND_MAX_POINTS = 5;
@@ -9,8 +8,12 @@ export const TREND_MAX_POINTS = 5;
 export type TrendPoint = {
   date: string;
   value: number;
+  /** Snapshot normal_range_low from approved_reports.test_results */
   low?: number;
+  /** Snapshot normal_range_high from approved_reports.test_results */
   high?: number;
+  /** Snapshot flag (H/L/N) from approved_reports.test_results — preferred for highlighting */
+  flag?: string;
   rangeLabel: string;
 };
 
@@ -47,6 +50,7 @@ type SnapshotResultRow = {
   normal_range_low?: number | string | null;
   normal_range_high?: number | string | null;
   reference_range?: string | null;
+  flag?: string | null;
 };
 
 function toFiniteNumber(raw: unknown): number | undefined {
@@ -73,49 +77,10 @@ function formatShortRange(low?: number | null, high?: number | null, unit?: stri
   return "";
 }
 
-function parseBoundsFromRangeText(rangeText?: string | null): { low?: number; high?: number } {
-  if (!rangeText) return {};
-  // Prefer "No Risk / Desirable / Optimal" band (HDL: > 60 is normal — open high).
-  const category = findNormalCategoryBounds(rangeText);
-  if (category && (category.low != null || category.high != null)) {
-    return {
-      low: category.low ?? undefined,
-      high: category.high ?? undefined,
-    };
-  }
-
-  const text = String(rangeText).replace(/,/g, " ");
-  const upper = Array.from(text.matchAll(/(?:<=|≤|<|less\s*than|up\s*to|upto)\s*(-?\d*\.?\d+)/gi))
-    .map((m) => Number.parseFloat(m[1]))
-    .filter((n) => Number.isFinite(n));
-  const lower = Array.from(text.matchAll(/(?:>=|≥|>|greater\s*than|more\s*than)\s*(-?\d*\.?\d+)/gi))
-    .map((m) => Number.parseFloat(m[1]))
-    .filter((n) => Number.isFinite(n));
-  let low = lower.length ? Math.max(...lower) : undefined;
-  let high = upper.length ? Math.min(...upper) : undefined;
-
-  if (low == null && high == null) {
-    const pair = text.match(/(-?\d+(?:\.\d+)?)\s*[-–—to]+\s*(-?\d+(?:\.\d+)?)/i);
-    if (pair) {
-      const a = Number(pair[1]);
-      const b = Number(pair[2]);
-      if (Number.isFinite(a) && Number.isFinite(b)) {
-        return { low: Math.min(a, b), high: Math.max(a, b) };
-      }
-    }
-  }
-
-  if (low != null && high != null && low > high) {
-    const swapped = { low: high, high: low };
-    return swapped;
-  }
-  return { low, high };
-}
-
 /**
- * Resolve display bounds for historical trends.
- * Settings override (trend_display_*) wins; otherwise use the fullest parameter
- * reference / advisory text (multi-line from Parameters), then snapshot text.
+ * Resolve Ref label + optional Settings override bounds for historical trends.
+ * Highlighting low/high must come from approved snapshot numerics — never parse
+ * advisory Ref text (e.g. HDL "No Risk: > 60") into bounds.
  */
 export function resolveTrendDisplayRange(meta: {
   trend_display_low?: number | null;
@@ -134,56 +99,40 @@ export function resolveTrendDisplayRange(meta: {
     || toFiniteNumber(meta.trend_display_high) != null
     || !!(meta.trend_display_label || "").trim();
 
-  if (hasTrendOverride) {
-    const low = toFiniteNumber(meta.trend_display_low);
-    const high = toFiniteNumber(meta.trend_display_high);
-    const label = (meta.trend_display_label || "").trim()
-      || formatShortRange(low, high, meta.unit)
-      || "—";
-    return { low, high, rangeLabel: label };
-  }
-
-  let low = toFiniteNumber(meta.normal_range_low);
-  let high = toFiniteNumber(meta.normal_range_high);
-
-  // Prefer fullest advisory / parameter text (e.g. HbA1c 3 lines) over a short
-  // snapshot caption that only shows the matched band.
   const refText = pickFullestRangeText(
     meta.parameter_range_text,
     meta.normal_range_text,
     meta.reference_range,
   );
 
-  // Multi-band advisories (HDL No Risk: > 60) must win over snapshot bounds that
-  // incorrectly set both low and high to the same threshold (e.g. 60/60 → false H).
-  const category = refText ? findNormalCategoryBounds(refText) : null;
-  if (category && (category.low != null || category.high != null)) {
-    low = category.low ?? undefined;
-    high = category.high ?? undefined;
-  } else if (refText && (low == null || high == null || low === high)) {
-    const parsed = parseBoundsFromRangeText(refText);
-    if (low == null) low = parsed.low;
-    if (high == null) high = parsed.high;
-    if (low != null && high != null && low === high) {
-      if (parsed.low != null && parsed.high == null) {
-        low = parsed.low;
-        high = undefined;
-      } else if (parsed.high != null && parsed.low == null) {
-        high = parsed.high;
-        low = undefined;
-      } else {
-        // Keep the value as a lower floor; do not treat it as an upper cap.
-        high = undefined;
-      }
-    }
+  if (hasTrendOverride) {
+    const low = toFiniteNumber(meta.trend_display_low);
+    const high = toFiniteNumber(meta.trend_display_high);
+    const label = (meta.trend_display_label || "").trim()
+      || refText
+      || formatShortRange(low, high, meta.unit)
+      || "—";
+    return { low, high, rangeLabel: label };
   }
 
+  // Numeric bounds only — no text parsing
+  const low = toFiniteNumber(meta.normal_range_low);
+  const high = toFiniteNumber(meta.normal_range_high);
   const label =
     refText
     || formatShortRange(low, high, meta.unit)
     || "—";
 
   return { low, high, rangeLabel: label };
+}
+
+function normalizeSnapshotFlag(raw?: string | null): string | undefined {
+  const f = String(raw ?? "").trim().toUpperCase();
+  if (!f) return undefined;
+  if (f === "HIGH") return "H";
+  if (f === "LOW") return "L";
+  if (f === "H" || f === "L" || f === "N" || f === "X") return f;
+  return f;
 }
 
 /** Prefer multi-line / longer parameter advisory text over a short single-line caption. */
@@ -322,20 +271,27 @@ export async function buildReportHistoricalTrends(opts: {
       normal_range_low?: number | string | null;
       normal_range_high?: number | string | null;
       unit?: string | null;
+      /** When true, low/high come only from the snapshot (null high stays open). */
+      useSnapshotBounds?: boolean;
     },
   ) => {
     const meta = metaById.get(parameterId)!;
     const fb = genderFallback.get(parameterId);
     const snapLow = toFiniteNumber(snapshotRange?.normal_range_low);
     const snapHigh = toFiniteNumber(snapshotRange?.normal_range_high);
+    const useSnap = !!snapshotRange?.useSnapshotBounds;
     return resolveTrendDisplayRange({
       trend_display_low: meta.trend_display_low,
       trend_display_high: meta.trend_display_high,
       trend_display_label: meta.trend_display_label,
-      normal_range_low: snapLow ?? toFiniteNumber(meta.normal_range_low) ?? fb?.low ?? null,
-      normal_range_high: snapHigh ?? toFiniteNumber(meta.normal_range_high) ?? fb?.high ?? null,
+      // Approved snapshot numerics are authoritative for H/L — do not fill null high from Parameters.
+      normal_range_low: useSnap
+        ? (snapLow ?? null)
+        : (snapLow ?? toFiniteNumber(meta.normal_range_low) ?? fb?.low ?? null),
+      normal_range_high: useSnap
+        ? (snapHigh ?? null)
+        : (snapHigh ?? toFiniteNumber(meta.normal_range_high) ?? fb?.high ?? null),
       normal_range_text: meta.normal_range_text,
-      // Full advisory from Parameters (parameter_normal_ranges)
       parameter_range_text: fb?.text || meta.normal_range_text || null,
       reference_range: snapshotRange?.reference_range || null,
       unit: (snapshotRange?.unit && String(snapshotRange.unit).trim()) || meta.unit,
@@ -343,23 +299,15 @@ export async function buildReportHistoricalTrends(opts: {
   };
 
   const applyResolvedRange = (series: TrendSeries): TrendSeries => {
-    // Refresh Ref text from Parameters / Settings — do not re-feed a short frozen label
-    const range = resolveForParam(series.parameter_id, {
-      normal_range_low: series.low ?? series.data.find((d) => d.low != null)?.low,
-      normal_range_high: series.high ?? series.data.find((d) => d.high != null)?.high,
-      unit: series.unit,
-    });
+    // Refresh Ref label only — keep frozen snapshot low/high/flag for highlighting.
+    const labelRange = resolveForParam(series.parameter_id);
     return {
       ...series,
-      low: range.low,
-      high: range.high,
-      rangeLabel: range.rangeLabel,
+      rangeLabel: labelRange.rangeLabel || series.rangeLabel,
       unit: series.unit || metaById.get(series.parameter_id)?.unit || undefined,
       data: series.data.map((d) => ({
         ...d,
-        low: range.low,
-        high: range.high,
-        rangeLabel: range.rangeLabel,
+        rangeLabel: labelRange.rangeLabel || d.rangeLabel,
       })),
     };
   };
@@ -402,6 +350,7 @@ export async function buildReportHistoricalTrends(opts: {
       normal_range_low?: number | string | null;
       normal_range_high?: number | string | null;
       unit?: string | null;
+      flag?: string | null;
     },
   ) => {
     if (!analyticsIds.has(parameterId)) return;
@@ -409,14 +358,19 @@ export async function buildReportHistoricalTrends(opts: {
     if (!meta) return;
     const value = parseNumeric(resultValue);
     if (value == null) return;
-    const range = resolveForParam(parameterId, snapshotRange);
+    // Label may use fullest Ref text / Settings; H/L bounds always from approved snapshot.
+    const labelRange = resolveForParam(parameterId, {
+      ...snapshotRange,
+      useSnapshotBounds: true,
+    });
     const sortKey = Date.parse(String(whenIso || "")) || 0;
     const point: RawPoint = {
       date: formatTrendDate(whenIso),
       value,
-      low: range.low,
-      high: range.high,
-      rangeLabel: range.rangeLabel,
+      low: toFiniteNumber(snapshotRange?.normal_range_low),
+      high: toFiniteNumber(snapshotRange?.normal_range_high),
+      flag: normalizeSnapshotFlag(snapshotRange?.flag),
+      rangeLabel: labelRange.rangeLabel,
       sortKey,
       registrationId,
     };
@@ -444,6 +398,7 @@ export async function buildReportHistoricalTrends(opts: {
         normal_range_low: tr.normal_range_low,
         normal_range_high: tr.normal_range_high,
         unit: tr.unit,
+        flag: tr.flag,
       });
     }
   }
@@ -459,6 +414,7 @@ export async function buildReportHistoricalTrends(opts: {
         normal_range_low: tr.normal_range_low,
         normal_range_high: tr.normal_range_high,
         unit: tr.unit,
+        flag: (tr as SnapshotResultRow).flag,
       });
     }
   }
@@ -480,14 +436,22 @@ export async function buildReportHistoricalTrends(opts: {
       .map(({ sortKey: _s, registrationId: _r, ...rest }) => rest);
     if (ordered.length === 0) continue;
     const last = ordered[ordered.length - 1];
+    // Green band / dashed lines: Settings override if set, else latest snapshot bounds.
+    const displayRange = resolveForParam(pid, {
+      normal_range_low: last.low,
+      normal_range_high: last.high,
+      reference_range: last.rangeLabel,
+      unit: meta.unit,
+      useSnapshotBounds: true,
+    });
     series.push({
       parameter_id: pid,
       parameter_name: meta.parameter_name,
       param_code: meta.param_code,
       unit: meta.unit || undefined,
-      low: last.low,
-      high: last.high,
-      rangeLabel: last.rangeLabel,
+      low: displayRange.low ?? last.low,
+      high: displayRange.high ?? last.high,
+      rangeLabel: displayRange.rangeLabel || last.rangeLabel,
       data: ordered,
     });
   }

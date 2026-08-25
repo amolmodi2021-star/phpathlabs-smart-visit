@@ -9,7 +9,17 @@ interface ReportTrendChartsProps {
 
 type AbnormalFlag = "H" | "L" | null;
 
-const getFlag = (value: number, low?: number, high?: number): AbnormalFlag => {
+/** Prefer approved-snapshot flag; else compare against snapshot low/high. */
+const getFlag = (
+  value: number,
+  low?: number,
+  high?: number,
+  snapshotFlag?: string,
+): AbnormalFlag => {
+  const f = String(snapshotFlag ?? "").trim().toUpperCase();
+  if (f === "H" || f === "HIGH") return "H";
+  if (f === "L" || f === "LOW") return "L";
+  if (f === "N" || f === "X") return null;
   if (low != null && value < low) return "L";
   if (high != null && value > high) return "H";
   return null;
@@ -30,7 +40,12 @@ const shortRangeCaption = (text?: string, maxLen = 36): string => {
 const CustomDot = (props: any) => {
   const { cx, cy, payload, low, high } = props;
   if (cx == null || cy == null) return null;
-  const flag = getFlag(payload.value, low ?? payload.low, high ?? payload.high);
+  const flag = getFlag(
+    payload.value,
+    payload.low ?? low,
+    payload.high ?? high,
+    payload.flag,
+  );
   const normal = !flag;
   return (
     <circle
@@ -70,10 +85,15 @@ const shouldPlaceValueBelowRefLine = (
 };
 
 const ValueLabel = (props: any) => {
-  const { x, y, value, low, high, yMin, yMax } = props;
+  const { x, y, value, low, high, yMin, yMax, payload } = props;
   if (x == null || y == null || value == null) return null;
   const num = Number(value);
-  const flag = getFlag(num, low, high);
+  const flag = getFlag(
+    num,
+    payload?.low ?? low,
+    payload?.high ?? high,
+    payload?.flag,
+  );
   const text = formatValue(num);
   const placeBelow = shouldPlaceValueBelowRefLine(num, low, high, Number(yMin), Number(yMax));
   // SVG y grows downward: below the point = larger y
@@ -216,7 +236,12 @@ function ChartCard({ trend, forPdf }: { trend: TrendSeries; forPdf?: boolean }) 
         style={{ gridTemplateColumns: `repeat(${Math.max(sortedData.length, 1)}, minmax(0, 1fr))` }}
       >
         {sortedData.map((point, idx) => {
-          const flag = getFlag(point.value, point.low ?? trend.low, point.high ?? trend.high);
+          const flag = getFlag(
+            point.value,
+            point.low ?? trend.low,
+            point.high ?? trend.high,
+            point.flag,
+          );
           const abnormal = !!flag;
           return (
             <div key={`${point.date}-${idx}`} className="text-center min-w-0 px-0.5">

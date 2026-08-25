@@ -87,7 +87,7 @@ const waitForCaptureReady = async (root: HTMLElement) => {
   await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
   // Recharts SVGs need a paint tick before html-to-image capture
   if (root.querySelector("[data-historical-trends]")) {
-    await new Promise<void>((r) => setTimeout(r, 120));
+    await new Promise<void>((r) => setTimeout(r, 200));
     await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
   }
 };
@@ -1097,6 +1097,7 @@ const LimsReportView = () => {
           normal_range_low: tr.normal_range_low,
           normal_range_high: tr.normal_range_high,
           reference_range: tr.reference_range,
+          flag: tr.flag,
         })),
       );
       const asOfIso =
