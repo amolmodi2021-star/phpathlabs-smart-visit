@@ -152,8 +152,10 @@ export function resolveTrendDisplayRange(meta: {
     if (high == null) high = parsed.high;
   }
 
+  // Keep full advisory / multi-line reference text (with line breaks) for graph headers.
+  // Do not truncate — charts show Ref under the parameter name and can wrap.
   const label =
-    shortenReferenceLabel(refText)
+    String(refText || "").replace(/\r\n/g, "\n").trim()
     || formatShortRange(low, high, meta.unit)
     || "—";
 

@@ -18,6 +18,15 @@ const getFlag = (value: number, low?: number, high?: number): AbnormalFlag => {
 const formatValue = (value: number) =>
   Number(value).toFixed(Number.isInteger(value) ? 0 : 2);
 
+/** One-line caption under each point (full advisory stays under the title). */
+const shortRangeCaption = (text?: string, maxLen = 36): string => {
+  const raw = String(text || "").replace(/\r\n/g, "\n").trim();
+  if (!raw) return "—";
+  const first = raw.split(/\n/)[0].trim();
+  if (first.length <= maxLen) return first;
+  return `${first.slice(0, maxLen - 1)}…`;
+};
+
 const CustomDot = (props: any) => {
   const { cx, cy, payload, low, high } = props;
   if (cx == null || cy == null) return null;
@@ -27,7 +36,7 @@ const CustomDot = (props: any) => {
     <circle
       cx={cx}
       cy={cy}
-      r={5}
+      r={4.5}
       fill={normal ? "#16a34a" : "#dc2626"}
       stroke="#fff"
       strokeWidth={1.5}
@@ -42,15 +51,15 @@ const ValueLabel = (props: any) => {
   const text = formatValue(Number(value));
   if (!flag) {
     return (
-      <text x={x} y={y - 10} textAnchor="middle" fontSize={9} fill="#166534" fontWeight={600}>
+      <text x={x} y={y - 9} textAnchor="middle" fontSize={8} fill="#166534" fontWeight={600}>
         {text}
       </text>
     );
   }
   return (
-    <text x={x} y={y - 10} textAnchor="middle" fontSize={9} fontWeight={700}>
+    <text x={x} y={y - 9} textAnchor="middle" fontSize={8} fontWeight={700}>
       <tspan fill="#dc2626">{text}</tspan>
-      <tspan fill="#dc2626" dx={2} fontSize={8} fontWeight={800}>
+      <tspan fill="#dc2626" dx={2} fontSize={7} fontWeight={800}>
         {flag}
       </tspan>
     </text>
@@ -69,39 +78,47 @@ function ChartCard({ trend, forPdf }: { trend: TrendSeries; forPdf?: boolean }) 
   const padding = range > 0 ? range * 0.2 : Math.abs(maxVal) * 0.15 || 1;
   const yMin = Math.min(minVal - padding, trend.low != null ? trend.low - padding * 0.3 : minVal - padding);
   const yMax = Math.max(maxVal + padding, trend.high != null ? trend.high + padding * 0.3 : maxVal + padding);
-  const chartH = forPdf ? 118 : 150;
+  // Slightly shorter plot so multi-line Ref + 6 cards can fit; AutoScale shrinks further if needed.
+  const chartH = forPdf ? 96 : 140;
+  const refText = (trend.rangeLabel || "").trim() || "—";
 
   return (
     <div
-      className="border border-slate-200 rounded-md p-2.5 bg-white"
+      className="border border-slate-200 rounded-md p-2 bg-white flex flex-col min-w-0"
       style={{ breakInside: "avoid" }}
       data-trend-param={trend.parameter_id}
     >
-      <div className="flex items-baseline justify-between gap-2 mb-1">
-        <h3 className="text-[12px] font-bold text-slate-800 leading-tight truncate">
+      <div className="mb-1 min-w-0">
+        <h3
+          className="text-[11px] font-bold text-slate-800 leading-snug"
+          style={{ wordBreak: "break-word", overflowWrap: "anywhere" }}
+        >
           {trend.parameter_name}
           {trend.unit ? <span className="ml-1 font-normal text-slate-500">({trend.unit})</span> : null}
         </h3>
-        <span className="shrink-0 text-[9px] text-green-700 whitespace-nowrap font-medium">
-          Ref: {trend.rangeLabel}
-        </span>
+        <div
+          className="text-[8px] text-green-700 font-medium leading-snug mt-0.5"
+          style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", overflowWrap: "anywhere" }}
+        >
+          Ref: {refText}
+        </div>
       </div>
 
-      <div style={{ width: "100%", height: chartH }}>
+      <div style={{ width: "100%", height: chartH }} className="shrink-0">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={sortedData} margin={{ left: 2, right: 10, top: 18, bottom: 2 }}>
+          <LineChart data={sortedData} margin={{ left: 0, right: 8, top: 14, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
             <XAxis
               dataKey="date"
-              tick={{ fontSize: 9, fill: "#64748b" }}
+              tick={{ fontSize: 8, fill: "#64748b" }}
               tickLine={false}
               axisLine={{ stroke: "#cbd5e1" }}
-              padding={{ left: 12, right: 12 }}
+              padding={{ left: 10, right: 10 }}
               interval={0}
             />
             <YAxis
-              tick={{ fontSize: 9, fill: "#64748b" }}
-              width={42}
+              tick={{ fontSize: 8, fill: "#64748b" }}
+              width={36}
               tickLine={false}
               axisLine={{ stroke: "#cbd5e1" }}
               domain={[yMin, yMax]}
@@ -148,7 +165,7 @@ function ChartCard({ trend, forPdf }: { trend: TrendSeries; forPdf?: boolean }) 
       </div>
 
       <div
-        className="mt-1.5 grid gap-1"
+        className="mt-1 grid gap-0.5"
         style={{ gridTemplateColumns: `repeat(${Math.max(sortedData.length, 1)}, minmax(0, 1fr))` }}
       >
         {sortedData.map((point, idx) => {
@@ -156,19 +173,19 @@ function ChartCard({ trend, forPdf }: { trend: TrendSeries; forPdf?: boolean }) 
           const abnormal = !!flag;
           return (
             <div key={`${point.date}-${idx}`} className="text-center min-w-0 px-0.5">
-              <div className="text-[9px] text-slate-500 leading-tight truncate">{point.date}</div>
+              <div className="text-[8px] text-slate-500 leading-tight truncate">{point.date}</div>
               <div
-                className={`text-[11px] font-semibold leading-tight ${
+                className={`text-[10px] font-semibold leading-tight ${
                   abnormal ? "text-red-600" : "text-green-700"
                 }`}
               >
                 {formatValue(point.value)}
                 {flag ? (
-                  <span className="ml-0.5 text-[10px] font-bold text-red-600">{flag}</span>
+                  <span className="ml-0.5 text-[9px] font-bold text-red-600">{flag}</span>
                 ) : null}
               </div>
-              <div className="text-[8px] text-green-700/80 leading-tight truncate">
-                {point.rangeLabel || trend.rangeLabel}
+              <div className="text-[7px] text-green-700/80 leading-tight truncate">
+                {shortRangeCaption(point.rangeLabel || trend.rangeLabel)}
               </div>
             </div>
           );
@@ -180,7 +197,7 @@ function ChartCard({ trend, forPdf }: { trend: TrendSeries; forPdf?: boolean }) 
 
 /**
  * Historical Trends block for report PDF / screen.
- * Caller chunks to ≤6 charts per page.
+ * Caller chunks to ≤6 charts per page and may wrap in AutoScaleContent.
  */
 const ReportTrendCharts = ({ trends, forPdf = true }: ReportTrendChartsProps) => {
   if (!trends.length) return null;
@@ -188,12 +205,12 @@ const ReportTrendCharts = ({ trends, forPdf = true }: ReportTrendChartsProps) =>
   return (
     <div className="w-full" data-historical-trends>
       <h2
-        className="text-[14px] font-bold tracking-wide text-slate-800 mb-2 pb-1"
+        className="text-[13px] font-bold tracking-wide text-slate-800 mb-1.5 pb-1"
         style={{ borderBottom: "1.5px solid #1e3a5f" }}
       >
         HISTORICAL TRENDS
       </h2>
-      <div className="grid grid-cols-2 gap-2.5">
+      <div className="grid grid-cols-2 gap-2">
         {trends.map((trend) => (
           <ChartCard key={trend.parameter_id} trend={trend} forPdf={forPdf} />
         ))}

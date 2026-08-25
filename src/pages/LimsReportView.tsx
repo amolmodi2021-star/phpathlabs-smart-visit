@@ -2232,7 +2232,9 @@ const LimsReportView = () => {
                 )}
 
                 {page.type === "trends" && page.trends && page.trends.length > 0 && (
-                  <ReportTrendCharts trends={page.trends} forPdf />
+                  <AutoScaleContent fillParent>
+                    <ReportTrendCharts trends={page.trends} forPdf />
+                  </AutoScaleContent>
                 )}
 
                 {page.type === "snip" && page.snipImage && (() => {
