@@ -459,7 +459,8 @@ export async function buildReportHistoricalTrends(opts: {
       merged.push(applyResolvedRange(s));
       seen.add(s.parameter_id);
     }
-    // Append analytics params missing from an older/incomplete freeze (e.g. PP glucose)
+    // Append ANY analytics params missing from an older/incomplete freeze
+    // (PP glucose, TIBC, lipids, vitamins, etc. — not limited to one test).
     for (const pid of reportParamIds) {
       if (seen.has(pid) || !analyticsIds.has(pid)) continue;
       const live = liveById.get(pid);
