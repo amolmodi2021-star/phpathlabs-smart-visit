@@ -1917,22 +1917,19 @@ const LimsReportView = () => {
     setDownloading(true);
     type StrippedFill = {
       el: HTMLElement;
-      fill: string | null;
-      fillOpacity: string | null;
-      bg: string;
+      parent: Node;
+      next: ChildNode | null;
     };
     const histFills: StrippedFill[] = [];
     const restoreStrippedFills = () => {
-      histFills.forEach(({ el, fill, fillOpacity, bg }) => {
-        el.style.display = "";
-        el.style.opacity = "";
-        el.style.visibility = "";
-        el.style.backgroundColor = bg;
-        if (fill == null) el.removeAttribute("fill");
-        else el.setAttribute("fill", fill);
-        if (fillOpacity == null) el.removeAttribute("fill-opacity");
-        else el.setAttribute("fill-opacity", fillOpacity);
+      histFills.forEach(({ el, parent, next }) => {
+        try {
+          parent.insertBefore(el, next);
+        } catch {
+          parent.appendChild(el);
+        }
       });
+      histFills.length = 0;
       printRef.current?.classList.remove("print-strip-colors", "print-no-letterhead");
     };
     const root = printRef.current;
@@ -1944,24 +1941,16 @@ const LimsReportView = () => {
       }
 
       // Hide letterhead / strip fills via CSS+DOM only — avoid React re-render of every page.
+      // Remove fill nodes entirely so html-to-image cannot paint SVG/HTML bands.
       root.classList.add("print-strip-colors", "print-no-letterhead");
       Array.from(
         root.querySelectorAll<HTMLElement>(
           ".hist-fill, .trend-ref-fill, [data-print-strip-fill]",
         ),
       ).forEach((el) => {
-        histFills.push({
-          el,
-          fill: el.getAttribute("fill"),
-          fillOpacity: el.getAttribute("fill-opacity"),
-          bg: el.style.backgroundColor,
-        });
-        el.style.display = "none";
-        el.style.opacity = "0";
-        el.style.visibility = "hidden";
-        el.style.backgroundColor = "transparent";
-        el.setAttribute("fill", "none");
-        el.setAttribute("fill-opacity", "0");
+        if (!el.parentNode) return;
+        histFills.push({ el, parent: el.parentNode, next: el.nextSibling });
+        el.parentNode.removeChild(el);
       });
       await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
 
