@@ -252,6 +252,7 @@ const FullWidthNormalBand = (props: {
   if (!(height > 0)) return null;
   return (
     <rect
+      className="trend-ref-fill"
       x={left}
       y={top}
       width={width}
