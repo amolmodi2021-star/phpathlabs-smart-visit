@@ -6,6 +6,7 @@ import {
   assertCollectedDoesNotExceedBill,
   sumPaymentEntries,
 } from "@/lib/billPayment";
+import { cancelOrphanDuplicateHomeVisits } from "@/lib/homeVisitDuplicates";
 
 export interface AtomicRegistrationInput {
   registration: Record<string, any>;
@@ -90,5 +91,18 @@ export async function registerPatientAtomic(input: AtomicRegistrationInput): Pro
     p_home_visit_patch: input.homeVisitPatch || null,
   });
   if (error) throw new Error(error.message || "Registration failed");
+
+  // Drop accidental duplicate Pending cards left by double-booking the same slot.
+  if (
+    input.homeVisitId
+    && String(input.homeVisitPatch?.status || "").toLowerCase() === "registered"
+  ) {
+    try {
+      await cancelOrphanDuplicateHomeVisits(input.homeVisitId);
+    } catch (e) {
+      console.warn("Could not cancel duplicate pending home visits:", e);
+    }
+  }
+
   return data;
 }

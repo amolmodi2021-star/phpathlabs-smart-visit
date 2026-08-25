@@ -22,6 +22,7 @@ import {
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
   AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
 } from "@/components/ui/alert-dialog";
+import { assertNoDuplicatePendingHomeVisit } from "@/lib/homeVisitDuplicates";
 
 interface SelectedTest {
   test_id: string;
@@ -286,6 +287,13 @@ const AddHomeVisitDialog = ({ open, onClose }: AddHomeVisitDialogProps) => {
 
       const cleanName = patientName.replace(/\s+/g, ' ').trim().toUpperCase();
       const cleanAddress = address.replace(/\s+/g, ' ').trim().toUpperCase();
+
+      await assertNoDuplicatePendingHomeVisit({
+        whatsappNumber: cleanNumber,
+        patientName: cleanName,
+        visitDate,
+        visitTime,
+      });
 
       // Create estimate
       const { data: est, error: estError } = await supabase.from("estimates").insert({

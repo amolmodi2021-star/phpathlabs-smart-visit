@@ -26,6 +26,7 @@ import DeletePasswordDialog from "@/components/DeletePasswordDialog";
 import EditEstimateDialog from "@/components/EditEstimateDialog";
 import TimeSlotPicker from "@/components/TimeSlotPicker";
 import { patientDisplayName } from "@/lib/patientDisplayName";
+import { assertNoDuplicatePendingHomeVisit } from "@/lib/homeVisitDuplicates";
 
 const EstimateDashboard = () => {
   useRealtimeSync("estimates", ["estimates"]);
@@ -106,6 +107,13 @@ const EstimateDashboard = () => {
       if (selectedDateTime.getTime() < Date.now()) throw new Error("Cannot book for date/time that has already passed");
       const est = bookingEstimate;
       const hvCharges = parseFloat(visitForm.home_visit_charges) || 0;
+
+      await assertNoDuplicatePendingHomeVisit({
+        whatsappNumber: est.whatsapp_number,
+        patientName: est.patient_name,
+        visitDate: visitForm.visit_date,
+        visitTime: visitForm.visit_time,
+      });
 
       const { error: visitError } = await supabase.from("home_visits").insert({
         estimate_id: est.id,

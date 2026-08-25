@@ -21,6 +21,7 @@ import { findPatientMasterByMobile, type MasterPatientMatch } from "@/lib/findPa
 import { PatientOnMobileDialog } from "@/components/lims/PatientOnMobileDialog";
 import { patientDisplayName } from "@/lib/patientDisplayName";
 import { genderFromTitle, PATIENT_TITLES_DOTTED } from "@/lib/normalizePatientFields";
+import { assertNoDuplicatePendingHomeVisit } from "@/lib/homeVisitDuplicates";
 
 interface EditTest {
   test_id: string;
@@ -211,10 +212,18 @@ const AddPatientToVisitDialog = ({ open, onClose, visitDate, visitTime, address,
         throw new Error("Select which patient this visit is for");
       }
 
+      const cleanName = patientName.replace(/\s+/g, " ").trim().toUpperCase();
+      await assertNoDuplicatePendingHomeVisit({
+        whatsappNumber: cleanNumber,
+        patientName: cleanName,
+        visitDate,
+        visitTime,
+      });
+
       // Create estimate
       const { data: estData, error: estError } = await supabase.from("estimates").insert({
         title: title || null,
-        patient_name: patientName.replace(/\s+/g, ' ').trim().toUpperCase(),
+        patient_name: cleanName,
         gender: gender || null,
         email: email || null,
         doctor_name: doctorName ? doctorName.toUpperCase() : "SELF",
