@@ -244,17 +244,16 @@ function ChartCard({ trend, forPdf }: { trend: TrendSeries; forPdf?: boolean }) 
                 ifOverflow="extendDomain"
               />
             )}
-            {/* Orange dotted line at each result value */}
-            {sortedData.map((point, idx) => (
+            {/* Orange result line only when a single data point (avoids clutter on multi-point trends) */}
+            {sortedData.length === 1 ? (
               <ReferenceLine
-                key={`result-line-${point.date}-${idx}`}
-                y={point.value}
+                y={sortedData[0].value}
                 stroke="#ea580c"
                 strokeDasharray="4 3"
                 strokeWidth={1.35}
                 ifOverflow="extendDomain"
               />
-            ))}
+            ) : null}
             <Line
               type="monotone"
               dataKey="value"
