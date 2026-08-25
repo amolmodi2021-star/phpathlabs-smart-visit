@@ -225,6 +225,8 @@ export async function buildReportHistoricalTrends(opts: {
     .select(
       "id, param_code, parameter_name, unit, normal_range_low, normal_range_high, normal_range_text, trend_display_low, trend_display_high, trend_display_label, store_for_analytics",
     )
+    // Only currently enabled analytics params — turning the flag off hides the chart
+    // even if an older freeze still contains that series.
     .eq("store_for_analytics", true)
     .in("id", reportParamIds);
   if (pErr) throw new Error(pErr.message);
@@ -476,12 +478,12 @@ export async function buildReportHistoricalTrends(opts: {
   return { trends: liveSeries, fromFrozen: false };
 }
 
-/** Persist frozen trends onto approved_reports (create, merge missing, or reorder). */
+/** Persist frozen trends onto approved_reports (create, merge, reorder, or prune). */
 export async function freezeApprovedReportHistoricalTrends(
   registrationId: string,
   trends: TrendSeries[],
 ): Promise<void> {
-  if (!registrationId || !trends.length) return;
+  if (!registrationId) return;
   const { data: row, error: readErr } = await (supabase as any)
     .from("approved_reports")
     .select("id, historical_trends")
@@ -491,9 +493,22 @@ export async function freezeApprovedReportHistoricalTrends(
   if (!row?.id) return;
 
   const existing = asTrendSeriesArray(row.historical_trends);
+
+  // Current `trends` is already filtered to store_for_analytics=true only.
+  // Empty array means prune/clear any previously frozen series (flag turned off).
+  if (!trends.length) {
+    if (!existing?.length) return;
+    const { error } = await (supabase as any)
+      .from("approved_reports")
+      .update({ historical_trends: [] })
+      .eq("id", row.id);
+    if (error) throw new Error(error.message);
+    return;
+  }
+
   if (existing && existing.some(seriesHasUsableRange)) {
     const byId = new Map(existing.map((s) => [s.parameter_id, s]));
-    // Keep frozen point data; adopt incoming hierarchy order; add any new series
+    // Keep frozen point data for still-enabled params; drop disabled; adopt hierarchy order
     const ordered = trends.map((t) => byId.get(t.parameter_id) || t);
     const sameLength = ordered.length === existing.length;
     const sameOrder =
