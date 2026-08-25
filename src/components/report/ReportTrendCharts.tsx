@@ -44,20 +44,51 @@ const CustomDot = (props: any) => {
   );
 };
 
+/**
+ * Prefer label above the point; if that would collide with a green ref line
+ * (value below the line but close enough that the label sits on it), put the
+ * label below the point / dashed line instead.
+ */
+const shouldPlaceValueBelowRefLine = (
+  value: number,
+  low: number | undefined,
+  high: number | undefined,
+  yMin: number,
+  yMax: number,
+): boolean => {
+  const span = Math.max(yMax - yMin, Math.abs(value) * 0.2, 1);
+  // ~label height + gap as a fraction of the y-domain
+  const clearance = span * 0.3;
+  if (high != null && Number.isFinite(high) && value <= high && high - value <= clearance) {
+    return true;
+  }
+  if (low != null && Number.isFinite(low) && value < low && low - value <= clearance) {
+    // Point below low line — label above would cross the low dashed line
+    return true;
+  }
+  return false;
+};
+
 const ValueLabel = (props: any) => {
-  const { x, y, value, low, high } = props;
+  const { x, y, value, low, high, yMin, yMax } = props;
   if (x == null || y == null || value == null) return null;
-  const flag = getFlag(Number(value), low, high);
-  const text = formatValue(Number(value));
+  const num = Number(value);
+  const flag = getFlag(num, low, high);
+  const text = formatValue(num);
+  const placeBelow = shouldPlaceValueBelowRefLine(num, low, high, Number(yMin), Number(yMax));
+  // SVG y grows downward: below the point = larger y
+  const textY = placeBelow ? y + 14 : y - 9;
+  const fill = flag ? "#dc2626" : "#166534";
+
   if (!flag) {
     return (
-      <text x={x} y={y - 9} textAnchor="middle" fontSize={8} fill="#166534" fontWeight={600}>
+      <text x={x} y={textY} textAnchor="middle" fontSize={8} fill={fill} fontWeight={600}>
         {text}
       </text>
     );
   }
   return (
-    <text x={x} y={y - 9} textAnchor="middle" fontSize={8} fontWeight={700}>
+    <text x={x} y={textY} textAnchor="middle" fontSize={8} fontWeight={700}>
       <tspan fill="#dc2626">{text}</tspan>
       <tspan fill="#dc2626" dx={2} fontSize={7} fontWeight={800}>
         {flag}
@@ -158,7 +189,7 @@ function ChartCard({ trend, forPdf }: { trend: TrendSeries; forPdf?: boolean }) 
               strokeWidth={2}
               isAnimationActive={false}
               dot={<CustomDot low={trend.low} high={trend.high} />}
-              label={<ValueLabel low={trend.low} high={trend.high} />}
+              label={<ValueLabel low={trend.low} high={trend.high} yMin={yMin} yMax={yMax} />}
             />
           </LineChart>
         </ResponsiveContainer>
