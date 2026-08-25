@@ -18,6 +18,75 @@ const getFlag = (value: number, low?: number, high?: number): AbnormalFlag => {
 const formatValue = (value: number) =>
   Number(value).toFixed(Number.isInteger(value) ? 0 : 2);
 
+/** Nice step size (1/2/5 × 10^n) for round axis ticks. */
+function niceNum(range: number, round: boolean): number {
+  const r = Math.max(Math.abs(range), Number.EPSILON);
+  const exp = Math.floor(Math.log10(r));
+  const frac = r / 10 ** exp;
+  let nice: number;
+  if (round) {
+    if (frac < 1.5) nice = 1;
+    else if (frac < 3) nice = 2;
+    else if (frac < 7) nice = 5;
+    else nice = 10;
+  } else if (frac <= 1) nice = 1;
+  else if (frac <= 2) nice = 2;
+  else if (frac <= 5) nice = 5;
+  else nice = 10;
+  return nice * 10 ** exp;
+}
+
+function formatAxisTick(value: number, step: number): string {
+  if (!Number.isFinite(value)) return "";
+  // Avoid float dust (e.g. 0.30000000004)
+  const cleaned = Math.abs(step) >= 1
+    ? Math.round(value)
+    : Number(value.toFixed(Math.max(0, Math.ceil(-Math.log10(Math.abs(step))) + 1)));
+  if (Math.abs(step) >= 1) return String(Math.round(cleaned));
+  if (Math.abs(step) >= 0.1) return cleaned.toFixed(1).replace(/\.0$/, "");
+  if (Math.abs(step) >= 0.01) return cleaned.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
+  return String(cleaned);
+}
+
+/**
+ * Y domain always from 0 with round intermediate ticks (1, 2, 5, 10… or 0.1, 0.2, 0.5…).
+ */
+function buildYAxisScale(values: number[], low?: number, high?: number) {
+  const positives = [...values, low, high]
+    .filter((v): v is number => v != null && Number.isFinite(v))
+    .map((v) => Math.max(0, v));
+  const dataMax = positives.length ? Math.max(...positives) : 1;
+  const yMin = 0;
+  const headroom = dataMax <= 0 ? 1 : dataMax * 1.12;
+  const rough = Math.max(headroom, Number.EPSILON);
+  const step = niceNum(rough / 3, true);
+  const yMax = Math.max(step, Math.ceil(rough / step) * step);
+  const ticks: number[] = [];
+  for (let v = yMin; v <= yMax + step * 1e-9; v += step) {
+    ticks.push(Number((Math.round(v / step) * step).toFixed(10)));
+  }
+  if (ticks[ticks.length - 1] !== yMax) ticks.push(yMax);
+  return { yMin, yMax, ticks, step };
+}
+
+/** Y tick centered on its grid line. */
+const AlignedYTick = (props: any) => {
+  const { x, y, payload, step } = props;
+  if (x == null || y == null || payload?.value == null) return null;
+  return (
+    <text
+      x={x - 4}
+      y={y}
+      textAnchor="end"
+      dominantBaseline="middle"
+      fontSize={8}
+      fill="#64748b"
+    >
+      {formatAxisTick(Number(payload.value), Number(step) || 1)}
+    </text>
+  );
+};
+
 /** One-line caption under each point (full advisory stays under the title). */
 const shortRangeCaption = (text?: string, maxLen = 36): string => {
   const raw = String(text || "").replace(/\r\n/g, "\n").trim();
@@ -100,15 +169,7 @@ const ValueLabel = (props: any) => {
 function ChartCard({ trend, forPdf }: { trend: TrendSeries; forPdf?: boolean }) {
   const sortedData = trend.data;
   const values = sortedData.map((d) => d.value);
-  const allVals = [...values];
-  if (trend.low != null) allVals.push(trend.low);
-  if (trend.high != null) allVals.push(trend.high);
-  const minVal = Math.min(...allVals);
-  const maxVal = Math.max(...allVals);
-  const range = maxVal - minVal;
-  const padding = range > 0 ? range * 0.2 : Math.abs(maxVal) * 0.15 || 1;
-  const yMin = Math.min(minVal - padding, trend.low != null ? trend.low - padding * 0.3 : minVal - padding);
-  const yMax = Math.max(maxVal + padding, trend.high != null ? trend.high + padding * 0.3 : maxVal + padding);
+  const { yMin, yMax, ticks, step } = buildYAxisScale(values, trend.low, trend.high);
   // Slightly shorter plot so multi-line Ref + 6 cards can fit; AutoScale shrinks further if needed.
   const chartH = forPdf ? 96 : 140;
   const refText = (trend.rangeLabel || "").trim() || "—";
@@ -137,8 +198,8 @@ function ChartCard({ trend, forPdf }: { trend: TrendSeries; forPdf?: boolean }) 
 
       <div style={{ width: "100%", height: chartH }} className="shrink-0">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={sortedData} margin={{ left: 0, right: 8, top: 14, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+          <LineChart data={sortedData} margin={{ left: 2, right: 8, top: 14, bottom: 2 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" horizontal vertical={false} />
             <XAxis
               dataKey="date"
               tick={{ fontSize: 8, fill: "#64748b" }}
@@ -148,16 +209,18 @@ function ChartCard({ trend, forPdf }: { trend: TrendSeries; forPdf?: boolean }) 
               interval={0}
             />
             <YAxis
-              tick={{ fontSize: 8, fill: "#64748b" }}
-              width={36}
+              width={40}
               tickLine={false}
               axisLine={{ stroke: "#cbd5e1" }}
               domain={[yMin, yMax]}
-              tickFormatter={(val: number) => Number(val.toFixed(2)).toString()}
+              ticks={ticks}
+              interval={0}
+              allowDecimals
+              tick={(props: any) => <AlignedYTick {...props} step={step} />}
             />
             {trend.low != null && trend.high != null && (
               <ReferenceArea
-                y1={trend.low}
+                y1={Math.max(0, trend.low)}
                 y2={trend.high}
                 fill="#16a34a"
                 fillOpacity={0.08}
@@ -173,7 +236,7 @@ function ChartCard({ trend, forPdf }: { trend: TrendSeries; forPdf?: boolean }) 
                 ifOverflow="extendDomain"
               />
             )}
-            {trend.low != null && (
+            {trend.low != null && trend.low > 0 && (
               <ReferenceLine
                 y={trend.low}
                 stroke="#16a34a"
