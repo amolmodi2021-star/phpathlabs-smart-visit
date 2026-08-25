@@ -1,5 +1,5 @@
 ﻿import { Component, type ReactNode } from "react";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, ReferenceLine, ResponsiveContainer } from "recharts";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, ReferenceLine, Customized, ResponsiveContainer } from "recharts";
 import type { TrendSeries } from "@/lib/reportHistoricalTrends";
 
 interface ReportTrendChartsProps {
@@ -227,58 +227,46 @@ const ValueLabel = (props: any) => {
 };
 
 /**
- * HTML overlay for the normal band (full plot width).
- * Uses CSS background so `.print-strip-colors` clears it on print — SVG fills
- * are not stripped by that CSS and were surviving html-to-image capture.
+ * Normal band drawn with the same Y scale as ReferenceLines, and full plot
+ * width via chart offset (left→right edges).
  */
-function NormalBandOverlay(props: {
-  chartH: number;
-  yMin: number;
-  yMax: number;
+const FullWidthNormalBand = (props: {
   y1?: number;
   y2?: number;
-  yAxisWidth?: number;
-  rightMargin?: number;
-  topMargin?: number;
-  bottomMargin?: number;
-}) {
-  const {
-    chartH,
-    yMin,
-    yMax,
-    y1,
-    y2,
-    yAxisWidth = 36,
-    rightMargin = 28,
-    topMargin = 14,
-    bottomMargin = 4,
-  } = props;
+  offset?: { left?: number; width?: number };
+  yAxisMap?: Record<string, { scale?: (v: number) => number }>;
+}) => {
+  const { y1, y2, offset, yAxisMap } = props;
   if (y1 == null || y2 == null || !Number.isFinite(y1) || !Number.isFinite(y2)) return null;
-  const span = Math.max(yMax - yMin, Number.EPSILON);
-  const plotH = Math.max(1, chartH - topMargin - bottomMargin);
-  const valueToY = (v: number) => {
-    const t = (yMax - v) / span;
-    return topMargin + Math.min(1, Math.max(0, t)) * plotH;
-  };
-  const top = valueToY(Math.max(y1, y2));
-  const bottom = valueToY(Math.min(y1, y2));
-  const height = Math.max(0, bottom - top);
+  const yAxis = yAxisMap
+    ? (Object.values(yAxisMap)[0] as { scale?: (v: number) => number } | undefined)
+    : undefined;
+  const scale = yAxis?.scale;
+  if (!scale || typeof scale !== "function") return null;
+  const left = offset?.left ?? 0;
+  const width = offset?.width ?? 0;
+  if (!(width > 0)) return null;
+  const py1 = scale(y1);
+  const py2 = scale(y2);
+  if (!Number.isFinite(py1) || !Number.isFinite(py2)) return null;
+  const top = Math.min(py1, py2);
+  const height = Math.abs(py2 - py1);
   if (!(height > 0)) return null;
   return (
-    <div
-      className="hist-fill trend-ref-fill absolute pointer-events-none"
+    <rect
+      className="hist-fill trend-ref-fill"
       data-print-strip-fill="trend"
-      aria-hidden
-      style={{
-        left: yAxisWidth,
-        right: rightMargin,
-        top,
-        height,
-        backgroundColor: "rgba(22, 163, 74, 0.08)",
-      }}
+      x={left}
+      y={top}
+      width={width}
+      height={height}
+      fill="#16a34a"
+      fillOpacity={0.08}
+      stroke="none"
+      pointerEvents="none"
     />
   );
-}
+};
 
 function ChartCard({ trend, forPdf }: { trend: TrendSeries; forPdf?: boolean }) {
   const sortedData = Array.isArray(trend?.data)
@@ -325,32 +313,7 @@ function ChartCard({ trend, forPdf }: { trend: TrendSeries; forPdf?: boolean }) 
         </div>
       </div>
 
-      <div style={{ width: "100%", height: chartH }} className="shrink-0 relative">
-        {areaLow != null && Number.isFinite(areaLow) && areaHigh != null && Number.isFinite(areaHigh) ? (
-          <NormalBandOverlay
-            chartH={chartH}
-            yMin={yMin}
-            yMax={yMax}
-            y1={areaLow}
-            y2={areaHigh}
-          />
-        ) : areaHigh != null && Number.isFinite(areaHigh) ? (
-          <NormalBandOverlay
-            chartH={chartH}
-            yMin={yMin}
-            yMax={yMax}
-            y1={yMin}
-            y2={areaHigh}
-          />
-        ) : areaLow != null && Number.isFinite(areaLow) ? (
-          <NormalBandOverlay
-            chartH={chartH}
-            yMin={yMin}
-            yMax={yMax}
-            y1={areaLow}
-            y2={yMax}
-          />
-        ) : null}
+      <div style={{ width: "100%", height: chartH }} className="shrink-0">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={sortedData} margin={{ left: 0, right: 28, top: 14, bottom: 4 }}>
             {/* Grey grid only at labeled Y ticks — no unlabeled extras / no verticals */}
@@ -379,6 +342,25 @@ function ChartCard({ trend, forPdf }: { trend: TrendSeries; forPdf?: boolean }) 
               tickFormatter={(val: number) => formatAxisTick(val, yDecimals)}
               interval={0}
             />
+            {areaLow != null && Number.isFinite(areaLow) && areaHigh != null && Number.isFinite(areaHigh) ? (
+              <Customized
+                component={(p: any) => (
+                  <FullWidthNormalBand {...p} y1={areaLow} y2={areaHigh} />
+                )}
+              />
+            ) : areaHigh != null && Number.isFinite(areaHigh) ? (
+              <Customized
+                component={(p: any) => (
+                  <FullWidthNormalBand {...p} y1={yMin} y2={areaHigh} />
+                )}
+              />
+            ) : areaLow != null && Number.isFinite(areaLow) ? (
+              <Customized
+                component={(p: any) => (
+                  <FullWidthNormalBand {...p} y1={areaLow} y2={yMax} />
+                )}
+              />
+            ) : null}
             {areaHigh != null && Number.isFinite(areaHigh) && (
               <ReferenceLine
                 y={areaHigh}
