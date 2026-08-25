@@ -1916,15 +1916,18 @@ const LimsReportView = () => {
     if (!printRef.current) return;
     setDownloading(true);
     type StrippedFill = {
-      el: SVGElement;
+      el: HTMLElement;
       fill: string | null;
       fillOpacity: string | null;
+      bg: string;
     };
     const histFills: StrippedFill[] = [];
     const restoreStrippedFills = () => {
-      histFills.forEach(({ el, fill, fillOpacity }) => {
+      histFills.forEach(({ el, fill, fillOpacity, bg }) => {
         el.style.display = "";
         el.style.opacity = "";
+        el.style.visibility = "";
+        el.style.backgroundColor = bg;
         if (fill == null) el.removeAttribute("fill");
         else el.setAttribute("fill", fill);
         if (fillOpacity == null) el.removeAttribute("fill-opacity");
@@ -1943,7 +1946,7 @@ const LimsReportView = () => {
       // Hide letterhead / strip fills via CSS+DOM only — avoid React re-render of every page.
       root.classList.add("print-strip-colors", "print-no-letterhead");
       Array.from(
-        root.querySelectorAll<SVGElement>(
+        root.querySelectorAll<HTMLElement>(
           ".hist-fill, .trend-ref-fill, [data-print-strip-fill]",
         ),
       ).forEach((el) => {
@@ -1951,9 +1954,12 @@ const LimsReportView = () => {
           el,
           fill: el.getAttribute("fill"),
           fillOpacity: el.getAttribute("fill-opacity"),
+          bg: el.style.backgroundColor,
         });
         el.style.display = "none";
         el.style.opacity = "0";
+        el.style.visibility = "hidden";
+        el.style.backgroundColor = "transparent";
         el.setAttribute("fill", "none");
         el.setAttribute("fill-opacity", "0");
       });
