@@ -72,21 +72,6 @@ function formatShortRange(low?: number | null, high?: number | null, unit?: stri
   return "";
 }
 
-/** Shorten long advisory / multi-line reference text for compact captions. */
-export function shortenReferenceLabel(text: string | null | undefined, maxLen = 42): string {
-  const raw = String(text || "").replace(/\r\n/g, "\n").trim();
-  if (!raw) return "";
-  const firstLine = raw.split(/\n/)[0].trim();
-  const span = firstLine.match(/(-?\d+(?:\.\d+)?)\s*[-–—to]+\s*(-?\d+(?:\.\d+)?)/i);
-  if (span) {
-    const unitMatch = firstLine.match(/%|mg\/dL|g\/dL|mmol|IU|U\/L|ng\/mL|pg\/mL|µIU|uIU/i);
-    const unit = unitMatch ? ` ${unitMatch[0]}` : "";
-    return `${span[1]} - ${span[2]}${unit}`;
-  }
-  if (firstLine.length <= maxLen) return firstLine;
-  return `${firstLine.slice(0, maxLen - 1)}…`;
-}
-
 function parseBoundsFromRangeText(rangeText?: string | null): { low?: number; high?: number } {
   if (!rangeText) return {};
   const text = String(rangeText).replace(/,/g, " ");
@@ -111,8 +96,8 @@ function parseBoundsFromRangeText(rangeText?: string | null): { low?: number; hi
 
 /**
  * Resolve display bounds for historical trends.
- * Settings override (trend_display_*) wins; otherwise use reference / normal range
- * from snapshot → param → age/gender table.
+ * Settings override (trend_display_*) wins; otherwise use the fullest parameter
+ * reference / advisory text (multi-line from Parameters), then snapshot text.
  */
 export function resolveTrendDisplayRange(meta: {
   trend_display_low?: number | null;
@@ -122,6 +107,8 @@ export function resolveTrendDisplayRange(meta: {
   normal_range_high?: number | null;
   normal_range_text?: string | null;
   reference_range?: string | null;
+  /** Full text from parameter_normal_ranges (preferred over short snapshot captions) */
+  parameter_range_text?: string | null;
   unit?: string | null;
 }): { low?: number; high?: number; rangeLabel: string } {
   const hasTrendOverride =
@@ -141,10 +128,13 @@ export function resolveTrendDisplayRange(meta: {
   let low = toFiniteNumber(meta.normal_range_low);
   let high = toFiniteNumber(meta.normal_range_high);
 
-  const refText =
-    (meta.reference_range || "").trim()
-    || (meta.normal_range_text || "").trim()
-    || "";
+  // Prefer fullest advisory / parameter text (e.g. HbA1c 3 lines) over a short
+  // snapshot caption that only shows the matched band.
+  const refText = pickFullestRangeText(
+    meta.parameter_range_text,
+    meta.normal_range_text,
+    meta.reference_range,
+  );
 
   if ((low == null || high == null) && refText) {
     const parsed = parseBoundsFromRangeText(refText);
@@ -152,14 +142,27 @@ export function resolveTrendDisplayRange(meta: {
     if (high == null) high = parsed.high;
   }
 
-  // Keep full advisory / multi-line reference text (with line breaks) for graph headers.
-  // Do not truncate — charts show Ref under the parameter name and can wrap.
   const label =
-    String(refText || "").replace(/\r\n/g, "\n").trim()
+    refText
     || formatShortRange(low, high, meta.unit)
     || "—";
 
   return { low, high, rangeLabel: label };
+}
+
+/** Prefer multi-line / longer parameter advisory text over a short single-line caption. */
+function pickFullestRangeText(...candidates: Array<string | null | undefined>): string {
+  const texts = candidates
+    .map((t) => String(t ?? "").replace(/\r\n/g, "\n").replace(/^\uFEFF/, "").trim())
+    .filter((t) => t.length > 0);
+  if (!texts.length) return "";
+  texts.sort((a, b) => {
+    const aLines = a.split("\n").filter((l) => l.trim()).length;
+    const bLines = b.split("\n").filter((l) => l.trim()).length;
+    if (bLines !== aLines) return bLines - aLines;
+    return b.length - a.length;
+  });
+  return texts[0];
 }
 
 function formatTrendDate(iso: string | null | undefined): string {
@@ -296,18 +299,16 @@ export async function buildReportHistoricalTrends(opts: {
       normal_range_low: snapLow ?? toFiniteNumber(meta.normal_range_low) ?? fb?.low ?? null,
       normal_range_high: snapHigh ?? toFiniteNumber(meta.normal_range_high) ?? fb?.high ?? null,
       normal_range_text: meta.normal_range_text,
-      reference_range: snapshotRange?.reference_range || fb?.text || null,
+      // Full advisory from Parameters (parameter_normal_ranges)
+      parameter_range_text: fb?.text || meta.normal_range_text || null,
+      reference_range: snapshotRange?.reference_range || null,
       unit: (snapshotRange?.unit && String(snapshotRange.unit).trim()) || meta.unit,
     });
   };
 
   const applyResolvedRange = (series: TrendSeries): TrendSeries => {
-    // Prefer current Settings / clinical fallback; keep frozen values/dates
+    // Refresh Ref text from Parameters / Settings — do not re-feed a short frozen label
     const range = resolveForParam(series.parameter_id, {
-      reference_range:
-        series.rangeLabel && series.rangeLabel !== "—"
-          ? series.rangeLabel
-          : series.data.find((d) => d.rangeLabel && d.rangeLabel !== "—")?.rangeLabel,
       normal_range_low: series.low ?? series.data.find((d) => d.low != null)?.low,
       normal_range_high: series.high ?? series.data.find((d) => d.high != null)?.high,
       unit: series.unit,
