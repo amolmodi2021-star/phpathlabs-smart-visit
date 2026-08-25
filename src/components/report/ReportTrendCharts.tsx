@@ -273,7 +273,7 @@ function ChartCard({ trend, forPdf }: { trend: TrendSeries; forPdf?: boolean }) 
 
       <div style={{ width: "100%", height: chartH }} className="shrink-0">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={sortedData} margin={{ left: 0, right: 8, top: 14, bottom: 0 }}>
+          <LineChart data={sortedData} margin={{ left: 0, right: 28, top: 14, bottom: 4 }}>
             {/* Grey grid only at labeled Y ticks — no unlabeled extras / no verticals */}
             <CartesianGrid
               strokeDasharray="3 3"
@@ -286,8 +286,9 @@ function ChartCard({ trend, forPdf }: { trend: TrendSeries; forPdf?: boolean }) 
               tick={{ fontSize: 8, fill: "#64748b" }}
               tickLine={false}
               axisLine={{ stroke: "#cbd5e1" }}
-              padding={{ left: 10, right: 10 }}
+              padding={{ left: 14, right: 22 }}
               interval={0}
+              minTickGap={2}
             />
             <YAxis
               tick={{ fontSize: 8, fill: "#64748b" }}
