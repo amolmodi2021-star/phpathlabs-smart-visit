@@ -28,78 +28,41 @@ const getFlag = (
 const formatValue = (value: number) =>
   Number(value).toFixed(Number.isInteger(value) ? 0 : 2);
 
-/** Nice step in 1/2/5 × 10^n (works for 0.01, 0.02, 0.05, 0.1, 1, 2, …). */
-function niceNum(range: number, round: boolean): number {
-  const r = Math.max(Math.abs(range), Number.EPSILON);
-  const exp = Math.floor(Math.log10(r));
-  const frac = r / 10 ** exp;
-  let nice: number;
-  if (round) {
-    if (frac < 1.5) nice = 1;
-    else if (frac < 3) nice = 2;
-    else if (frac < 7) nice = 5;
-    else nice = 10;
-  } else if (frac <= 1) nice = 1;
-  else if (frac <= 2) nice = 2;
-  else if (frac <= 5) nice = 5;
-  else nice = 10;
-  return nice * 10 ** exp;
+/** Decimals for axis labels from domain span (fine when the window is small). */
+function axisDecimals(span: number): number {
+  const s = Math.abs(span);
+  if (s >= 10) return 0;
+  if (s >= 1) return 1;
+  if (s >= 0.1) return 2;
+  if (s >= 0.01) return 3;
+  return 4;
 }
 
-function tickDecimals(step: number): number {
-  if (!Number.isFinite(step) || step <= 0) return 2;
-  if (step >= 1) return Number.isInteger(step) ? 0 : 2;
-  // e.g. step 0.01 → 2, 0.015-ish → enough digits; 0.001 → 3
-  return Math.min(6, Math.max(0, Math.ceil(-Math.log10(step))));
-}
-
-function formatAxisTick(value: number, step?: number): string {
+function formatAxisTick(value: number, decimals = 2): string {
   if (!Number.isFinite(value)) return "";
-  const decimals = step != null ? tickDecimals(step) : 2;
   return Number(value.toFixed(decimals)).toString();
 }
 
 /**
- * Rounded Y ticks (and lightly snapped domain) inside the zoomed window.
- * Small spans get fine steps (0.01 / 0.02 / 0.05 / 0.1 …).
+ * Same interval count as before (3 evenly spaced ticks) — only the labels are
+ * rounded. Does not invent extra nice-step intervals.
  */
-function buildRoundedYAxis(
-  yMin: number,
-  yMax: number,
-  targetTickCount = 5,
-): { yMin: number; yMax: number; ticks: number[]; step: number } {
-  if (!Number.isFinite(yMin) || !Number.isFinite(yMax)) {
-    return { yMin: 0, yMax: 1, ticks: [0, 1], step: 1 };
-  }
-  const lo0 = Math.min(yMin, yMax);
-  const hi0 = Math.max(yMin, yMax);
-  const span0 = Math.max(hi0 - lo0, Number.EPSILON);
-  const step = niceNum(span0 / Math.max(targetTickCount - 1, 1), true);
-  const decimals = tickDecimals(step);
-
-  let niceMin = Math.floor(lo0 / step - 1e-12) * step;
-  let niceMax = Math.ceil(hi0 / step + 1e-12) * step;
-  if (lo0 >= 0) niceMin = Math.max(0, niceMin);
-  if (!(niceMax > niceMin)) niceMax = niceMin + step;
-
+function buildLabeledYTicks(yMin: number, yMax: number, count = 3): number[] {
+  if (!Number.isFinite(yMin) || !Number.isFinite(yMax)) return [0];
+  const lo = Math.min(yMin, yMax);
+  const hi = Math.max(yMin, yMax);
+  const span = Math.max(hi - lo, Number.EPSILON);
+  const decimals = axisDecimals(span);
+  const n = Math.max(2, count);
   const ticks: number[] = [];
-  const maxIter = 40;
-  for (let i = 0; i <= maxIter; i += 1) {
-    const v = Number((niceMin + i * step).toFixed(decimals));
-    if (v > niceMax + step * 1e-9) break;
-    ticks.push(v);
+  for (let i = 0; i < n; i += 1) {
+    const raw = lo + (span * i) / (n - 1);
+    ticks.push(Number(raw.toFixed(decimals)));
   }
-  if (ticks.length < 2) {
-    ticks.length = 0;
-    ticks.push(Number(lo0.toFixed(decimals)), Number(hi0.toFixed(decimals)));
-  }
-
-  return {
-    yMin: ticks[0],
-    yMax: ticks[ticks.length - 1],
-    ticks,
-    step,
-  };
+  // If rounding collapsed neighbors, fall back to unique sorted values
+  const uniq = Array.from(new Set(ticks));
+  if (uniq.length >= 2) return uniq;
+  return [Number(lo.toFixed(decimals)), Number(hi.toFixed(decimals))];
 }
 
 /**
