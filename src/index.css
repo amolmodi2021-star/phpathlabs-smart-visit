@@ -133,6 +133,16 @@ input[type="number"] {
   background: transparent !important;
   color: black !important;
 }
+/* CBC histogram fills + historical-trend normal bands (SVG fill, not CSS background) */
+.print-strip-colors .hist-fill,
+.print-strip-colors .trend-ref-fill,
+.print-strip-colors [data-print-strip-fill] {
+  display: none !important;
+  opacity: 0 !important;
+  fill: none !important;
+  fill-opacity: 0 !important;
+  visibility: hidden !important;
+}
 .print-strip-colors [data-pdf-section="department"] > .border {
   border-color: transparent !important;
 }

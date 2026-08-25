@@ -1915,7 +1915,23 @@ const LimsReportView = () => {
   const handlePrint = async () => {
     if (!printRef.current) return;
     setDownloading(true);
-    const histFills: SVGElement[] = [];
+    type StrippedFill = {
+      el: SVGElement;
+      fill: string | null;
+      fillOpacity: string | null;
+    };
+    const histFills: StrippedFill[] = [];
+    const restoreStrippedFills = () => {
+      histFills.forEach(({ el, fill, fillOpacity }) => {
+        el.style.display = "";
+        el.style.opacity = "";
+        if (fill == null) el.removeAttribute("fill");
+        else el.setAttribute("fill", fill);
+        if (fillOpacity == null) el.removeAttribute("fill-opacity");
+        else el.setAttribute("fill-opacity", fillOpacity);
+      });
+      printRef.current?.classList.remove("print-strip-colors", "print-no-letterhead");
+    };
     const root = printRef.current;
     try {
       // Wait for measure-then-repack so printed pages match on-screen layout.
@@ -1926,10 +1942,21 @@ const LimsReportView = () => {
 
       // Hide letterhead / strip fills via CSS+DOM only — avoid React re-render of every page.
       root.classList.add("print-strip-colors", "print-no-letterhead");
-      histFills.push(
-        ...Array.from(root.querySelectorAll<SVGElement>(".hist-fill, .trend-ref-fill")),
-      );
-      histFills.forEach((el) => { el.style.display = "none"; });
+      Array.from(
+        root.querySelectorAll<SVGElement>(
+          ".hist-fill, .trend-ref-fill, [data-print-strip-fill]",
+        ),
+      ).forEach((el) => {
+        histFills.push({
+          el,
+          fill: el.getAttribute("fill"),
+          fillOpacity: el.getAttribute("fill-opacity"),
+        });
+        el.style.display = "none";
+        el.style.opacity = "0";
+        el.setAttribute("fill", "none");
+        el.setAttribute("fill-opacity", "0");
+      });
       await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
 
       await waitForCaptureReady(root);
@@ -1949,8 +1976,7 @@ const LimsReportView = () => {
         }),
       );
 
-      root.classList.remove("print-strip-colors", "print-no-letterhead");
-      histFills.forEach((el) => { el.style.display = ""; });
+      restoreStrippedFills();
 
       // Create hidden iframe for printing (no new tab)
       const iframe = document.createElement("iframe");
@@ -2017,8 +2043,7 @@ const LimsReportView = () => {
     } catch (err: any) {
       toast.error("Print failed: " + (err.message || "Unknown error"));
     } finally {
-      histFills.forEach((el) => { el.style.display = ""; });
-      printRef.current?.classList.remove("print-strip-colors", "print-no-letterhead");
+      restoreStrippedFills();
       setDownloading(false);
     }
   };
