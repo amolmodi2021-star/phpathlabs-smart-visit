@@ -45,6 +45,64 @@ function buildLabeledYTicks(yMin: number, yMax: number, count = 3): number[] {
   return ticks;
 }
 
+/**
+ * Prefer yMin=0 when the normal (green) band still fills enough of the chart
+ * (e.g. Bilirubin 0–1.2, TSH 0.3–4.5). If starting at 0 would crush a high
+ * narrow band (e.g. Hb 12–15), zoom around data + ref like the unbound scale.
+ */
+function buildYDomain(
+  values: number[],
+  low?: number,
+  high?: number,
+): { yMin: number; yMax: number } {
+  const allVals = [...values];
+  if (low != null) allVals.push(low);
+  if (high != null) allVals.push(high);
+  const minVal = Math.min(...(allVals.length ? allVals : [0]));
+  const maxVal = Math.max(...(allVals.length ? allVals : [1]));
+  const span = Math.max(maxVal - minVal, Number.EPSILON);
+  const padding = span * 0.2 || Math.abs(maxVal) * 0.15 || 1;
+
+  let zoomMin = Math.min(
+    minVal - padding,
+    low != null ? low - padding * 0.3 : minVal - padding,
+  );
+  const zoomMax = Math.max(
+    maxVal + padding,
+    high != null ? high + padding * 0.3 : maxVal + padding,
+  );
+  if (minVal >= 0 && (low == null || low >= 0)) {
+    zoomMin = Math.max(0, zoomMin);
+  }
+
+  const zeroMax = Math.max(zoomMax, Number.EPSILON);
+
+  // How tall is the green band if the axis is [0, zeroMax]?
+  let greenOnZero = 0;
+  if (low != null && high != null) {
+    greenOnZero = Math.max(0, Math.min(high, zeroMax) - Math.max(low, 0));
+  } else if (high != null) {
+    greenOnZero = Math.max(0, Math.min(high, zeroMax));
+  } else if (low != null) {
+    greenOnZero = Math.max(0, zeroMax - Math.max(low, 0));
+  } else {
+    // No ref band — zero baseline is fine
+    return { yMin: 0, yMax: zeroMax };
+  }
+
+  const greenFraction = greenOnZero / zeroMax;
+  // Keep ~1/3+ of the plot for the normal band when starting at 0
+  const MIN_GREEN_FRACTION = 0.3;
+  const lowNearZero = low != null && low <= zeroMax * 0.12;
+
+  if (greenFraction >= MIN_GREEN_FRACTION || lowNearZero || (low == null && high != null)) {
+    return { yMin: 0, yMax: zeroMax };
+  }
+
+  // High narrow bands (Hb 12–15): zoom so green gets maximum space
+  return { yMin: zoomMin, yMax: zoomMax };
+}
+
 /** One-line caption under each point (full advisory stays under the title). */
 const shortRangeCaption = (text?: string, maxLen = 36): string => {
   const raw = String(text || "").replace(/\r\n/g, "\n").trim();
@@ -137,16 +195,7 @@ const ValueLabel = (props: any) => {
 function ChartCard({ trend, forPdf }: { trend: TrendSeries; forPdf?: boolean }) {
   const sortedData = trend.data;
   const values = sortedData.map((d) => d.value);
-  const allVals = [...values];
-  if (trend.low != null) allVals.push(trend.low);
-  if (trend.high != null) allVals.push(trend.high);
-  const minVal = Math.min(...allVals);
-  const maxVal = Math.max(...allVals);
-  const range = maxVal - Math.min(0, minVal);
-  const padding = range > 0 ? range * 0.2 : Math.abs(maxVal) * 0.15 || 1;
-  // Always start at 0; keep headroom above data / ref high only.
-  const yMin = 0;
-  const yMax = Math.max(maxVal + padding, trend.high != null ? trend.high + padding * 0.3 : maxVal + padding);
+  const { yMin, yMax } = buildYDomain(values, trend.low, trend.high);
   const yTicks = buildLabeledYTicks(yMin, yMax, 3);
   // Slightly shorter plot so multi-line Ref + 6 cards can fit; AutoScale shrinks further if needed.
   const chartH = forPdf ? 96 : 140;
