@@ -1571,8 +1571,8 @@ const LimsReportView = () => {
 
 
   /**
-   * Hide green chart fills for capture without mutating React-owned SVG nodes.
-   * (removeChild on Recharts rects desyncs React and blanks the whole trend graph.)
+   * Print-only: hide CBC/trend shaded fills without mutating React SVG via removeChild.
+   * Download PDF keeps shades (do not wrap buildPdfBlob with this).
    */
   const withChartFillsHiddenForCapture = async <T,>(
     fn: () => Promise<T>,
@@ -1608,34 +1608,32 @@ const LimsReportView = () => {
       await new Promise((r) => setTimeout(r, 40));
     }
 
-    return withChartFillsHiddenForCapture(async () => {
-      const pageElements = printRef.current!.querySelectorAll("[data-page]");
-      if (pageElements.length === 0) return null;
+    const pageElements = printRef.current.querySelectorAll("[data-page]");
+    if (pageElements.length === 0) return null;
 
-      await waitForCaptureReady(printRef.current!);
+    await waitForCaptureReady(printRef.current);
 
-      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-      const NATIVE_W = Math.round((PAGE_WIDTH_MM / 25.4) * 96);
-      const NATIVE_H = Math.round((PAGE_HEIGHT_MM / 25.4) * 96);
-      const queueCapture = opts?.queueMode
-        ? { pixelRatio: 2, attempts: 2, quality: 0.88, cacheBust: false } satisfies PageCaptureOptions
-        : undefined;
-      for (let i = 0; i < pageElements.length; i++) {
-        if (i > 0) pdf.addPage();
-        const el = pageElements[i] as HTMLElement;
-        // Snip pages use lower pixelRatio inside captureWithRetry (photos hang at PR3).
-        const jpeg = await captureWithRetry(el, NATIVE_W, NATIVE_H, "jpeg", queueCapture);
-        pdf.addImage(jpeg, "JPEG", 0, 0, PAGE_WIDTH_MM, PAGE_HEIGHT_MM, undefined, "FAST");
-      }
+    const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+    const NATIVE_W = Math.round((PAGE_WIDTH_MM / 25.4) * 96);
+    const NATIVE_H = Math.round((PAGE_HEIGHT_MM / 25.4) * 96);
+    const queueCapture = opts?.queueMode
+      ? { pixelRatio: 2, attempts: 2, quality: 0.88, cacheBust: false } satisfies PageCaptureOptions
+      : undefined;
+    for (let i = 0; i < pageElements.length; i++) {
+      if (i > 0) pdf.addPage();
+      const el = pageElements[i] as HTMLElement;
+      // Snip pages use lower pixelRatio inside captureWithRetry (photos hang at PR3).
+      const jpeg = await captureWithRetry(el, NATIVE_W, NATIVE_H, "jpeg", queueCapture);
+      pdf.addImage(jpeg, "JPEG", 0, 0, PAGE_WIDTH_MM, PAGE_HEIGHT_MM, undefined, "FAST");
+    }
 
-      const patientNameRaw = patientDisplayName(approvedReports[0]);
-      const patientName = !approvedReports[0] || patientNameRaw === "—" ? "Report" : patientNameRaw;
-      const invoiceNum = approvedReports[0]?.invoice_number || "";
-      const filename = [patientName, invoiceNum].filter(Boolean).join(" ").replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim() + ".pdf";
-      const blob = pdf.output("blob") as Blob;
-      cachedPdfRef.current = { blob, filename };
-      return { blob, filename };
-    });
+    const patientNameRaw = patientDisplayName(approvedReports[0]);
+    const patientName = !approvedReports[0] || patientNameRaw === "—" ? "Report" : patientNameRaw;
+    const invoiceNum = approvedReports[0]?.invoice_number || "";
+    const filename = [patientName, invoiceNum].filter(Boolean).join(" ").replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim() + ".pdf";
+    const blob = pdf.output("blob") as Blob;
+    cachedPdfRef.current = { blob, filename };
+    return { blob, filename };
   };
 
   const notifyQueueWa = (ok: boolean, error?: string) => {
