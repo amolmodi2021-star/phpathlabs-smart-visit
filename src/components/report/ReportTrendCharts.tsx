@@ -28,6 +28,23 @@ const getFlag = (
 const formatValue = (value: number) =>
   Number(value).toFixed(Number.isInteger(value) ? 0 : 2);
 
+const formatAxisTick = (value: number) => {
+  if (!Number.isFinite(value)) return "";
+  return Number(value.toFixed(2)).toString();
+};
+
+/** Evenly spaced Y ticks so every grey grid line has a matching label. */
+function buildLabeledYTicks(yMin: number, yMax: number, count = 3): number[] {
+  if (!Number.isFinite(yMin) || !Number.isFinite(yMax)) return [0];
+  if (Math.abs(yMax - yMin) < Number.EPSILON) return [yMin];
+  const n = Math.max(2, count);
+  const ticks: number[] = [];
+  for (let i = 0; i < n; i += 1) {
+    ticks.push(yMin + ((yMax - yMin) * i) / (n - 1));
+  }
+  return ticks;
+}
+
 /** One-line caption under each point (full advisory stays under the title). */
 const shortRangeCaption = (text?: string, maxLen = 36): string => {
   const raw = String(text || "").replace(/\r\n/g, "\n").trim();
@@ -129,6 +146,7 @@ function ChartCard({ trend, forPdf }: { trend: TrendSeries; forPdf?: boolean }) 
   const padding = range > 0 ? range * 0.2 : Math.abs(maxVal) * 0.15 || 1;
   const yMin = Math.min(minVal - padding, trend.low != null ? trend.low - padding * 0.3 : minVal - padding);
   const yMax = Math.max(maxVal + padding, trend.high != null ? trend.high + padding * 0.3 : maxVal + padding);
+  const yTicks = buildLabeledYTicks(yMin, yMax, 3);
   // Slightly shorter plot so multi-line Ref + 6 cards can fit; AutoScale shrinks further if needed.
   const chartH = forPdf ? 96 : 140;
   const refText = (trend.rangeLabel || "").trim() || "—";
@@ -158,7 +176,13 @@ function ChartCard({ trend, forPdf }: { trend: TrendSeries; forPdf?: boolean }) 
       <div style={{ width: "100%", height: chartH }} className="shrink-0">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={sortedData} margin={{ left: 0, right: 8, top: 14, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+            {/* Grey grid only at labeled Y ticks — no unlabeled extras / no verticals */}
+            <CartesianGrid
+              strokeDasharray="3 3"
+              stroke="#cbd5e1"
+              vertical={false}
+              horizontalValues={yTicks}
+            />
             <XAxis
               dataKey="date"
               tick={{ fontSize: 8, fill: "#64748b" }}
@@ -173,7 +197,9 @@ function ChartCard({ trend, forPdf }: { trend: TrendSeries; forPdf?: boolean }) 
               tickLine={false}
               axisLine={{ stroke: "#cbd5e1" }}
               domain={[yMin, yMax]}
-              tickFormatter={(val: number) => Number(val.toFixed(2)).toString()}
+              ticks={yTicks}
+              tickFormatter={formatAxisTick}
+              interval={0}
             />
             {trend.low != null && trend.high != null ? (
               <ReferenceArea
@@ -218,6 +244,17 @@ function ChartCard({ trend, forPdf }: { trend: TrendSeries; forPdf?: boolean }) 
                 ifOverflow="extendDomain"
               />
             )}
+            {/* Orange dotted line at each result value */}
+            {sortedData.map((point, idx) => (
+              <ReferenceLine
+                key={`result-line-${point.date}-${idx}`}
+                y={point.value}
+                stroke="#ea580c"
+                strokeDasharray="4 3"
+                strokeWidth={1.35}
+                ifOverflow="extendDomain"
+              />
+            ))}
             <Line
               type="monotone"
               dataKey="value"
