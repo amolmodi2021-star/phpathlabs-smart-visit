@@ -450,38 +450,33 @@ export async function buildReportHistoricalTrends(opts: {
   }
 
   if (frozen && frozenUsable) {
+    const frozenById = new Map(
+      frozen
+        .filter((s) => reportParamIds.includes(s.parameter_id) && analyticsIds.has(s.parameter_id))
+        .map((s) => [s.parameter_id, applyResolvedRange(s)]),
+    );
     const liveById = new Map(liveSeries.map((s) => [s.parameter_id, s]));
     const merged: TrendSeries[] = [];
     const seen = new Set<string>();
-    // Keep frozen series (immutable) for params still on this report
-    for (const s of frozen) {
-      if (!reportParamIds.includes(s.parameter_id) || !analyticsIds.has(s.parameter_id)) continue;
-      merged.push(applyResolvedRange(s));
-      seen.add(s.parameter_id);
-    }
-    // Append ANY analytics params missing from an older/incomplete freeze
-    // (PP glucose, TIBC, lipids, vitamins, etc. — not limited to one test).
+    // Follow reportParamIds order (dept → test → param), not freeze insertion order
     for (const pid of reportParamIds) {
-      if (seen.has(pid) || !analyticsIds.has(pid)) continue;
-      const live = liveById.get(pid);
-      if (live) {
-        merged.push(live);
-        seen.add(pid);
-      }
+      if (!analyticsIds.has(pid) || seen.has(pid)) continue;
+      const s = frozenById.get(pid) || liveById.get(pid);
+      if (!s) continue;
+      merged.push(s);
+      seen.add(pid);
     }
     return {
       trends: merged,
       // False when we added live-only series so caller can merge them into the freeze
-      fromFrozen: merged.length > 0 && merged.every((s) =>
-        frozen!.some((f) => f.parameter_id === s.parameter_id),
-      ),
+      fromFrozen: merged.length > 0 && merged.every((s) => frozenById.has(s.parameter_id)),
     };
   }
 
   return { trends: liveSeries, fromFrozen: false };
 }
 
-/** Persist frozen trends onto approved_reports (create or merge missing series). */
+/** Persist frozen trends onto approved_reports (create, merge missing, or reorder). */
 export async function freezeApprovedReportHistoricalTrends(
   registrationId: string,
   trends: TrendSeries[],
@@ -497,12 +492,20 @@ export async function freezeApprovedReportHistoricalTrends(
 
   const existing = asTrendSeriesArray(row.historical_trends);
   if (existing && existing.some(seriesHasUsableRange)) {
-    const existingIds = new Set(existing.map((s) => s.parameter_id));
-    const toAdd = trends.filter((s) => s?.parameter_id && !existingIds.has(s.parameter_id));
-    if (!toAdd.length) return;
+    const byId = new Map(existing.map((s) => [s.parameter_id, s]));
+    // Keep frozen point data; adopt incoming hierarchy order; add any new series
+    const ordered = trends.map((t) => byId.get(t.parameter_id) || t);
+    const sameLength = ordered.length === existing.length;
+    const sameOrder =
+      sameLength
+      && ordered.every((s, i) => s.parameter_id === existing[i]?.parameter_id);
+    const sameIds =
+      sameLength
+      && ordered.every((s) => byId.has(s.parameter_id));
+    if (sameOrder && sameIds) return;
     const { error } = await (supabase as any)
       .from("approved_reports")
-      .update({ historical_trends: [...existing, ...toAdd] })
+      .update({ historical_trends: ordered })
       .eq("id", row.id);
     if (error) throw new Error(error.message);
     return;
@@ -522,4 +525,114 @@ export function chunkTrendsForPages(trends: TrendSeries[], perPage = TRENDS_PER_
     pages.push(trends.slice(i, i + perPage));
   }
   return pages;
+}
+
+/**
+ * Order parameter IDs like the report body: department → test → param display_order.
+ * Used so Historical Trends charts follow the same hierarchy (not Set/freeze insertion order).
+ */
+export function orderParameterIdsByReportHierarchy(opts: {
+  parameterIds: string[];
+  results: Array<{ parameter_id?: string; test_id?: string }>;
+  departments: Array<{ id: string; display_order?: number | null }>;
+  testsMap: Record<string, { department_id?: string | null; report_display_order?: number | null; test_name?: string | null } | undefined>;
+  testParamsMap: Record<string, Array<{ parameter_id?: string; display_order?: number | null }>>;
+}): string[] {
+  const want = new Set(opts.parameterIds.filter(Boolean));
+  if (!want.size) return [];
+
+  const deptOrder = new Map<string, number>();
+  for (const d of opts.departments || []) {
+    if (d?.id) deptOrder.set(d.id, d.display_order ?? 999);
+  }
+
+  type SortKey = {
+    pid: string;
+    departmentOrder: number;
+    testOrder: number;
+    paramOrder: number;
+    testName: string;
+  };
+  const best = new Map<string, SortKey>();
+
+  for (const tr of opts.results || []) {
+    const pid = String(tr.parameter_id || "");
+    if (!pid || !want.has(pid)) continue;
+    const testId = String(tr.test_id || "");
+    const testInfo = testId ? opts.testsMap[testId] : undefined;
+    const deptId = testInfo?.department_id || null;
+    const key: SortKey = {
+      pid,
+      departmentOrder: deptId ? (deptOrder.get(deptId) ?? 999) : 999,
+      testOrder: testInfo?.report_display_order ?? 9999,
+      paramOrder: 999,
+      testName: String(testInfo?.test_name || ""),
+    };
+    const tpList = testId ? (opts.testParamsMap[testId] || []) : [];
+    const tp = tpList.find((row) => String(row.parameter_id || "") === pid);
+    if (tp && tp.display_order != null) key.paramOrder = Number(tp.display_order) || 0;
+
+    const prev = best.get(pid);
+    if (
+      !prev
+      || key.departmentOrder < prev.departmentOrder
+      || (key.departmentOrder === prev.departmentOrder && key.testOrder < prev.testOrder)
+      || (key.departmentOrder === prev.departmentOrder
+        && key.testOrder === prev.testOrder
+        && key.paramOrder < prev.paramOrder)
+      || (key.departmentOrder === prev.departmentOrder
+        && key.testOrder === prev.testOrder
+        && key.paramOrder === prev.paramOrder
+        && key.testName.localeCompare(prev.testName) < 0)
+    ) {
+      best.set(pid, key);
+    }
+  }
+
+  // Params with no test_id match still appear, after hierarchy-sorted ones
+  for (const pid of want) {
+    if (!best.has(pid)) {
+      best.set(pid, {
+        pid,
+        departmentOrder: 9999,
+        testOrder: 9999,
+        paramOrder: 9999,
+        testName: "",
+      });
+    }
+  }
+
+  return [...best.values()]
+    .sort((a, b) => {
+      if (a.departmentOrder !== b.departmentOrder) return a.departmentOrder - b.departmentOrder;
+      if (a.testOrder !== b.testOrder) return a.testOrder - b.testOrder;
+      if (a.paramOrder !== b.paramOrder) return a.paramOrder - b.paramOrder;
+      const byName = a.testName.localeCompare(b.testName);
+      if (byName) return byName;
+      return a.pid.localeCompare(b.pid);
+    })
+    .map((k) => k.pid);
+}
+
+/** Reorder trend series to match an ordered parameter-id list. */
+export function sortTrendsByParameterOrder(
+  trends: TrendSeries[],
+  orderedParameterIds: string[],
+): TrendSeries[] {
+  if (!trends.length) return [];
+  const byId = new Map(trends.map((t) => [t.parameter_id, t]));
+  const out: TrendSeries[] = [];
+  const seen = new Set<string>();
+  for (const pid of orderedParameterIds) {
+    const s = byId.get(pid);
+    if (!s || seen.has(pid)) continue;
+    out.push(s);
+    seen.add(pid);
+  }
+  for (const s of trends) {
+    if (seen.has(s.parameter_id)) continue;
+    out.push(s);
+    seen.add(s.parameter_id);
+  }
+  return out;
 }

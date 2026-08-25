@@ -45,6 +45,7 @@ import {
   buildReportHistoricalTrends,
   freezeApprovedReportHistoricalTrends,
   chunkTrendsForPages,
+  orderParameterIdsByReportHierarchy,
   type TrendSeries,
 } from "@/lib/reportHistoricalTrends";
 
@@ -1080,7 +1081,7 @@ const LimsReportView = () => {
 
     let trends: TrendSeries[] = [];
     try {
-      const reportParameterIds = Array.from(
+      const rawParameterIds = Array.from(
         new Set(
           filteredReports.flatMap((r: any) =>
             ((r.test_results || []) as TestResultEntry[])
@@ -1089,6 +1090,20 @@ const LimsReportView = () => {
           ),
         ),
       );
+      // Same hierarchy as report body: department → test → parameter display_order
+      const hierarchyResults = filteredReports.flatMap((r: any) =>
+        ((r.test_results || []) as TestResultEntry[]).map((tr) => ({
+          parameter_id: tr.parameter_id,
+          test_id: tr.test_id,
+        })),
+      );
+      const reportParameterIds = orderParameterIdsByReportHierarchy({
+        parameterIds: rawParameterIds,
+        results: hierarchyResults,
+        departments: depts || [],
+        testsMap: tMap,
+        testParamsMap: computedTpMap,
+      });
       const primaryReport = filteredReports[0] as any;
       const currentVisitResults = filteredReports.flatMap((r: any) =>
         ((r.test_results || []) as TestResultEntry[]).map((tr) => ({
