@@ -72,8 +72,8 @@ function formatShortRange(low?: number | null, high?: number | null, unit?: stri
   return "";
 }
 
-/** Shorten long advisory / multi-line reference text for trend captions. */
-function shortenReferenceLabel(text: string | null | undefined, maxLen = 42): string {
+/** Shorten long advisory / multi-line reference text for compact captions. */
+export function shortenReferenceLabel(text: string | null | undefined, maxLen = 42): string {
   const raw = String(text || "").replace(/\r\n/g, "\n").trim();
   if (!raw) return "";
   const firstLine = raw.split(/\n/)[0].trim();
