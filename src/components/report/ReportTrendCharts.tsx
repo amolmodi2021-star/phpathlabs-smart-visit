@@ -28,21 +28,78 @@ const getFlag = (
 const formatValue = (value: number) =>
   Number(value).toFixed(Number.isInteger(value) ? 0 : 2);
 
-const formatAxisTick = (value: number) => {
-  if (!Number.isFinite(value)) return "";
-  return Number(value.toFixed(2)).toString();
-};
+/** Nice step in 1/2/5 × 10^n (works for 0.01, 0.02, 0.05, 0.1, 1, 2, …). */
+function niceNum(range: number, round: boolean): number {
+  const r = Math.max(Math.abs(range), Number.EPSILON);
+  const exp = Math.floor(Math.log10(r));
+  const frac = r / 10 ** exp;
+  let nice: number;
+  if (round) {
+    if (frac < 1.5) nice = 1;
+    else if (frac < 3) nice = 2;
+    else if (frac < 7) nice = 5;
+    else nice = 10;
+  } else if (frac <= 1) nice = 1;
+  else if (frac <= 2) nice = 2;
+  else if (frac <= 5) nice = 5;
+  else nice = 10;
+  return nice * 10 ** exp;
+}
 
-/** Evenly spaced Y ticks so every grey grid line has a matching label. */
-function buildLabeledYTicks(yMin: number, yMax: number, count = 3): number[] {
-  if (!Number.isFinite(yMin) || !Number.isFinite(yMax)) return [0];
-  if (Math.abs(yMax - yMin) < Number.EPSILON) return [yMin];
-  const n = Math.max(2, count);
-  const ticks: number[] = [];
-  for (let i = 0; i < n; i += 1) {
-    ticks.push(yMin + ((yMax - yMin) * i) / (n - 1));
+function tickDecimals(step: number): number {
+  if (!Number.isFinite(step) || step <= 0) return 2;
+  if (step >= 1) return Number.isInteger(step) ? 0 : 2;
+  // e.g. step 0.01 → 2, 0.015-ish → enough digits; 0.001 → 3
+  return Math.min(6, Math.max(0, Math.ceil(-Math.log10(step))));
+}
+
+function formatAxisTick(value: number, step?: number): string {
+  if (!Number.isFinite(value)) return "";
+  const decimals = step != null ? tickDecimals(step) : 2;
+  return Number(value.toFixed(decimals)).toString();
+}
+
+/**
+ * Rounded Y ticks (and lightly snapped domain) inside the zoomed window.
+ * Small spans get fine steps (0.01 / 0.02 / 0.05 / 0.1 …).
+ */
+function buildRoundedYAxis(
+  yMin: number,
+  yMax: number,
+  targetTickCount = 5,
+): { yMin: number; yMax: number; ticks: number[]; step: number } {
+  if (!Number.isFinite(yMin) || !Number.isFinite(yMax)) {
+    return { yMin: 0, yMax: 1, ticks: [0, 1], step: 1 };
   }
-  return ticks;
+  const lo0 = Math.min(yMin, yMax);
+  const hi0 = Math.max(yMin, yMax);
+  const span0 = Math.max(hi0 - lo0, Number.EPSILON);
+  const step = niceNum(span0 / Math.max(targetTickCount - 1, 1), true);
+  const decimals = tickDecimals(step);
+
+  let niceMin = Math.floor(lo0 / step - 1e-12) * step;
+  let niceMax = Math.ceil(hi0 / step + 1e-12) * step;
+  if (lo0 >= 0) niceMin = Math.max(0, niceMin);
+  if (!(niceMax > niceMin)) niceMax = niceMin + step;
+
+  const ticks: number[] = [];
+  const maxIter = 40;
+  for (let i = 0; i <= maxIter; i += 1) {
+    const v = Number((niceMin + i * step).toFixed(decimals));
+    if (v > niceMax + step * 1e-9) break;
+    ticks.push(v);
+  }
+  if (ticks.length < 2) {
+    ticks.length = 0;
+    ticks.push(Number(lo0.toFixed(decimals)), Number(hi0.toFixed(decimals)));
+  }
+
+  return {
+    yMin: ticks[0],
+    yMax: ticks[ticks.length - 1],
+    ticks,
+    step,
+  };
 }
 
 /**
@@ -203,8 +260,8 @@ function ChartCard({ trend, forPdf }: { trend: TrendSeries; forPdf?: boolean }) 
   const boundHigh =
     trend.high
     ?? sortedData.map((d) => d.high).find((v) => v != null && Number.isFinite(v));
-  const { yMin, yMax } = buildYDomain(values, boundLow, boundHigh);
-  const yTicks = buildLabeledYTicks(yMin, yMax, 3);
+  const { yMin: rawMin, yMax: rawMax } = buildYDomain(values, boundLow, boundHigh);
+  const { yMin, yMax, ticks: yTicks, step: yStep } = buildRoundedYAxis(rawMin, rawMax, 5);
   // Slightly shorter plot so multi-line Ref + 6 cards can fit; AutoScale shrinks further if needed.
   const chartH = forPdf ? 96 : 140;
   const refText = (trend.rangeLabel || "").trim() || "—";
@@ -256,7 +313,7 @@ function ChartCard({ trend, forPdf }: { trend: TrendSeries; forPdf?: boolean }) 
               axisLine={{ stroke: "#cbd5e1" }}
               domain={[yMin, yMax]}
               ticks={yTicks}
-              tickFormatter={formatAxisTick}
+              tickFormatter={(val: number) => formatAxisTick(val, yStep)}
               interval={0}
             />
             {trend.low != null && trend.high != null ? (
