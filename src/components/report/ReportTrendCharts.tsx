@@ -245,16 +245,6 @@ function ChartCard({ trend, forPdf }: { trend: TrendSeries; forPdf?: boolean }) 
                 ifOverflow="extendDomain"
               />
             )}
-            {/* Orange result line only when a single data point (avoids clutter on multi-point trends) */}
-            {sortedData.length === 1 ? (
-              <ReferenceLine
-                y={sortedData[0].value}
-                stroke="#ea580c"
-                strokeDasharray="4 3"
-                strokeWidth={1.35}
-                ifOverflow="extendDomain"
-              />
-            ) : null}
             <Line
               type="monotone"
               dataKey="value"
