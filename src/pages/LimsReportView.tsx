@@ -1122,8 +1122,9 @@ const LimsReportView = () => {
         dob: primaryReport?.dob || regData?.dob || null,
       });
       trends = built.trends;
-      // Freeze onto approved snapshot so years later the same graphs reopen
-      if (!isProvisional && !built.fromFrozen && trends.length > 0 && registrationId) {
+      // Freeze / merge onto approved snapshot so years later the same graphs reopen
+      // (also adds analytics params missing from an older incomplete freeze).
+      if (!isProvisional && trends.length > 0 && registrationId) {
         try {
           await freezeApprovedReportHistoricalTrends(registrationId, trends);
         } catch (freezeErr) {

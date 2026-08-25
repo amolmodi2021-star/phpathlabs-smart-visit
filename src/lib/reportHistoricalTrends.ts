@@ -318,15 +318,8 @@ export async function buildReportHistoricalTrends(opts: {
     && !opts.isProvisional
     && frozen.some(seriesHasUsableRange);
 
-  if (frozen && frozenUsable) {
-    return {
-      trends: frozen
-        .filter((s) => reportParamIds.includes(s.parameter_id))
-        .map(applyResolvedRange),
-      fromFrozen: true,
-    };
-  }
-
+  // Always build live series from approved snapshots so newly flagged analytics
+  // params (or params missing from an older freeze) still appear.
   const { data: approvedRows, error: aErr } = await (supabase as any)
     .from("approved_reports")
     .select(
@@ -419,7 +412,7 @@ export async function buildReportHistoricalTrends(opts: {
     }
   }
 
-  const series: TrendSeries[] = [];
+  const liveSeries: TrendSeries[] = [];
   for (const pid of reportParamIds) {
     const meta = metaById.get(pid);
     if (!meta) continue;
@@ -444,7 +437,7 @@ export async function buildReportHistoricalTrends(opts: {
       unit: meta.unit,
       useSnapshotBounds: true,
     });
-    series.push({
+    liveSeries.push({
       parameter_id: pid,
       parameter_name: meta.parameter_name,
       param_code: meta.param_code,
@@ -455,10 +448,39 @@ export async function buildReportHistoricalTrends(opts: {
       data: ordered,
     });
   }
-  return { trends: series, fromFrozen: false };
+
+  if (frozen && frozenUsable) {
+    const liveById = new Map(liveSeries.map((s) => [s.parameter_id, s]));
+    const merged: TrendSeries[] = [];
+    const seen = new Set<string>();
+    // Keep frozen series (immutable) for params still on this report
+    for (const s of frozen) {
+      if (!reportParamIds.includes(s.parameter_id) || !analyticsIds.has(s.parameter_id)) continue;
+      merged.push(applyResolvedRange(s));
+      seen.add(s.parameter_id);
+    }
+    // Append analytics params missing from an older/incomplete freeze (e.g. PP glucose)
+    for (const pid of reportParamIds) {
+      if (seen.has(pid) || !analyticsIds.has(pid)) continue;
+      const live = liveById.get(pid);
+      if (live) {
+        merged.push(live);
+        seen.add(pid);
+      }
+    }
+    return {
+      trends: merged,
+      // False when we added live-only series so caller can merge them into the freeze
+      fromFrozen: merged.length > 0 && merged.every((s) =>
+        frozen!.some((f) => f.parameter_id === s.parameter_id),
+      ),
+    };
+  }
+
+  return { trends: liveSeries, fromFrozen: false };
 }
 
-/** Persist frozen trends onto approved_reports (overwrite empty/broken freeze). */
+/** Persist frozen trends onto approved_reports (create or merge missing series). */
 export async function freezeApprovedReportHistoricalTrends(
   registrationId: string,
   trends: TrendSeries[],
@@ -473,7 +495,17 @@ export async function freezeApprovedReportHistoricalTrends(
   if (!row?.id) return;
 
   const existing = asTrendSeriesArray(row.historical_trends);
-  if (existing && existing.some(seriesHasUsableRange)) return;
+  if (existing && existing.some(seriesHasUsableRange)) {
+    const existingIds = new Set(existing.map((s) => s.parameter_id));
+    const toAdd = trends.filter((s) => s?.parameter_id && !existingIds.has(s.parameter_id));
+    if (!toAdd.length) return;
+    const { error } = await (supabase as any)
+      .from("approved_reports")
+      .update({ historical_trends: [...existing, ...toAdd] })
+      .eq("id", row.id);
+    if (error) throw new Error(error.message);
+    return;
+  }
 
   const { error } = await (supabase as any)
     .from("approved_reports")
