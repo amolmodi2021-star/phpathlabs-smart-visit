@@ -1,5 +1,5 @@
 ﻿import { Component, type ReactNode } from "react";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, ReferenceLine, ReferenceArea, ResponsiveContainer } from "recharts";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, ReferenceLine, Customized, ResponsiveContainer } from "recharts";
 import type { TrendSeries } from "@/lib/reportHistoricalTrends";
 
 interface ReportTrendChartsProps {
@@ -226,6 +226,44 @@ const ValueLabel = (props: any) => {
   );
 };
 
+/**
+ * Normal-range band spanning the full plot width (left→right graph edges).
+ * Uses chart offset — unlike ReferenceArea, which only covers category points.
+ */
+const FullWidthNormalBand = (props: {
+  y1?: number;
+  y2?: number;
+  offset?: { left?: number; width?: number };
+  yAxisMap?: Record<string, { scale?: (v: number) => number }>;
+}) => {
+  const { y1, y2, offset, yAxisMap } = props;
+  if (y1 == null || y2 == null || !Number.isFinite(y1) || !Number.isFinite(y2)) return null;
+  const yAxis = yAxisMap ? (Object.values(yAxisMap)[0] as { scale?: (v: number) => number } | undefined) : undefined;
+  const scale = yAxis?.scale;
+  if (!scale || typeof scale !== "function") return null;
+  const left = offset?.left ?? 0;
+  const width = offset?.width ?? 0;
+  if (!(width > 0)) return null;
+  const py1 = scale(y1);
+  const py2 = scale(y2);
+  if (!Number.isFinite(py1) || !Number.isFinite(py2)) return null;
+  const top = Math.min(py1, py2);
+  const height = Math.abs(py2 - py1);
+  if (!(height > 0)) return null;
+  return (
+    <rect
+      x={left}
+      y={top}
+      width={width}
+      height={height}
+      fill="#16a34a"
+      fillOpacity={0.08}
+      stroke="none"
+      pointerEvents="none"
+    />
+  );
+};
+
 function ChartCard({ trend, forPdf }: { trend: TrendSeries; forPdf?: boolean }) {
   const sortedData = Array.isArray(trend?.data)
     ? trend.data.filter((d) => d != null && Number.isFinite(Number(d.value)))
@@ -301,28 +339,22 @@ function ChartCard({ trend, forPdf }: { trend: TrendSeries; forPdf?: boolean }) 
               interval={0}
             />
             {areaLow != null && Number.isFinite(areaLow) && areaHigh != null && Number.isFinite(areaHigh) ? (
-              <ReferenceArea
-                y1={areaLow}
-                y2={areaHigh}
-                fill="#16a34a"
-                fillOpacity={0.08}
-                strokeOpacity={0}
+              <Customized
+                component={(p: any) => (
+                  <FullWidthNormalBand {...p} y1={areaLow} y2={areaHigh} />
+                )}
               />
             ) : areaHigh != null && Number.isFinite(areaHigh) ? (
-              <ReferenceArea
-                y1={yMin}
-                y2={areaHigh}
-                fill="#16a34a"
-                fillOpacity={0.08}
-                strokeOpacity={0}
+              <Customized
+                component={(p: any) => (
+                  <FullWidthNormalBand {...p} y1={yMin} y2={areaHigh} />
+                )}
               />
             ) : areaLow != null && Number.isFinite(areaLow) ? (
-              <ReferenceArea
-                y1={areaLow}
-                y2={yMax}
-                fill="#16a34a"
-                fillOpacity={0.08}
-                strokeOpacity={0}
+              <Customized
+                component={(p: any) => (
+                  <FullWidthNormalBand {...p} y1={areaLow} y2={yMax} />
+                )}
               />
             ) : null}
             {areaHigh != null && Number.isFinite(areaHigh) && (
