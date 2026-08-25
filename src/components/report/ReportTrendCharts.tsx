@@ -1,4 +1,4 @@
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, ReferenceLine, ReferenceArea, ResponsiveContainer } from "recharts";
+﻿import { LineChart, Line, XAxis, YAxis, CartesianGrid, ReferenceLine, ReferenceArea, ResponsiveContainer } from "recharts";
 import type { TrendSeries } from "@/lib/reportHistoricalTrends";
 
 interface ReportTrendChartsProps {
@@ -17,42 +17,6 @@ const getFlag = (value: number, low?: number, high?: number): AbnormalFlag => {
 
 const formatValue = (value: number) =>
   Number(value).toFixed(Number.isInteger(value) ? 0 : 2);
-
-/** Domain from 0 with natural padding (no forced round tick steps). */
-function buildYDomain(values: number[], low?: number, high?: number): { yMin: number; yMax: number } {
-  const nums = [...values, low, high].filter(
-    (v): v is number => v != null && Number.isFinite(v),
-  );
-  const dataMax = Math.max(0, ...(nums.length ? nums : [1]));
-  const span = Math.max(dataMax, Number.EPSILON);
-  const padding = span * 0.15 || 1;
-  return { yMin: 0, yMax: dataMax + padding };
-}
-
-const formatAxisTick = (value: number) => {
-  if (!Number.isFinite(value)) return "";
-  if (Math.abs(value) >= 100) return String(Math.round(value));
-  if (Math.abs(value - Math.round(value)) < 1e-6) return String(Math.round(value));
-  return Number(value.toFixed(2)).toString();
-};
-
-/** Keep Y labels vertically centered on their grid lines. */
-const AlignedYTick = (props: any) => {
-  const { x, y, payload } = props;
-  if (x == null || y == null || payload?.value == null) return null;
-  return (
-    <text
-      x={x - 4}
-      y={y}
-      textAnchor="end"
-      dominantBaseline="central"
-      fontSize={8}
-      fill="#64748b"
-    >
-      {formatAxisTick(Number(payload.value))}
-    </text>
-  );
-};
 
 /** One-line caption under each point (full advisory stays under the title). */
 const shortRangeCaption = (text?: string, maxLen = 36): string => {
@@ -81,33 +45,28 @@ const CustomDot = (props: any) => {
 };
 
 /**
- * Place value label where it won't sit on a green ref dashed line.
+ * Prefer label above the point; if that would collide with a green ref line
+ * (value below the line but close enough that the label sits on it), put the
+ * label below the point / dashed line instead.
  */
-const pickLabelSide = (
+const shouldPlaceValueBelowRefLine = (
   value: number,
   low: number | undefined,
   high: number | undefined,
   yMin: number,
   yMax: number,
-): "above" | "below" => {
+): boolean => {
   const span = Math.max(yMax - yMin, Math.abs(value) * 0.2, 1);
-  const clearance = span * 0.12;
-  const nearHigh = high != null && Number.isFinite(high) && Math.abs(value - high) <= clearance;
-  const nearLow = low != null && Number.isFinite(low) && Math.abs(value - low) <= clearance;
-  if (nearHigh && high != null && value <= high && !(nearLow && low != null && value >= low)) {
-    return "below";
+  // ~label height + gap as a fraction of the y-domain
+  const clearance = span * 0.3;
+  if (high != null && Number.isFinite(high) && value <= high && high - value <= clearance) {
+    return true;
   }
-  if (nearLow) return "above";
-  if (low != null && value < low && low - value <= clearance) return "below";
-  if (
-    high != null
-    && value < high
-    && high - value <= span * 0.22
-    && (low == null || value - low > span * 0.1)
-  ) {
-    return "below";
+  if (low != null && Number.isFinite(low) && value < low && low - value <= clearance) {
+    // Point below low line — label above would cross the low dashed line
+    return true;
   }
-  return "above";
+  return false;
 };
 
 const ValueLabel = (props: any) => {
@@ -116,8 +75,9 @@ const ValueLabel = (props: any) => {
   const num = Number(value);
   const flag = getFlag(num, low, high);
   const text = formatValue(num);
-  const side = pickLabelSide(num, low, high, Number(yMin), Number(yMax));
-  const textY = side === "below" ? y + 14 : y - 9;
+  const placeBelow = shouldPlaceValueBelowRefLine(num, low, high, Number(yMin), Number(yMax));
+  // SVG y grows downward: below the point = larger y
+  const textY = placeBelow ? y + 14 : y - 9;
   const fill = flag ? "#dc2626" : "#166534";
 
   if (!flag) {
@@ -140,7 +100,16 @@ const ValueLabel = (props: any) => {
 function ChartCard({ trend, forPdf }: { trend: TrendSeries; forPdf?: boolean }) {
   const sortedData = trend.data;
   const values = sortedData.map((d) => d.value);
-  const { yMin, yMax } = buildYDomain(values, trend.low, trend.high);
+  const allVals = [...values];
+  if (trend.low != null) allVals.push(trend.low);
+  if (trend.high != null) allVals.push(trend.high);
+  const minVal = Math.min(...allVals);
+  const maxVal = Math.max(...allVals);
+  const range = maxVal - minVal;
+  const padding = range > 0 ? range * 0.2 : Math.abs(maxVal) * 0.15 || 1;
+  const yMin = Math.min(minVal - padding, trend.low != null ? trend.low - padding * 0.3 : minVal - padding);
+  const yMax = Math.max(maxVal + padding, trend.high != null ? trend.high + padding * 0.3 : maxVal + padding);
+  // Slightly shorter plot so multi-line Ref + 6 cards can fit; AutoScale shrinks further if needed.
   const chartH = forPdf ? 96 : 140;
   const refText = (trend.rangeLabel || "").trim() || "—";
 
@@ -168,8 +137,8 @@ function ChartCard({ trend, forPdf }: { trend: TrendSeries; forPdf?: boolean }) 
 
       <div style={{ width: "100%", height: chartH }} className="shrink-0">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={sortedData} margin={{ left: 2, right: 8, top: 14, bottom: 2 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" horizontal vertical={false} />
+          <LineChart data={sortedData} margin={{ left: 0, right: 8, top: 14, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
             <XAxis
               dataKey="date"
               tick={{ fontSize: 8, fill: "#64748b" }}
@@ -179,28 +148,27 @@ function ChartCard({ trend, forPdf }: { trend: TrendSeries; forPdf?: boolean }) 
               interval={0}
             />
             <YAxis
-              width={40}
+              tick={{ fontSize: 8, fill: "#64748b" }}
+              width={36}
               tickLine={false}
               axisLine={{ stroke: "#cbd5e1" }}
               domain={[yMin, yMax]}
-              tickCount={5}
-              allowDecimals
-              tick={(props: any) => <AlignedYTick {...props} />}
+              tickFormatter={(val: number) => Number(val.toFixed(2)).toString()}
             />
             {trend.low != null && trend.high != null ? (
               <ReferenceArea
-                y1={Math.max(0, trend.low)}
+                y1={trend.low}
                 y2={trend.high}
                 fill="#16a34a"
-                fillOpacity={0.1}
+                fillOpacity={0.08}
                 strokeOpacity={0}
               />
             ) : trend.high != null ? (
               <ReferenceArea
-                y1={0}
+                y1={yMin}
                 y2={trend.high}
                 fill="#16a34a"
-                fillOpacity={0.1}
+                fillOpacity={0.08}
                 strokeOpacity={0}
               />
             ) : null}
@@ -213,7 +181,7 @@ function ChartCard({ trend, forPdf }: { trend: TrendSeries; forPdf?: boolean }) 
                 ifOverflow="extendDomain"
               />
             )}
-            {trend.low != null && trend.low > 0 && (
+            {trend.low != null && (
               <ReferenceLine
                 y={trend.low}
                 stroke="#16a34a"
