@@ -60,7 +60,7 @@ const PhleboDashboard = () => {
       const { data } = await supabase
         .from("home_visits")
         .select("id, estimate_id, phlebotomist_id, visit_date, visit_time, address, status")
-        .eq("status", "Registered")
+        .in("status", ["Completed", "Registered"])
         .gte("visit_date", prevMonthStart)
         .lte("visit_date", currentMonthEnd);
       return data || [];
@@ -76,7 +76,7 @@ const PhleboDashboard = () => {
       if (estimateIds.length === 0) return [];
       const { data } = await supabase
         .from("estimates")
-        .select("id, home_visit_charges, patient_name, title, gender, whatsapp_number, umr_number")
+        .select("id, home_visit_charges, patient_name, title, gender, whatsapp_number")
         .in("id", estimateIds);
       return data || [];
     },
@@ -323,7 +323,7 @@ const PhleboDashboard = () => {
           <div className="space-y-3">
             <h2 className="text-lg font-semibold flex items-center gap-2">
               <IndianRupee className="h-5 w-5 text-primary" />
-              Home Visit Charges (Registered)
+              Home Visit Charges (Completed)
             </h2>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {activePhleboIds.map((id) => (

@@ -801,7 +801,7 @@ const PatientRegistration = ({
         homeVisitId: homeVisitOnly ? (homeVisitPrefill?.homeVisitId || null) : null,
         homeVisitPatch: homeVisitOnly && homeVisitPrefill?.homeVisitId
           ? {
-              status: "Registered",
+              status: "Completed",
               address: regData.address,
               payment_mode: payments.map((p) => `${p.mode}: ₹${p.amount}`).join(", ") || null,
               paid_amount: regData.paid_amount,

@@ -353,7 +353,7 @@ const EditAndRegisterHomeVisitDialog = ({ visit, open, onClose }: Props) => {
         },
         homeVisitId: visit.id,
         homeVisitPatch: {
-          status: "Registered",
+          status: "Completed",
           address: address.toUpperCase(),
           payment_mode: paymentModeStr || null,
           paid_amount: totalPaid,

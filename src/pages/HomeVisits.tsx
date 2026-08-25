@@ -167,13 +167,20 @@ const HomeVisits = () => {
     if (newStatus === "Cancelled") {
       setCancelDialog(visit);
     } else if (newStatus === "Completed") {
-      // Check if delayed — ask for reason first
+      // Mark THIS visit Completed only — never create extra cards for family members.
+      // Registration wizard (1+ patients) then runs against the same visit id.
+      const openWizard = () => checkMissingAndProceed({ ...visit, status: "Completed" });
       if (isVisitDelayed(visit) && !visit.delay_reason) {
         setDelayReasonDialog(visit);
         setDelayReasonType("custom");
         setDelayReasonText("");
+      } else if (visit.status === "Completed" || visit.status === "Registered") {
+        openWizard();
       } else {
-        checkMissingAndProceed(visit);
+        updateStatus.mutate(
+          { id: visit.id, status: "Completed" },
+          { onSuccess: openWizard },
+        );
       }
     } else {
       updateStatus.mutate({ id: visit.id, status: newStatus });
@@ -182,14 +189,17 @@ const HomeVisits = () => {
 
   const saveDelayReasonAndProceed = useMutation({
     mutationFn: async ({ visitId, reason }: { visitId: string; reason: string }) => {
-      const { error } = await supabase.from("home_visits").update({ delay_reason: reason }).eq("id", visitId);
+      const { error } = await supabase.from("home_visits").update({
+        delay_reason: reason,
+        status: "Completed",
+      }).eq("id", visitId);
       if (error) throw error;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["home_visits"] });
       const visit = delayReasonDialog;
       setDelayReasonDialog(null);
-      checkMissingAndProceed(visit);
+      checkMissingAndProceed({ ...visit, status: "Completed" });
     },
     onError: (e: Error) => toast.error(e.message),
   });

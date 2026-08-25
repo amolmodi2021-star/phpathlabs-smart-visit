@@ -395,7 +395,8 @@ const HomeVisitRegistrationWizard = ({ visit, open, onClose }: Props) => {
           homeVisitId: isPrimary ? visit.id : null,
           homeVisitPatch: isPrimary
             ? {
-                status: "Registered",
+                // One visit card only — stay Completed after 1 or N patient invoices
+                status: "Completed",
                 address: draft.address,
                 payment_mode: paymentModeStr || null,
                 paid_amount: patientPaid,
@@ -453,8 +454,8 @@ const HomeVisitRegistrationWizard = ({ visit, open, onClose }: Props) => {
       qc.invalidateQueries({ queryKey: ["registered_home_visit_ids"] });
       toast.success(
         regs.length === 1
-          ? `Registered — Invoice ${regs[0].invoice_number}`
-          : `Registered ${regs.length} patients — invoices generated`,
+          ? `Visit completed — Invoice ${regs[0].invoice_number}`
+          : `Visit completed — ${regs.length} patients invoiced`,
       );
       setInvoiceBatch(regs);
       setPreviewIndex(0);

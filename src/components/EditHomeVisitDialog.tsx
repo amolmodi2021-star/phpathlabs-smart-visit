@@ -107,7 +107,7 @@ const EditHomeVisitDialog = ({ visit, open, onClose, completionMode, onCompletio
   const [showHvcConfirm, setShowHvcConfirm] = useState(false);
   const [phlebotomistId, setPhlebotomistId] = useState("");
   const [phleboUnlockedForVisitId, setPhleboUnlockedForVisitId] = useState<string | null>(null);
-  const phleboLocked = visit?.status === "Registered" && phleboUnlockedForVisitId !== visit?.id;
+  const phleboLocked = (visit?.status === "Registered" || visit?.status === "Completed") && phleboUnlockedForVisitId !== visit?.id;
   const [phleboPasswordOpen, setPhleboPasswordOpen] = useState(false);
 
   const handleTitleChange = (val: string) => {

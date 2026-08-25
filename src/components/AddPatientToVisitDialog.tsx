@@ -21,7 +21,6 @@ import { findPatientMasterByMobile, type MasterPatientMatch } from "@/lib/findPa
 import { PatientOnMobileDialog } from "@/components/lims/PatientOnMobileDialog";
 import { patientDisplayName } from "@/lib/patientDisplayName";
 import { genderFromTitle, PATIENT_TITLES_DOTTED } from "@/lib/normalizePatientFields";
-import { assertNoDuplicatePendingHomeVisit } from "@/lib/homeVisitDuplicates";
 
 interface EditTest {
   test_id: string;
@@ -206,69 +205,17 @@ const AddPatientToVisitDialog = ({ open, onClose, visitDate, visitTime, address,
       if (selectedTests.length === 0) throw new Error("Select at least one test");
       if (!dob) throw new Error("Date of birth is required");
 
-      const cleanNumber = whatsappNumber.replace(/\D/g, "").slice(-10);
       if (masterMatches.length > 0 && !patientChoice) {
         setPickerOpen(true);
         throw new Error("Select which patient this visit is for");
       }
 
-      const cleanName = patientName.replace(/\s+/g, " ").trim().toUpperCase();
-      await assertNoDuplicatePendingHomeVisit({
-        whatsappNumber: cleanNumber,
-        patientName: cleanName,
-        visitDate,
-        visitTime,
-      });
-
-      // Create estimate
-      const { data: estData, error: estError } = await supabase.from("estimates").insert({
-        title: title || null,
-        patient_name: cleanName,
-        gender: gender || null,
-        email: email || null,
-        doctor_name: doctorName ? doctorName.toUpperCase() : "SELF",
-        umr_number: null,
-        dob: dob || null,
-        whatsapp_number: cleanNumber,
-        total_amount: calculations.totalAmount,
-        discount_amount: calculations.totalDiscount,
-        home_visit_charges: 0, // No HV charges for additional patients
-        final_amount: calculations.finalAmount,
-        global_discount_type: globalDiscountValue > 0 ? globalDiscountType : null,
-        global_discount_value: globalDiscountValue,
-        status: "Home Visit Booked",
-      }).select("id").single();
-      if (estError) throw estError;
-
-      // Create estimate_tests
-      const testRows = calculations.testDetails.map(t => ({
-        estimate_id: estData.id,
-        test_id: t.test_id,
-        test_name: t.test_name,
-        price: t.price,
-        fasting_required: t.fasting_required,
-        discount_applicable: t.discount_applicable,
-        individual_discount_type: t.individual_discount_type,
-        individual_discount_value: t.individual_discount_value,
-        discounted_price: t.discountedPrice,
-        item_type: (t as any).item_type || "test",
-      }));
-      const { error: testError } = await supabase.from("estimate_tests").insert(testRows);
-      if (testError) throw testError;
-
-      // Create home_visit
-      const { data: hvData, error: hvError } = await supabase.from("home_visits").insert({
-        estimate_id: estData.id,
-        visit_date: visitDate,
-        visit_time: visitTime,
-        address: address,
-        phlebotomist_id: phlebotomistId || null,
-        linked_umr_number: patientChoice?.type === "existing" ? patientChoice.umr : null,
-        register_as_new_patient: patientChoice?.type === "new" || (!patientChoice && masterMatches.length === 0),
-      } as any).select("id").single();
-      if (hvError) throw hvError;
-
-      return hvData.id;
+      // Family members must share the original home visit card via
+      // Home Visit → Completed → registration → Add patient.
+      // Never insert another home_visits row for the same slot.
+      throw new Error(
+        "Family members should be added from Completed → registration (Add patient), not as a new home visit card.",
+      );
     },
     onSuccess: (newVisitId) => {
       qc.invalidateQueries({ queryKey: ["home_visits"] });

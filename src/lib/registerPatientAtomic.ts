@@ -93,9 +93,10 @@ export async function registerPatientAtomic(input: AtomicRegistrationInput): Pro
   if (error) throw new Error(error.message || "Registration failed");
 
   // Drop accidental duplicate Pending cards left by double-booking the same slot.
+  const patchStatus = String(input.homeVisitPatch?.status || "").toLowerCase();
   if (
     input.homeVisitId
-    && String(input.homeVisitPatch?.status || "").toLowerCase() === "registered"
+    && (patchStatus === "registered" || patchStatus === "completed")
   ) {
     try {
       await cancelOrphanDuplicateHomeVisits(input.homeVisitId);
