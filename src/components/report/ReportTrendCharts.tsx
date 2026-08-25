@@ -49,27 +49,51 @@ function formatAxisTick(value: number, step: number): string {
 }
 
 /**
- * Y domain always from 0 with round intermediate ticks (1, 2, 5, 10… or 0.1, 0.2, 0.5…).
+ * Y domain from 0 with fine round ticks so the green ref band stays visually large.
+ * Avoid coarse steps (e.g. 0/5/10/15 for Calcium 8.6–10.3) that crush the band.
  */
 function buildYAxisScale(values: number[], low?: number, high?: number) {
   const positives = [...values, low, high]
     .filter((v): v is number => v != null && Number.isFinite(v))
     .map((v) => Math.max(0, v));
-  const dataMax = positives.length ? Math.max(...positives) : 1;
+  const dataMax = Math.max(...(positives.length ? positives : [1]), Number.EPSILON);
   const yMin = 0;
-  const headroom = dataMax <= 0 ? 1 : dataMax * 1.12;
-  const rough = Math.max(headroom, Number.EPSILON);
-  const step = niceNum(rough / 3, true);
-  const yMax = Math.max(step, Math.ceil(rough / step) * step);
+  // Keep ceiling tight — only ~8–10% headroom above data / ref high
+  const padded = Math.max(dataMax * 1.08, dataMax + Number.EPSILON);
+
+  // Aim for ~8–10 intervals so steps stay small (1 or 2, not 5/10)
+  let step = niceNum(padded / 9, true);
+  let yMax = Math.max(step, Math.ceil(padded / step) * step);
+
+  // If coarse rounding still inflated the axis, force a finer step
+  if (yMax > dataMax * 1.35) {
+    step = niceNum(padded / 12, true);
+    yMax = Math.max(step, Math.ceil(padded / step) * step);
+  }
+
+  // When a ref band exists, keep shrinking the step until the band is a
+  // meaningful share of the plot (or we hit a sensible minimum step).
+  if (low != null && high != null && high > low) {
+    const band = high - low;
+    let guard = 0;
+    while ((band / yMax) < 0.2 && guard < 6) {
+      const next = niceNum(step / 2, true);
+      if (!(next > 0) || next >= step) break;
+      step = next;
+      yMax = Math.max(step, Math.ceil(padded / step) * step);
+      guard += 1;
+    }
+  }
+
   const ticks: number[] = [];
   for (let v = yMin; v <= yMax + step * 1e-9; v += step) {
     ticks.push(Number((Math.round(v / step) * step).toFixed(10)));
   }
-  if (ticks[ticks.length - 1] !== yMax) ticks.push(yMax);
+  if (ticks.length && ticks[ticks.length - 1] < yMax - step * 1e-6) ticks.push(yMax);
   return { yMin, yMax, ticks, step };
 }
 
-/** Y tick centered on its grid line. */
+/** Y tick centered on its grid line (PDF/html-to-image friendly). */
 const AlignedYTick = (props: any) => {
   const { x, y, payload, step } = props;
   if (x == null || y == null || payload?.value == null) return null;
@@ -77,8 +101,9 @@ const AlignedYTick = (props: any) => {
     <text
       x={x - 4}
       y={y}
+      dy={0}
       textAnchor="end"
-      dominantBaseline="middle"
+      dominantBaseline="central"
       fontSize={8}
       fill="#64748b"
     >
@@ -114,28 +139,37 @@ const CustomDot = (props: any) => {
 };
 
 /**
- * Prefer label above the point; if that would collide with a green ref line
- * (value below the line but close enough that the label sits on it), put the
- * label below the point / dashed line instead.
+ * Place value label where it won't sit on a green ref dashed line.
  */
-const shouldPlaceValueBelowRefLine = (
+const pickLabelSide = (
   value: number,
   low: number | undefined,
   high: number | undefined,
   yMin: number,
   yMax: number,
-): boolean => {
+): "above" | "below" => {
   const span = Math.max(yMax - yMin, Math.abs(value) * 0.2, 1);
-  // ~label height + gap as a fraction of the y-domain
-  const clearance = span * 0.3;
-  if (high != null && Number.isFinite(high) && value <= high && high - value <= clearance) {
-    return true;
+  const clearance = span * 0.12;
+  const nearHigh = high != null && Number.isFinite(high) && Math.abs(value - high) <= clearance;
+  const nearLow = low != null && Number.isFinite(low) && Math.abs(value - low) <= clearance;
+  // Near high from below → label below the high line (below the point)
+  if (nearHigh && high != null && value <= high && !(nearLow && low != null && value >= low)) {
+    return "below";
   }
-  if (low != null && Number.isFinite(low) && value < low && low - value <= clearance) {
-    // Point below low line — label above would cross the low dashed line
-    return true;
+  // Near low → keep label above so it doesn't sit on the low dashed line
+  if (nearLow) return "above";
+  // Point below low line → label above would cross low; put below point
+  if (low != null && value < low && low - value <= clearance) return "below";
+  // Close under high (wider clearance) without being near low
+  if (
+    high != null
+    && value < high
+    && high - value <= span * 0.22
+    && (low == null || value - low > span * 0.1)
+  ) {
+    return "below";
   }
-  return false;
+  return "above";
 };
 
 const ValueLabel = (props: any) => {
@@ -144,9 +178,8 @@ const ValueLabel = (props: any) => {
   const num = Number(value);
   const flag = getFlag(num, low, high);
   const text = formatValue(num);
-  const placeBelow = shouldPlaceValueBelowRefLine(num, low, high, Number(yMin), Number(yMax));
-  // SVG y grows downward: below the point = larger y
-  const textY = placeBelow ? y + 14 : y - 9;
+  const side = pickLabelSide(num, low, high, Number(yMin), Number(yMax));
+  const textY = side === "below" ? y + 14 : y - 9;
   const fill = flag ? "#dc2626" : "#166534";
 
   if (!flag) {
@@ -218,15 +251,23 @@ function ChartCard({ trend, forPdf }: { trend: TrendSeries; forPdf?: boolean }) 
               allowDecimals
               tick={(props: any) => <AlignedYTick {...props} step={step} />}
             />
-            {trend.low != null && trend.high != null && (
+            {trend.low != null && trend.high != null ? (
               <ReferenceArea
                 y1={Math.max(0, trend.low)}
                 y2={trend.high}
                 fill="#16a34a"
-                fillOpacity={0.08}
+                fillOpacity={0.1}
                 strokeOpacity={0}
               />
-            )}
+            ) : trend.high != null ? (
+              <ReferenceArea
+                y1={0}
+                y2={trend.high}
+                fill="#16a34a"
+                fillOpacity={0.1}
+                strokeOpacity={0}
+              />
+            ) : null}
             {trend.high != null && (
               <ReferenceLine
                 y={trend.high}
