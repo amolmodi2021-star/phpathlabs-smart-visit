@@ -493,8 +493,29 @@ const CbcTab = () => {
           missingFields,
         },
       });
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
+      // Supabase often wraps non-2xx as FunctionsHttpError with a generic "Failed to send..." message.
+      // Prefer the JSON body error when present.
+      if (data?.error) throw new Error(String(data.error));
+      if (error) {
+        const ctx = (error as any)?.context;
+        let detail = "";
+        try {
+          if (ctx && typeof ctx.json === "function") {
+            const body = await ctx.json();
+            detail = body?.error || "";
+          } else if (ctx && typeof ctx.text === "function") {
+            const text = await ctx.text();
+            try {
+              detail = JSON.parse(text)?.error || text;
+            } catch {
+              detail = text;
+            }
+          }
+        } catch {
+          /* ignore parse */
+        }
+        throw new Error(detail || error.message || "Edge function failed");
+      }
 
       const { model_used, ...aiFields } = data as CbcAiDraft & { model_used?: string };
       const merged: CbcAiDraft = {

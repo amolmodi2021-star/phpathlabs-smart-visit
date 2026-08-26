@@ -80,11 +80,28 @@ function buildModelList(override?: string | null): string[] {
   return out;
 }
 
-function isModelNotFound(status: number, bodyText: string): boolean {
-  if (status !== 404) return false;
-  const lower = bodyText.toLowerCase();
-  return lower.includes("model_not_found") || lower.includes("does not exist") || lower.includes("not found");
+function needsReasoningEffortNone(model: string): boolean {
+  const m = model.toLowerCase();
+  return m.includes("gpt-5") || m.includes("o3") || m.includes("o4");
 }
+
+/** Retry next model on not-found / unsupported tool+reasoning / unsupported params. */
+function shouldTryNextModel(status: number, bodyText: string): boolean {
+  if (status === 404) return true;
+  if (status !== 400) return false;
+  const lower = bodyText.toLowerCase();
+  return (
+    lower.includes("model_not_found") ||
+    lower.includes("does not exist") ||
+    lower.includes("not found") ||
+    lower.includes("reasoning_effort") ||
+    lower.includes("function tools") ||
+    lower.includes("unsupported_parameter") ||
+    lower.includes("unsupported parameter") ||
+    lower.includes("invalid model")
+  );
+}
+
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -207,13 +224,18 @@ Prioritize filling missing/empty fields listed by the lab; keep existing analyze
 
     for (const model of models) {
       usedModel = model;
+      const payload: Record<string, unknown> = { ...requestBodyBase, model };
+      // gpt-5.x chat.completions + function tools requires reasoning_effort none
+      if (needsReasoningEffortNone(model)) {
+        payload.reasoning_effort = "none";
+      }
       const response = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${OPENAI_API_KEY}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ ...requestBodyBase, model }),
+        body: JSON.stringify(payload),
       });
 
       if (response.ok) {
@@ -236,14 +258,27 @@ Prioritize filling missing/empty fields listed by the lab; keep existing analyze
           { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } },
         );
       }
+      if (response.status === 401) {
+        return new Response(
+          JSON.stringify({ error: "OpenAI API key rejected. Check LIMS ? Settings ? OpenAI." }),
+          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
 
-      if (isModelNotFound(response.status, text)) {
-        console.warn(`Model unavailable (${model}), trying next...`, text.slice(0, 200));
+      if (shouldTryNextModel(response.status, text)) {
+        console.warn(`Model unavailable (${model}), trying next...`, text.slice(0, 240));
         continue;
       }
 
       console.error("OpenAI error:", response.status, text);
-      throw new Error("AI processing failed");
+      let detail = text.slice(0, 300);
+      try {
+        const parsed = JSON.parse(text);
+        detail = parsed?.error?.message || detail;
+      } catch {
+        /* keep raw */
+      }
+      throw new Error(`AI processing failed: ${detail}`);
     }
 
     if (!data) {
