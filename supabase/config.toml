@@ -73,6 +73,9 @@ verify_jwt = false
 [functions.parse-prescription]
 verify_jwt = true
 
+[functions.interpret-cbc-smear]
+verify_jwt = true
+
 [functions.generate-loyalty-card]
 verify_jwt = true
 

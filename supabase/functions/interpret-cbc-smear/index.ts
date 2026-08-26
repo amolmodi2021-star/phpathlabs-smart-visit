@@ -1,0 +1,242 @@
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+};
+
+const TOOL_NAME = "cbc_smear_interpretation";
+
+const toolParameters = {
+  type: "object",
+  properties: {
+    neutrophils_pct: {
+      type: "string",
+      description: "Neutrophil % as a number string; differential should sum ~100",
+    },
+    lymphocytes_pct: { type: "string", description: "Lymphocyte % as a number string" },
+    monocytes_pct: { type: "string", description: "Monocyte % as a number string" },
+    eosinophils_pct: { type: "string", description: "Eosinophil % as a number string" },
+    basophils_pct: { type: "string", description: "Basophil % as a number string" },
+    wbc_morphology: {
+      type: "string",
+      description: "WBC morphology - prefer an option from the lab WBC list",
+    },
+    rbc_morphology: {
+      type: "string",
+      description: "RBC morphology - prefer an option from the lab RBC list",
+    },
+    platelet_morphology: {
+      type: "string",
+      description: "Platelet morphology - prefer an option from the lab platelet list",
+    },
+    malarial_parasites: {
+      type: "string",
+      description: 'Prefer "Not detected" or "Detected", or closest option from MP list',
+    },
+    blasts: { type: "string", description: "Blasts if seen; empty string if none" },
+    promyelocytes: { type: "string", description: "Promyelocytes if seen; empty if none" },
+    myelocytes: { type: "string", description: "Myelocytes if seen; empty if none" },
+    metamyelocyte: { type: "string", description: "Metamyelocytes if seen; empty if none" },
+    band_cells: { type: "string", description: "Band cells if relevant; empty if none" },
+    normoblast: { type: "string", description: "Normoblasts / nRBCs if seen; empty if none" },
+    confidence: {
+      type: "string",
+      enum: ["high", "medium", "low"],
+      description: "Overall confidence in this assistive draft",
+    },
+    notes: {
+      type: "string",
+      description: "Short pathologist-style note for the tech",
+    },
+  },
+  required: [
+    "neutrophils_pct",
+    "lymphocytes_pct",
+    "monocytes_pct",
+    "eosinophils_pct",
+    "basophils_pct",
+    "wbc_morphology",
+    "rbc_morphology",
+    "platelet_morphology",
+    "malarial_parasites",
+    "confidence",
+    "notes",
+  ],
+};
+
+function buildModelList(): string[] {
+  const preferred = Deno.env.get("OPENAI_CBC_MODEL") || "gpt-5.6-sol";
+  const fallbacks = ["gpt-5.4", "gpt-4.1", "gpt-4o"];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const m of [preferred, ...fallbacks]) {
+    if (!m || seen.has(m)) continue;
+    seen.add(m);
+    out.push(m);
+  }
+  return out;
+}
+
+function isModelNotFound(status: number, bodyText: string): boolean {
+  if (status !== 404) return false;
+  const lower = bodyText.toLowerCase();
+  return lower.includes("model_not_found") || lower.includes("does not exist") || lower.includes("not found");
+}
+
+serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
+  try {
+    const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+    if (!OPENAI_API_KEY) {
+      throw new Error("Set OPENAI_API_KEY in Supabase Edge Function secrets");
+    }
+
+    const body = await req.json();
+    const imageUrlsRaw: string[] = Array.isArray(body?.imageUrls) ? body.imageUrls : [];
+    const imageUrls = imageUrlsRaw.filter((u) => typeof u === "string" && u.trim()).slice(0, 15);
+    const analyzerContext: Record<string, string> =
+      body?.analyzerContext && typeof body.analyzerContext === "object" ? body.analyzerContext : {};
+    const morphologyOptions = {
+      wbc: Array.isArray(body?.morphologyOptions?.wbc) ? body.morphologyOptions.wbc : [],
+      rbc: Array.isArray(body?.morphologyOptions?.rbc) ? body.morphologyOptions.rbc : [],
+      platelet: Array.isArray(body?.morphologyOptions?.platelet) ? body.morphologyOptions.platelet : [],
+      mp: Array.isArray(body?.morphologyOptions?.mp) ? body.morphologyOptions.mp : [],
+    };
+    const missingFields: string[] = Array.isArray(body?.missingFields) ? body.missingFields : [];
+
+    if (imageUrls.length === 0) {
+      throw new Error("At least one smear image URL is required");
+    }
+
+    const analyzerLines = Object.entries(analyzerContext)
+      .map(([k, v]) => `${k}: ${v}`)
+      .join("\n");
+
+    const systemPrompt = `You are an expert hematology peripheral smear reviewer assisting a laboratory technologist.
+Use the analyzer CBC values provided as context when interpreting the smear images.
+Focus on:
+1) Manual differential count (%) from the smear images (neutrophils, lymphocytes, monocytes, eosinophils, basophils) - numbers as strings that sum to ~100
+2) WBC / RBC / platelet morphology - prefer the lab's descriptive option lists when provided
+3) Malarial parasites - prefer "Not detected" or "Detected", or the closest option from the MP list
+4) Immature cells (blasts, promyelocytes, myelocytes, metamyelocytes, band cells, normoblasts) only if clearly present; otherwise empty string
+
+This is an assistive draft only - not a final pathologist sign-out. Be concise in notes.
+When the analyzer already has some values, prioritize filling the listed missing fields from the smear.`;
+
+    const userText = [
+      "Interpret these peripheral smear microscope images for CBC differential, morphology, and malaria parasites.",
+      "",
+      "Analyzer CBC context:",
+      analyzerLines || "(none provided)",
+      "",
+      "Lab morphology options (prefer these wording when possible):",
+      `WBC: ${JSON.stringify(morphologyOptions.wbc)}`,
+      `RBC: ${JSON.stringify(morphologyOptions.rbc)}`,
+      `Platelet: ${JSON.stringify(morphologyOptions.platelet)}`,
+      `MP: ${JSON.stringify(morphologyOptions.mp)}`,
+      "",
+      missingFields.length
+        ? `Missing / empty fields to prioritize: ${missingFields.join(", ")}`
+        : "Fill all target CBC smear fields.",
+    ].join("\n");
+
+    const content: Array<Record<string, unknown>> = [
+      { type: "text", text: userText },
+      ...imageUrls.map((url) => ({
+        type: "image_url",
+        image_url: { url, detail: "high" },
+      })),
+    ];
+
+    const requestBodyBase = {
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content },
+      ],
+      tools: [
+        {
+          type: "function",
+          function: {
+            name: TOOL_NAME,
+            description:
+              "Return CBC peripheral smear interpretation draft for the lab tech to review",
+            parameters: toolParameters,
+          },
+        },
+      ],
+      tool_choice: { type: "function", function: { name: TOOL_NAME } },
+    };
+
+    const models = buildModelList();
+    let lastErrorText = "";
+    let usedModel = models[0];
+    let data: any = null;
+
+    for (const model of models) {
+      usedModel = model;
+      const response = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${OPENAI_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ ...requestBodyBase, model }),
+      });
+
+      if (response.ok) {
+        data = await response.json();
+        break;
+      }
+
+      const text = await response.text();
+      lastErrorText = text;
+
+      if (response.status === 429) {
+        return new Response(
+          JSON.stringify({ error: "Rate limit exceeded. Please try again in a moment." }),
+          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+      if (response.status === 402) {
+        return new Response(
+          JSON.stringify({ error: "AI credits exhausted. Please add credits." }),
+          { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+
+      if (isModelNotFound(response.status, text)) {
+        console.warn(`Model unavailable (${model}), trying next...`, text.slice(0, 200));
+        continue;
+      }
+
+      console.error("OpenAI error:", response.status, text);
+      throw new Error("AI processing failed");
+    }
+
+    if (!data) {
+      console.error("All models failed. Last error:", lastErrorText);
+      throw new Error("AI processing failed - no available model");
+    }
+
+    const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
+    if (!toolCall) throw new Error("No results from AI");
+
+    const args =
+      typeof toolCall.function?.arguments === "string"
+        ? JSON.parse(toolCall.function.arguments)
+        : toolCall.function?.arguments;
+
+    return new Response(JSON.stringify({ ...args, model_used: usedModel }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  } catch (e) {
+    console.error("interpret-cbc-smear error:", e);
+    return new Response(
+      JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
+  }
+});

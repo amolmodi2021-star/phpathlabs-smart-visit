@@ -18,6 +18,7 @@ const SampleCollection = lazy(() => import("@/components/lims/SampleCollection")
 const SampleAcceptance = lazy(() => import("@/components/lims/SampleAcceptance"));
 const Workflow = lazy(() => import("@/components/lims/Workflow"));
 const ResultsEntry = lazy(() => import("@/components/lims/ResultsEntry"));
+const CbcTab = lazy(() => import("@/components/lims/CbcTab"));
 const ResultVerification = lazy(() => import("@/components/lims/ResultVerification"));
 const DoctorApproval = lazy(() => import("@/components/lims/DoctorApproval"));
 const Dispatch = lazy(() => import("@/components/lims/Dispatch"));
@@ -32,6 +33,7 @@ const allLimsTabs = [
   { key: "sample_acceptance", label: "Sample Acceptance", component: SampleAcceptance },
   { key: "workflow", label: "Workflow", component: Workflow },
   { key: "results", label: "Results", component: ResultsEntry },
+  { key: "cbc", label: "CBC", component: CbcTab },
   { key: "verification", label: "Result Verification", component: ResultVerification },
   { key: "doctor_approval", label: "Doctor Approval", component: DoctorApproval },
   { key: "dispatch", label: "Dispatch", component: Dispatch },

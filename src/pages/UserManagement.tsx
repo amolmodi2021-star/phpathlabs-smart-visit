@@ -97,6 +97,7 @@ const ALL_TABS = [
       { key: "sample_acceptance", label: "Sample Acceptance" },
       { key: "workflow", label: "Workflow" },
       { key: "results", label: "Results" },
+      { key: "cbc", label: "CBC" },
       { key: "verification", label: "Result Verification" },
       { key: "doctor_approval", label: "Doctor Approval" },
       { key: "dispatch", label: "Dispatch" },
