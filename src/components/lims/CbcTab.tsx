@@ -738,9 +738,14 @@ const CbcTab = () => {
 
                         <div className="space-y-2">
                           <div className="flex flex-wrap items-center justify-between gap-2">
-                            <h4 className="text-sm font-medium">
-                              Smear images ({imageUrls.length}/{CBC_MAX_IMAGES})
-                            </h4>
+                            <div>
+                              <h4 className="text-sm font-medium">
+                                Smear images ({imageUrls.length}/{CBC_MAX_IMAGES})
+                              </h4>
+                              <p className="text-[10px] text-muted-foreground">
+                                Stored on WhatsApp Cloudinary (not Supabase storage / not report-PDF Cloudinary).
+                              </p>
+                            </div>
                             <div className="flex flex-wrap gap-2">
                               <Button
                                 type="button"
