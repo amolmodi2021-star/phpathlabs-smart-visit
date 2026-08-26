@@ -2048,7 +2048,7 @@ const LimsReportView = () => {
   const scaledHeight = NATIVE_H_PX * previewScale;
 
   return (
-    <div className="p-2 sm:p-4 space-y-3 sm:space-y-4">
+    <div className="p-2 sm:p-4 space-y-3 sm:space-y-4 print:p-0 print:space-y-0">
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-2 sm:gap-3 print:hidden">
         {!isPublic && (
