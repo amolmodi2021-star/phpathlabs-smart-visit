@@ -430,7 +430,7 @@ const CbcTab = () => {
       await persistImageUrls([...imageUrls, url]);
       toast.success("Image added");
     } catch (e: any) {
-      toast.error(e?.message || "Upload failed");
+      toast.error(e?.message || "Upload failed ? check WhatsApp Cloudinary account in LIMS Settings");
     } finally {
       setBusy(null);
     }
@@ -458,7 +458,7 @@ const CbcTab = () => {
       await persistImageUrls(urls);
       toast.success(`${list.length} image${list.length === 1 ? "" : "s"} added`);
     } catch (e: any) {
-      toast.error(e?.message || "Upload failed");
+      toast.error(e?.message || "Upload failed ? check WhatsApp Cloudinary account in LIMS Settings");
     } finally {
       setBusy(null);
     }

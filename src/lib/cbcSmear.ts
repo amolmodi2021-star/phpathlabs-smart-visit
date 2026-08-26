@@ -3,8 +3,10 @@
  */
 import { supabase } from "@/integrations/supabase/client";
 import { DIFFERENTIAL_PARAM_CODES, checkDifferentialSum } from "@/lib/differentialCount";
+import { uploadBlobToCloudinary } from "@/lib/cardStorageCloudinary";
 
-export const CBC_SMEARS_BUCKET = "cbc-smears";
+/** Cloudinary folder under the active WhatsApp account (not outsourced_pdf). */
+export const CBC_SMEARS_FOLDER = "cbc-smears";
 export const CBC_MAX_IMAGES = 15;
 export const CBC_MIN_IMAGES_RECOMMENDED = 5;
 
@@ -118,19 +120,24 @@ export async function compressImageForCbcAi(
   return blob;
 }
 
+/**
+ * Upload a compressed smear JPEG to the active WhatsApp Cloudinary account.
+ * Avoids Supabase Storage egress for microscope photos / AI fetches.
+ */
 export async function uploadCbcSmearImage(
   registrationId: string,
   testId: string,
   file: Blob,
   index: number,
 ): Promise<string> {
-  const path = `${registrationId}/${testId}/${Date.now()}_${index}.jpg`;
-  const { error } = await supabase.storage
-    .from(CBC_SMEARS_BUCKET)
-    .upload(path, file, { contentType: "image/jpeg", upsert: true });
-  if (error) throw error;
-  const { data } = supabase.storage.from(CBC_SMEARS_BUCKET).getPublicUrl(path);
-  return data.publicUrl;
+  const uploaded = await uploadBlobToCloudinary(file, {
+    resourceType: "image",
+    purpose: "whatsapp", // WhatsApp Cloudinary ? not outsourced_pdf
+    folder: CBC_SMEARS_FOLDER,
+    publicId: `${registrationId}_${testId}_${Date.now()}_${index}`,
+    filename: `cbc_${index}.jpg`,
+  });
+  return uploaded.secure_url;
 }
 
 
