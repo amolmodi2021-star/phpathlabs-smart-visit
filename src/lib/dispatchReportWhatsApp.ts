@@ -10,11 +10,15 @@ export function openReportForManualWhatsApp(opts: {
   }
   // Unique name every time — a reused named window often focuses without reloading.
   const url = `/lims/report/${opts.registrationId}?tests=${encodeURIComponent(tests)}&manualWa=1`;
-  const win = window.open(url, `lims-report-manual-wa-${Date.now()}`, "width=960,height=720");
+  // Smaller popup; do not steal focus from Dispatch while PDF builds.
+  const win = window.open(
+    url,
+    `lims-report-manual-wa-${Date.now()}`,
+    "popup=yes,width=720,height=540,left=80,top=80",
+  );
   if (!win) {
     return { ok: false, error: "Popup blocked — allow popups to download the report PDF" };
   }
-  try { win.focus(); } catch { /* ignore */ }
   return { ok: true };
 }
 
@@ -22,7 +26,7 @@ export function openReportForManualWhatsApp(opts: {
 export function queueApprovedReportWhatsApp(opts: {
   registrationId: string;
   testIds: string[];
-  /** Test names still not approved/dispatched ? shown in caption. */
+  /** Test names still not approved/dispatched — shown in caption. */
   pendingReportNames?: string[];
   timeoutMs?: number;
 }): Promise<{ ok: boolean; error?: string }> {
@@ -37,7 +41,12 @@ export function queueApprovedReportWhatsApp(opts: {
     const url =
       `/lims/report/${opts.registrationId}?tests=${encodeURIComponent(tests)}&queueWa=1${pendingQ}`;
     // Unique name: reusing "lims-report-wa-queue" left a hung blank tab that never reloaded.
-    const win = window.open(url, `lims-report-wa-queue-${Date.now()}`, "width=960,height=720");
+    // Do not focus — keep staff on Dispatch while the background popup builds the PDF.
+    const win = window.open(
+      url,
+      `lims-report-wa-queue-${Date.now()}`,
+      "popup=yes,width=720,height=540,left=80,top=80",
+    );
     if (!win) {
       resolve({
         ok: false,
@@ -45,10 +54,9 @@ export function queueApprovedReportWhatsApp(opts: {
       });
       return;
     }
-    try { win.focus(); } catch { /* ignore */ }
 
     let settled = false;
-    const timeoutMs = opts.timeoutMs ?? 180_000;
+    const timeoutMs = opts.timeoutMs ?? 120_000;
     const timeout = window.setTimeout(() => {
       finish({ ok: false, error: "Timed out generating report PDF for WhatsApp" });
     }, timeoutMs);

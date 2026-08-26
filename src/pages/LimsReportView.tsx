@@ -81,7 +81,7 @@ const waitForCaptureReady = async (root: HTMLElement) => {
         img.addEventListener("load", done, { once: true });
         img.addEventListener("error", done, { once: true });
         // Hard timeout so a single broken image cannot stall export
-        setTimeout(done, 4000);
+        setTimeout(done, 2500);
       });
     })
   );
@@ -89,7 +89,7 @@ const waitForCaptureReady = async (root: HTMLElement) => {
   await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
   // Recharts SVGs need a paint tick before html-to-image capture
   if (root.querySelector("[data-historical-trends]")) {
-    await new Promise<void>((r) => setTimeout(r, 200));
+    await new Promise<void>((r) => setTimeout(r, 100));
     await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
   }
 };
@@ -124,13 +124,15 @@ const isBlankDataUrl = async (dataUrl: string): Promise<boolean> => {
 };
 
 type PageCaptureOptions = {
-  /** Override html-to-image pixelRatio (default: snip 1.5 / structured 3). */
+  /** Override html-to-image pixelRatio (default: snip 1.5 / structured 2). */
   pixelRatio?: number;
-  /** JPEG quality 0–1 (default 0.92). */
+  /** JPEG quality 0–1 (default 0.9). */
   quality?: number;
-  /** Force image cache bust (default: true for structured, false for snip). */
+  /** Force image cache bust (default: false — cacheBust breaks data: assets). */
   cacheBust?: boolean;
   attempts?: number;
+  /** Skip expensive pixel blank-check when data URL looks non-empty (dispatch/fast). */
+  fastBlankCheck?: boolean;
 };
 
 /** Run async work over items with a fixed concurrency pool (preserves result order). */
@@ -154,10 +156,8 @@ async function mapPool<T, R>(
 };
 
 // Capture a page with retries (handles intermittent blank captures from html-to-image).
-// Structured pages: pixelRatio 3 for sharp PDF text.
-// Print uses a lower ratio (still sharp on laser) for much faster dialog open.
-// Snip pages: lower pixelRatio — full-page photo captures at PR3 hang / OOM and stuck the
-// WhatsApp popup on "Downloading…".
+// Structured pages: pixelRatio 2 (was 3) — sharp enough on screen/print, ~2× faster.
+// Snip / Dispatch queue: lower PR — full-page photo at PR3 hung OOM on "Downloading…".
 const captureWithRetry = async (
   el: HTMLElement,
   width: number,
@@ -166,10 +166,10 @@ const captureWithRetry = async (
   captureOpts?: PageCaptureOptions,
 ): Promise<string> => {
   const isSnipPage = !!el.querySelector("img[data-snip-image]");
-  const pixelRatio = captureOpts?.pixelRatio ?? (isSnipPage ? 1.5 : 3);
-  const attempts = captureOpts?.attempts ?? (isSnipPage ? 2 : 3);
-  const captureMs = isSnipPage ? 20_000 : 25_000;
-  const jpegQuality = captureOpts?.quality ?? 0.92;
+  const pixelRatio = captureOpts?.pixelRatio ?? (isSnipPage ? 1.25 : 2);
+  const attempts = captureOpts?.attempts ?? 2;
+  const captureMs = isSnipPage ? 15_000 : 20_000;
+  const jpegQuality = captureOpts?.quality ?? 0.9;
   const opts = {
     pixelRatio,
     backgroundColor: "#ffffff",
@@ -187,12 +187,16 @@ const captureWithRetry = async (
       lastUrl = format === "png"
         ? await withTimeout(toPng(el, { ...opts, quality: 1 }), captureMs, "snip/page PNG capture")
         : await withTimeout(toJpeg(el, { ...opts, quality: jpegQuality }), captureMs, "page JPEG capture");
+      // Fast path: non-tiny JPEG on first try is almost never a blank capture.
+      if (captureOpts?.fastBlankCheck && attempt === 0 && lastUrl.length > 18_000) {
+        return lastUrl;
+      }
       const blank = await isBlankDataUrl(lastUrl);
       if (!blank) return lastUrl;
     } catch (e) {
       lastErr = e;
     }
-    await new Promise((r) => setTimeout(r, 250));
+    await new Promise((r) => setTimeout(r, 120));
   }
   if (!lastUrl) {
     throw (lastErr instanceof Error ? lastErr : new Error("Page capture failed"));
@@ -1619,11 +1623,11 @@ const LimsReportView = () => {
 
     // Wait for measure-then-repack to settle so export matches densest safe layout.
     const waitStart = Date.now();
-    while (!paginationReadyRef.current && Date.now() - waitStart < 10_000) {
-      await new Promise((r) => setTimeout(r, 40));
+    while (!paginationReadyRef.current && Date.now() - waitStart < 8_000) {
+      await new Promise((r) => setTimeout(r, 30));
     }
 
-    const pageElements = printRef.current.querySelectorAll("[data-page]");
+    const pageElements = Array.from(printRef.current.querySelectorAll("[data-page]")) as HTMLElement[];
     if (pageElements.length === 0) return null;
 
     await waitForCaptureReady(printRef.current);
@@ -1631,15 +1635,19 @@ const LimsReportView = () => {
     const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
     const NATIVE_W = Math.round((PAGE_WIDTH_MM / 25.4) * 96);
     const NATIVE_H = Math.round((PAGE_HEIGHT_MM / 25.4) * 96);
-    const queueCapture = opts?.queueMode
-      ? { pixelRatio: 2, attempts: 2, quality: 0.88, cacheBust: false } satisfies PageCaptureOptions
-      : undefined;
-    for (let i = 0; i < pageElements.length; i++) {
+    // Download: PR2. Dispatch/WA: PR1.5 + fast blank skip + parallel pages.
+    const captureOpts: PageCaptureOptions = opts?.queueMode
+      ? { pixelRatio: 1.5, attempts: 2, quality: 0.82, cacheBust: false, fastBlankCheck: true }
+      : { pixelRatio: 2, attempts: 2, quality: 0.88, cacheBust: false, fastBlankCheck: true };
+    // Parallel capture (2 pages) — biggest win on multi-page reports; avoid higher
+    // concurrency on older lab PCs (html-to-image is memory-heavy).
+    const concurrency = Math.min(2, pageElements.length);
+    const jpegUrls = await mapPool(pageElements, concurrency, (el) =>
+      captureWithRetry(el, NATIVE_W, NATIVE_H, "jpeg", captureOpts),
+    );
+    for (let i = 0; i < jpegUrls.length; i++) {
       if (i > 0) pdf.addPage();
-      const el = pageElements[i] as HTMLElement;
-      // Snip pages use lower pixelRatio inside captureWithRetry (photos hang at PR3).
-      const jpeg = await captureWithRetry(el, NATIVE_W, NATIVE_H, "jpeg", queueCapture);
-      pdf.addImage(jpeg, "JPEG", 0, 0, PAGE_WIDTH_MM, PAGE_HEIGHT_MM, undefined, "FAST");
+      pdf.addImage(jpegUrls[i], "JPEG", 0, 0, PAGE_WIDTH_MM, PAGE_HEIGHT_MM, undefined, "FAST");
     }
 
     const patientNameRaw = patientDisplayName(approvedReports[0]);
@@ -1676,7 +1684,9 @@ const LimsReportView = () => {
     if (!printRef.current) return;
     setDownloading(true);
     try {
-      const built = await buildPdfBlob();
+      const fromDispatch = (location.state as { from?: string } | null)?.from === "dispatch";
+      // Dispatch View→Download: use fast queue capture (same visual quality as WhatsApp PDF).
+      const built = await buildPdfBlob({ queueMode: fromDispatch || manualWaRequested });
       if (!built) { toast.error("No pages to export"); setDownloading(false); return; }
 
       const { blob, filename } = built;
@@ -1724,7 +1734,7 @@ const LimsReportView = () => {
     if (autoDownloadStartedRef.current) return;
     autoDownloadStartedRef.current = true;
     // Small delay to let layout settle (images, fonts)
-    const t = setTimeout(() => { handleDownloadPdf(); }, 600);
+    const t = setTimeout(() => { handleDownloadPdf(); }, 300);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isPublic, loading, pages.length, invoiceBarcodeReady, invoiceBarcodePng]);
@@ -1778,12 +1788,6 @@ const LimsReportView = () => {
       setDownloading(true);
       toast.message("Building report PDF…");
       try {
-        const built = await withTimeout(
-          buildPdfBlob({ queueMode: true }),
-          120_000,
-          "report PDF build",
-        );
-        if (!built) throw new Error("No pages to export");
         const report = approvedReports[0];
         const phone = report?.mobile_number || registration?.mobile_number || "";
         if (!String(phone).replace(/\D/g, "").slice(-10)) {
@@ -1795,15 +1799,26 @@ const LimsReportView = () => {
         const pendingLine = pendingRaw
           ? `Pending Reports : ${pendingRaw}`
           : "No Reports Pending";
-        let portalLine = "";
-        try {
-          if (registrationId) {
+
+        // Share link + PDF in parallel (link is independent of rasterization).
+        const sharePromise = (async () => {
+          if (!registrationId) return "";
+          try {
             const created = await createShareLink(registrationId, invoiceNum, "dispatch");
-            portalLine = `\nView online: ${created.url}`;
+            return `\nView online: ${created.url}`;
+          } catch (e) {
+            console.warn("share link for report caption failed", e);
+            return "";
           }
-        } catch (e) {
-          console.warn("share link for report caption failed", e);
-        }
+        })();
+
+        const built = cachedPdfRef.current || await withTimeout(
+          buildPdfBlob({ queueMode: true }),
+          90_000,
+          "report PDF build",
+        );
+        if (!built) throw new Error("No pages to export");
+        const portalLine = await sharePromise;
         const caption =
           `*PH PathLabs — Lab Report*\n` +
           `Invoice No: ${invoiceNum}\n` +
@@ -1830,7 +1845,7 @@ const LimsReportView = () => {
         notifyQueueWa(true);
         setTimeout(() => {
           try { window.close(); } catch { /* ignore */ }
-        }, 600);
+        }, 400);
       } catch (err: any) {
         const msg = err?.message || "Failed to queue report WhatsApp";
         toast.error(msg);
@@ -1840,7 +1855,7 @@ const LimsReportView = () => {
         window.clearTimeout(failSafe);
         setDownloading(false);
       }
-    }, 500);
+    }, 100);
 
     return () => {
       cancelled = true;
@@ -1887,9 +1902,9 @@ const LimsReportView = () => {
       launched = true;
       setDownloading(true);
       try {
-        const built = await withTimeout(
+        const built = cachedPdfRef.current || await withTimeout(
           buildPdfBlob({ queueMode: true }),
-          120_000,
+          90_000,
           "report PDF download",
         );
         if (!built) throw new Error("No pages to export");
@@ -1909,7 +1924,7 @@ const LimsReportView = () => {
       } finally {
         setDownloading(false);
       }
-    }, 500);
+    }, 100);
     return () => {
       cancelled = true;
       window.clearTimeout(t);
