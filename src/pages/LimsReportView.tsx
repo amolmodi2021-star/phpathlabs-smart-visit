@@ -1955,108 +1955,57 @@ const LimsReportView = () => {
     setSharingWa(false);
   };
 
-  // ── Image-based Print ──
+  // Native CSS Print ? no html-to-image raster (fast dialog, low RAM on older PCs)
   const handlePrint = async () => {
     if (!printRef.current) return;
     setDownloading(true);
+    const root = printRef.current;
+    let cleaned = false;
+    const cleanup = () => {
+      if (cleaned) return;
+      cleaned = true;
+      root.classList.remove("print-strip-colors", "print-no-letterhead", "print-native");
+      document.body.classList.remove("lims-report-printing");
+      flushSync(() => setHideChartFills(false));
+      window.removeEventListener("afterprint", onAfterPrint);
+      setDownloading(false);
+    };
+    const onAfterPrint = () => cleanup();
+
     try {
-      // Wait for measure-then-repack so printed pages match on-screen layout.
+      // Brief wait only ? do not block up to 10s like the old raster path.
       const waitStart = Date.now();
-      while (!paginationReadyRef.current && Date.now() - waitStart < 10_000) {
+      while (!paginationReadyRef.current && Date.now() - waitStart < 1_500) {
         await new Promise((r) => setTimeout(r, 40));
       }
-
-      const imageUrls = await withChartFillsHiddenForCapture(async () => {
-        const root = printRef.current!;
-        await waitForCaptureReady(root);
-
-        const pageElements = Array.from(root.querySelectorAll<HTMLElement>("[data-page]"));
-        if (pageElements.length === 0) return null;
-
-        const NATIVE_W = Math.round((PAGE_WIDTH_MM / 25.4) * 96);
-        const NATIVE_H = Math.round((PAGE_HEIGHT_MM / 25.4) * 96);
-        // Print: PR2 (~2× fewer pixels than PDF PR3) + parallel capture. Still sharp on laser.
-        return mapPool(pageElements, 2, (el) =>
-          captureWithRetry(el, NATIVE_W, NATIVE_H, "jpeg", {
-            pixelRatio: 2,
-            quality: 0.88,
-            cacheBust: false,
-            attempts: 2,
-          }),
-        );
-      }, { stripLetterhead: true });
-
-      if (!imageUrls || imageUrls.length === 0) {
+      if (root.querySelectorAll("[data-page]").length === 0) {
         toast.error("No pages to print");
+        setDownloading(false);
         return;
       }
 
-      // Create hidden iframe for printing (no new tab)
-      const iframe = document.createElement("iframe");
-      iframe.style.position = "fixed";
-      iframe.style.top = "-10000px";
-      iframe.style.left = "-10000px";
-      iframe.style.width = "210mm";
-      iframe.style.height = "297mm";
-      iframe.style.border = "none";
-      document.body.appendChild(iframe);
+      // Strip shaded fills + letterhead for physical letterhead paper (same as previous print).
+      flushSync(() => setHideChartFills(true));
+      root.classList.add("print-strip-colors", "print-no-letterhead", "print-native");
+      document.body.classList.add("lims-report-printing");
+      await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
 
-      const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
-      if (!iframeDoc || !iframe.contentWindow) {
-        toast.error("Print failed");
-        document.body.removeChild(iframe);
-        return;
-      }
+      window.addEventListener("afterprint", onAfterPrint);
+      // Fallback if afterprint never fires (some embedded browsers)
+      window.setTimeout(() => cleanup(), 90_000);
 
-      iframeDoc.open();
-      iframeDoc.write(`
-        <html>
-          <head>
-            <style>
-              @page { size: A4; margin: 0; }
-              * { margin: 0; padding: 0; box-sizing: border-box; }
-              body { width: 210mm; }
-              .print-page { width: 210mm; height: 297mm; overflow: hidden; page-break-after: always; display: block; }
-              .print-page:last-child { page-break-after: auto; }
-              .print-page img { display: block; width: 210mm; height: 297mm; }
-            </style>
-          </head>
-          <body>
-            ${imageUrls.map(url => `<div class="print-page"><img src="${url}" /></div>`).join("")}
-          </body>
-        </html>
-      `);
-      iframeDoc.close();
+      window.print();
 
-      const images = iframeDoc.querySelectorAll(".print-page img");
-      let loadedCount = 0;
-      let opened = false;
-      const onAllLoaded = () => {
-        if (opened) return;
-        opened = true;
-        setTimeout(() => {
-          iframe.contentWindow!.focus();
-          iframe.contentWindow!.print();
-          setTimeout(() => { try { document.body.removeChild(iframe); } catch(e) {} }, 1000);
-        }, 50);
-      };
-
-      if (images.length === 0) { onAllLoaded(); }
-      else {
-        images.forEach(img => {
-          const im = img as HTMLImageElement;
-          const done = () => { loadedCount++; if (loadedCount === images.length) onAllLoaded(); };
-          if (im.complete) done();
-          else {
-            im.onload = done;
-            im.onerror = done;
-          }
-        });
+      // Stamp print_date without blocking the dialog (non-provisional only)
+      if (!isProvisional && !isPublic && registrationId) {
+        void supabase
+          .from("approved_reports")
+          .update({ print_date: new Date().toISOString() })
+          .eq("registration_id", registrationId);
       }
     } catch (err: any) {
+      cleanup();
       toast.error("Print failed: " + (err.message || "Unknown error"));
-    } finally {
-      setDownloading(false);
     }
   };
 
@@ -2453,13 +2402,75 @@ const LimsReportView = () => {
         </div>
       </div>
 
-      {/* Print styles - minimal since we use image-based printing */}
+      {/* Native print styles ? avoids multi-page JPEG capture */}
       <style>{`
         #print-container.print-no-letterhead [data-report-letterhead] {
           display: none !important;
         }
         @media print {
+          @page { size: A4; margin: 0; }
           .print\:hidden { display: none !important; }
+
+          body.lims-report-printing aside,
+          body.lims-report-printing nav,
+          body.lims-report-printing header,
+          body.lims-report-printing .print\:hidden {
+            display: none !important;
+          }
+
+          body.lims-report-printing,
+          body.lims-report-printing #root,
+          body.lims-report-printing main {
+            margin: 0 !important;
+            padding: 0 !important;
+            width: 210mm !important;
+            max-width: none !important;
+            background: white !important;
+            overflow: visible !important;
+          }
+          body.lims-report-printing main > div {
+            padding: 0 !important;
+            margin: 0 !important;
+            gap: 0 !important;
+          }
+          body.lims-report-printing .fixed,
+          body.lims-report-printing [class*="sticky"] {
+            display: none !important;
+          }
+
+          body.lims-report-printing #print-container.print-native {
+            display: block !important;
+            width: 210mm !important;
+            margin: 0 !important;
+            gap: 0 !important;
+            transform: none !important;
+          }
+
+          body.lims-report-printing #print-container.print-native > div {
+            width: 210mm !important;
+            height: 297mm !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            overflow: hidden !important;
+            page-break-after: always;
+            break-after: page;
+          }
+          body.lims-report-printing #print-container.print-native > div:last-child {
+            page-break-after: auto;
+            break-after: auto;
+          }
+
+          body.lims-report-printing #print-container.print-native [data-page] {
+            box-shadow: none !important;
+            transform: none !important;
+            width: 210mm !important;
+            height: 297mm !important;
+            min-height: 297mm !important;
+            max-height: 297mm !important;
+            overflow: hidden !important;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
         }
       `}</style>
     </div>
