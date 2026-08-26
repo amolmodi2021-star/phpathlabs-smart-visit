@@ -42,14 +42,18 @@ async function fetchPatientTestPipelineLegacy(registrationId: string): Promise<P
   if (snipErr) throw snipErr;
   if (!reg) return [];
 
+  // Prefer tube-expanded leafs once collection created tubes.
+  // Do not union billed package/combo/profile container IDs (not in public.tests).
   const leafIds = new Set<string>();
   for (const tb of tubes || []) {
     for (const id of Array.isArray(tb.test_ids) ? tb.test_ids : []) {
       if (id) leafIds.add(id);
     }
   }
-  for (const t of Array.isArray((reg as any).tests) ? (reg as any).tests : []) {
-    if (t?.test_id) leafIds.add(t.test_id);
+  if (leafIds.size === 0) {
+    for (const t of Array.isArray((reg as any).tests) ? (reg as any).tests : []) {
+      if (t?.test_id) leafIds.add(t.test_id);
+    }
   }
 
   const leafIdList = [...leafIds];
