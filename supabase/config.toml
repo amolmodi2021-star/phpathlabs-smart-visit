@@ -76,6 +76,9 @@ verify_jwt = true
 [functions.interpret-cbc-smear]
 verify_jwt = true
 
+[functions.manage-openai-settings]
+verify_jwt = true
+
 [functions.generate-loyalty-card]
 verify_jwt = true
 

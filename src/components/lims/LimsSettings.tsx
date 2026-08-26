@@ -6,6 +6,7 @@ import InvoiceDesigner from "@/components/lims/InvoiceDesigner";
 import LegacyPatientImport from "@/components/lims/LegacyPatientImport";
 import CloudinaryAccountsPanel from "@/components/lims/CloudinaryAccountsPanel";
 import HistoricalTrendsSettings from "@/components/lims/HistoricalTrendsSettings";
+import OpenAiSettingsPanel from "@/components/lims/OpenAiSettingsPanel";
 import { getLegacyImportJob, subscribeLegacyImportJob } from "@/lib/legacyImportJob";
 
 const LimsSettings = () => {
@@ -17,6 +18,7 @@ const LimsSettings = () => {
         <TabsTrigger value="pickup">Pickup Points</TabsTrigger>
         <TabsTrigger value="channels">Channels</TabsTrigger>
         <TabsTrigger value="historical_trends">Historical Trends</TabsTrigger>
+        <TabsTrigger value="openai">OpenAI</TabsTrigger>
         <TabsTrigger value="cloudinary">Cloudinary</TabsTrigger>
         <TabsTrigger value="legacy_import">Legacy Patient Import</TabsTrigger>
       </TabsList>
@@ -40,6 +42,9 @@ const LimsSettings = () => {
       </TabsContent>
       <TabsContent value="historical_trends" forceMount className="data-[state=inactive]:hidden">
         <HistoricalTrendsSettings />
+      </TabsContent>
+      <TabsContent value="openai" forceMount className="data-[state=inactive]:hidden">
+        <OpenAiSettingsPanel />
       </TabsContent>
       <TabsContent value="cloudinary" forceMount className="data-[state=inactive]:hidden">
         <div className="space-y-4">

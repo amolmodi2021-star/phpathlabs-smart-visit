@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.97.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -66,8 +67,8 @@ const toolParameters = {
   ],
 };
 
-function buildModelList(): string[] {
-  const preferred = Deno.env.get("OPENAI_CBC_MODEL") || "gpt-5.6-sol";
+function buildModelList(override?: string | null): string[] {
+  const preferred = (override && override.trim()) || Deno.env.get("OPENAI_CBC_MODEL") || "gpt-5.6-sol";
   const fallbacks = ["gpt-5.4", "gpt-4.1", "gpt-4o"];
   const seen = new Set<string>();
   const out: string[] = [];
@@ -89,12 +90,23 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
-    if (!OPENAI_API_KEY) {
-      throw new Error("Set OPENAI_API_KEY in Supabase Edge Function secrets");
-    }
-
     const body = await req.json();
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
+    const { data: secretRow } = await supabase
+      .from("ai_api_secrets")
+      .select("api_key, model_override")
+      .eq("provider", "openai")
+      .maybeSingle();
+    const OPENAI_API_KEY = String(secretRow?.api_key || Deno.env.get("OPENAI_API_KEY") || "").trim();
+    if (!OPENAI_API_KEY) {
+      throw new Error(
+        "OpenAI API key not set. Add it in LIMS ? Settings ? OpenAI, or set OPENAI_API_KEY edge secret.",
+      );
+    }
+    const settingsModel = String(secretRow?.model_override || "").trim();
     const imageUrlsRaw: string[] = Array.isArray(body?.imageUrls) ? body.imageUrls : [];
     const imageUrls = imageUrlsRaw.filter((u) => typeof u === "string" && u.trim()).slice(0, 15);
     const analyzerContext: Record<string, string> =
@@ -173,7 +185,7 @@ When the analyzer already has some values, prioritize filling the listed missing
       tool_choice: { type: "function", function: { name: TOOL_NAME } },
     };
 
-    const models = buildModelList();
+    const models = buildModelList(settingsModel);
     let lastErrorText = "";
     let usedModel = models[0];
     let data: any = null;
