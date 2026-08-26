@@ -754,29 +754,29 @@ const InvoicePreview = ({
         }
         summaryHtml += `</table>`;
         if (Number(data.paid_amount || 0) > 0) {
-          summaryHtml += `<div style="font-size:8px;margin-top:2px;color:${PALETTE.muted};line-height:1.2">Received with thanks from <strong style="color:${PALETTE.ink}">${patientDisplayName(data)}</strong> a sum of Rs. ${Number(data.paid_amount).toFixed(2)}/- (${numberToWords(Number(data.paid_amount))} Rupees)</div>`;
+          summaryHtml += `<div style="font-size:10px;margin-top:2px;color:${PALETTE.muted};line-height:1.25">Received with thanks from <strong style="color:${PALETTE.ink}">${patientDisplayName(data)}</strong> a sum of Rs. ${Number(data.paid_amount).toFixed(2)}/- (${numberToWords(Number(data.paid_amount))} Rupees)</div>`;
         }
         if (cancelledTests.length > 0) {
-          summaryHtml += `<div style="font-size:7px;color:${PALETTE.muted};margin-top:1px">Cancelled Tests: ${cancelledTests.map((ct: any) => ct.test_name || ct.test_id).join(", ")}</div>`;
+          summaryHtml += `<div style="font-size:9px;color:${PALETTE.muted};margin-top:1px">Cancelled Tests: ${cancelledTests.map((ct: any) => ct.test_name || ct.test_id).join(", ")}</div>`;
         }
         if (hvcRefund > 0) {
-          summaryHtml += `<div style="font-size:7px;color:${PALETTE.muted};margin-top:1px">Home Visit Charges Refunded: ₹${hvcRefund}</div>`;
+          summaryHtml += `<div style="font-size:9px;color:${PALETTE.muted};margin-top:1px">Home Visit Charges Refunded: ₹${hvcRefund}</div>`;
         }
         summaryHtml += `</div>`;
 
-        summaryHtml += `<div style="text-align:center;font-size:7px;color:${PALETTE.muted};margin-top:3px;line-height:1.2">`;
-        summaryHtml += `<p style="margin:0;font-weight:600;color:${PALETTE.blue}">Thank you for choosing PH PathLabs</p>`;
-        summaryHtml += `<p style="margin:1px 0 0;font-size:6px">This is an electronically generated receipt and does not require a signature</p>`;
+        summaryHtml += `<div style="text-align:center;font-size:10px;color:${PALETTE.muted};margin-top:4px;line-height:1.3">`;
+        summaryHtml += `<p style="margin:0;font-weight:700;color:${PALETTE.blue}">Thank you for choosing PH PathLabs</p>`;
+        summaryHtml += `<p style="margin:2px 0 0;font-size:9px;color:${PALETTE.muted}">This is an electronically generated receipt and does not require a signature</p>`;
         summaryHtml += `</div>`;
       }
 
       const printNow = format(new Date(), "dd-MM-yyyy hh:mm a");
       const preparedDate = format(createdAt, "dd-MM-yyyy hh:mm a");
       const currentUser = getCurrentUserName() || "—";
-      const preparedPrintedFooter = `<table style="width:100%;border-collapse:collapse;margin-top:3px;border-top:1px solid ${PALETTE.line}">
+      const preparedPrintedFooter = `<table style="width:100%;border-collapse:collapse;margin-top:4px;border-top:1px solid ${PALETTE.line}">
         <tr>
-          <td style="padding-top:2px;font-size:6px;color:${PALETTE.muted};text-align:left;border:0;line-height:1.2">Prepared by ${data.registered_by || "—"} · ${preparedDate}</td>
-          <td style="padding-top:2px;font-size:6px;color:${PALETTE.muted};text-align:right;border:0;line-height:1.2">Printed by ${currentUser} · ${printNow}</td>
+          <td style="padding-top:3px;font-size:9px;color:${PALETTE.muted};text-align:left;border:0;line-height:1.25">Prepared by ${data.registered_by || "—"} · ${preparedDate}</td>
+          <td style="padding-top:3px;font-size:9px;color:${PALETTE.muted};text-align:right;border:0;line-height:1.25">Printed by ${currentUser} · ${printNow}</td>
         </tr>
       </table>`;
 
@@ -1086,7 +1086,7 @@ const InvoicePreview = ({
               </tbody>
             </table>
             {Number(data.paid_amount || 0) > 0 && (
-              <div style={{ fontSize: 9, marginTop: 2, color: PALETTE.muted, lineHeight: 1.2 }}>
+              <div style={{ fontSize: 10, marginTop: 2, color: PALETTE.muted, lineHeight: 1.25 }}>
                 Received with thanks from <strong style={{ color: PALETTE.ink }}>{patientDisplayName(data)}</strong> a sum of Rs. {Number(data.paid_amount).toFixed(2)}/- ({numberToWords(Number(data.paid_amount))} Rupees)
               </div>
             )}
@@ -1126,12 +1126,12 @@ const InvoicePreview = ({
             )}
           </div>
 
-          <div style={{ textAlign: "center", fontSize: 8, color: PALETTE.muted, marginTop: 3, lineHeight: 1.2 }}>
-            <p style={{ margin: 0, fontWeight: 600, color: PALETTE.blue }}>Thank you for choosing PH PathLabs</p>
-            <p style={{ margin: "1px 0 0", fontSize: 7 }}>This is an electronically generated receipt and does not require a signature</p>
+          <div style={{ textAlign: "center", fontSize: 10, color: PALETTE.muted, marginTop: 4, lineHeight: 1.3 }}>
+            <p style={{ margin: 0, fontWeight: 700, color: PALETTE.blue }}>Thank you for choosing PH PathLabs</p>
+            <p style={{ margin: "2px 0 0", fontSize: 9, color: PALETTE.muted }}>This is an electronically generated receipt and does not require a signature</p>
           </div>
           <div style={{ height: 1, background: PALETTE.line, width: "100%", marginTop: 3 }} />
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 7, color: PALETTE.muted, marginTop: 2 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: PALETTE.muted, marginTop: 2, lineHeight: 1.25 }}>
             <div>Prepared by {data.registered_by || "—"} · {format(createdAt, "dd-MM-yyyy hh:mm a")}</div>
             <div>Printed by {getCurrentUserName() || "—"} · {format(new Date(), "dd-MM-yyyy hh:mm a")}</div>
           </div>
