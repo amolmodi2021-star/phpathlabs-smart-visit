@@ -148,8 +148,8 @@ serve(async (req) => {
 You receive (a) analyzer/machine CBC values already entered in Result Verification and (b) peripheral smear microscope images.
 
 RULES ? DIFFERENTIAL COUNT (DC %):
-1) Always return Neutrophils %, Lymphocytes %, Monocytes %, Eosinophils %, Basophils % as number strings.
-2) The five DC percentages MUST sum to exactly 100.
+1) Always return Neutrophils %, Lymphocytes %, Monocytes %, Eosinophils %, Basophils % as WHOLE number strings (no decimals). Round UP to the next integer if needed.
+2) The five DC percentages MUST sum to exactly 100 (integer total).
 3) If analyzer context already has Neutrophils and/or Lymphocytes, KEEP those machine values. Do not replace them from images.
 4) Only estimate from smear images the DC cells that are missing/empty in analyzer context (commonly Monocytes / Eosinophils / Basophils; sometimes Neutrophils or Lymphocytes when machine did not send them).
 5) After keeping machine values and filling missing ones, adjust the estimated cells so the total is exactly 100. Do not change kept machine Neutrophils/Lymphocytes unless that makes an exact 100 impossible ? then adjust only the estimated cells.
@@ -184,7 +184,7 @@ Prioritize filling missing/empty fields listed by the lab; keep existing analyze
       "Instructions:",
       "- Keep any Neutrophils/Lymphocytes (and other DC values) already present in analyzer context.",
       "- Use smear images mainly for missing DC cells, morphology (+/++ adjustments allowed on lab options), and malaria.",
-      "- DC % must total exactly 100. Basophils usually 0 unless smear shows otherwise.",
+      "- DC % must be whole numbers (no decimals) and total exactly 100. Basophils usually 0 unless smear shows otherwise.",
       missingFields.length
         ? `Missing / empty fields to prioritize: ${missingFields.join(", ")}`
         : "Analyzer already has most fields ? refine morphology/MP and only fill gaps; keep existing DC machine values.",

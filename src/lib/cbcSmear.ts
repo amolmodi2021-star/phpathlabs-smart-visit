@@ -162,6 +162,7 @@ export function normalizeDifferentialDraft(
     "basophils_pct",
   ] as const;
   const keep = new Set(keepFields);
+
   const nums = keys.map((k) => {
     const raw = String(draft[k] ?? "").trim();
     const m = raw.match(/-?\d+(\.\d+)?/);
@@ -169,57 +170,59 @@ export function normalizeDifferentialDraft(
   });
   if (nums.some((n) => !Number.isFinite(n))) return draft;
 
+  // Whole numbers only ? round UP (ceil), then fix so sum is exactly 100
+  const ints = nums.map((n) => Math.max(0, Math.ceil(n)));
   const next = { ...draft };
   keys.forEach((k, i) => {
-    next[k] = String(Math.round(nums[i] * 10) / 10);
+    next[k] = String(ints[i]);
   });
 
-  let sum = nums.reduce((a, b) => a + b, 0);
-  const rounded = Math.round(sum * 100) / 100;
-  if (Math.abs(100 - rounded) < 0.001) return next;
+  let sum = ints.reduce((a, b) => a + b, 0);
+  if (sum === 100) return next;
 
-  // Prefer adjusting only unlocked fields so machine Neutrophils/Lymphocytes stay fixed
   const adjustableIdx = keys
     .map((k, i) => i)
     .filter((i) => !keep.has(keys[i]));
-  if (adjustableIdx.length > 0) {
-    const lockedSum = keys.reduce(
-      (acc, k, i) => acc + (keep.has(k) ? nums[i] : 0),
-      0,
-    );
-    const targetAdj = 100 - lockedSum;
-    const adjSum = adjustableIdx.reduce((acc, i) => acc + nums[i], 0);
-    if (adjSum > 0 && targetAdj >= 0) {
-      const scale = targetAdj / adjSum;
-      let running = 0;
-      adjustableIdx.forEach((i, pos) => {
-        if (pos === adjustableIdx.length - 1) {
-          const last = Math.round((targetAdj - running) * 10) / 10;
-          next[keys[i]] = String(Math.max(0, last));
-        } else {
-          const v = Math.round(nums[i] * scale * 10) / 10;
-          next[keys[i]] = String(Math.max(0, v));
-          running += v;
-        }
-      });
-      return next;
+  // Prefer adjusting monocytes ? eosinophils ? basophils ? lymphocytes ? neutrophils
+  const preferOrder = ["monocytes_pct", "eosinophils_pct", "basophils_pct", "lymphocytes_pct", "neutrophils_pct"];
+  const rank = (i: number) => {
+    const pos = preferOrder.indexOf(keys[i]);
+    return pos >= 0 ? pos : 99;
+  };
+  const pool = (adjustableIdx.length > 0 ? adjustableIdx : keys.map((_, i) => i)).slice().sort((a, b) => rank(a) - rank(b));
+
+  // Too high after ceil: decrement preferred adjustable cells (not below 0)
+  let guard = 0;
+  while (sum > 100 && guard++ < 50) {
+    let changed = false;
+    for (const i of pool) {
+      const cur = parseInt(String(next[keys[i]]), 10) || 0;
+      if (cur <= 0) continue;
+      // Do not reduce locked machine fields unless no other choice (pool already prefers unlocked)
+      if (keep.has(keys[i]) && adjustableIdx.length > 0) continue;
+      next[keys[i]] = String(cur - 1);
+      sum -= 1;
+      changed = true;
+      break;
     }
+    if (!changed) break;
   }
 
-  // Fallback: scale all five to 100
-  if (sum > 0) {
-    const scale = 100 / sum;
-    let running = 0;
-    keys.forEach((k, i) => {
-      if (i === keys.length - 1) {
-        next[k] = String(Math.round((100 - running) * 10) / 10);
-      } else {
-        const v = Math.round(nums[i] * scale * 10) / 10;
-        next[k] = String(v);
-        running += v;
-      }
-    });
+  // Too low: increment preferred adjustable cells
+  guard = 0;
+  while (sum < 100 && guard++ < 50) {
+    let changed = false;
+    for (const i of pool) {
+      if (keep.has(keys[i]) && adjustableIdx.length > 0) continue;
+      const cur = parseInt(String(next[keys[i]]), 10) || 0;
+      next[keys[i]] = String(cur + 1);
+      sum += 1;
+      changed = true;
+      break;
+    }
+    if (!changed) break;
   }
+
   return next;
 }
 
