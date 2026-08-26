@@ -369,6 +369,27 @@ const CbcTab = () => {
     return missing;
   }, [paramByCode, testResults]);
 
+
+  /** DC values already present in verification ? lock these after AI returns */
+  const machineDcLocked = useMemo(() => {
+    const out: Partial<CbcAiDraft> = {};
+    const map: Array<[keyof CbcAiDraft, string]> = [
+      ["neutrophils_pct", "PRM0090"],
+      ["lymphocytes_pct", "PRM0080"],
+      ["monocytes_pct", "PRM0086"],
+      ["eosinophils_pct", "PRM0048"],
+      ["basophils_pct", "PRM0019"],
+    ];
+    for (const [field, code] of map) {
+      const meta = paramByCode[code];
+      if (!meta) continue;
+      const row = testResults.find((r) => r.parameter_id === meta.parameterId);
+      const val = String(row?.result_value ?? "").trim();
+      if (val) out[field] = val;
+    }
+    return out;
+  }, [paramByCode, testResults]);
+
   const imageUrls = review?.image_urls || [];
   const remainingSlots = Math.max(0, CBC_MAX_IMAGES - imageUrls.length);
 
@@ -476,7 +497,16 @@ const CbcTab = () => {
       if (data?.error) throw new Error(data.error);
 
       const { model_used, ...aiFields } = data as CbcAiDraft & { model_used?: string };
-      const normalized = scrubCriticalOnlyDraftFields(normalizeDifferentialDraft(aiFields));
+      const merged: CbcAiDraft = {
+        ...aiFields,
+        ...machineDcLocked, // machine Neutrophils/Lymphocytes (etc.) win over AI
+      };
+      // If basophils empty and machine didn't send, default 0 (lab habit) then normalize to 100
+      if (!String(merged.basophils_pct ?? "").trim() && !machineDcLocked.basophils_pct) {
+        merged.basophils_pct = "0";
+      }
+      const keep = Object.keys(machineDcLocked) as Array<keyof CbcAiDraft>;
+      const normalized = scrubCriticalOnlyDraftFields(normalizeDifferentialDraft(merged, keep));
       const { error: updErr } = await supabase
         .from("cbc_smear_reviews")
         .update({
@@ -525,7 +555,8 @@ const CbcTab = () => {
     }
     setBusy("approve");
     try {
-      const finalDraft = scrubCriticalOnlyDraftFields(normalizeDifferentialDraft(draft));
+      const keep = Object.keys(machineDcLocked) as Array<keyof CbcAiDraft>;
+      const finalDraft = scrubCriticalOnlyDraftFields(normalizeDifferentialDraft(draft, keep));
       await applyCbcDraftToVerification({
         registrationId: expandedId,
         testId: selectedTestId,

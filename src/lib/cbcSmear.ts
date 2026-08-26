@@ -150,7 +150,10 @@ export function scrubCriticalOnlyDraftFields(draft: CbcAiDraft): CbcAiDraft {
   return next;
 }
 
-export function normalizeDifferentialDraft(draft: CbcAiDraft): CbcAiDraft {
+export function normalizeDifferentialDraft(
+  draft: CbcAiDraft,
+  keepFields: Array<keyof CbcAiDraft> = [],
+): CbcAiDraft {
   const keys = [
     "neutrophils_pct",
     "lymphocytes_pct",
@@ -158,33 +161,66 @@ export function normalizeDifferentialDraft(draft: CbcAiDraft): CbcAiDraft {
     "eosinophils_pct",
     "basophils_pct",
   ] as const;
+  const keep = new Set(keepFields);
   const nums = keys.map((k) => {
     const raw = String(draft[k] ?? "").trim();
     const m = raw.match(/-?\d+(\.\d+)?/);
     return m ? parseFloat(m[0]) : NaN;
   });
   if (nums.some((n) => !Number.isFinite(n))) return draft;
-  const sum = nums.reduce((a, b) => a + b, 0);
-  if (sum <= 0) return draft;
-  const check = checkDifferentialSum(
-    keys.map((k, i) => ({ paramCode: CBC_DRAFT_TO_CODE[k], value: nums[i] })),
-  );
-  if (check.isOk) {
-    const next = { ...draft };
-    keys.forEach((k, i) => {
-      next[k] = String(Math.round(nums[i] * 10) / 10);
-    });
-    return next;
+
+  const next = { ...draft };
+  keys.forEach((k, i) => {
+    next[k] = String(Math.round(nums[i] * 10) / 10);
+  });
+
+  let sum = nums.reduce((a, b) => a + b, 0);
+  const rounded = Math.round(sum * 100) / 100;
+  if (Math.abs(100 - rounded) < 0.001) return next;
+
+  // Prefer adjusting only unlocked fields so machine Neutrophils/Lymphocytes stay fixed
+  const adjustableIdx = keys
+    .map((k, i) => i)
+    .filter((i) => !keep.has(keys[i]));
+  if (adjustableIdx.length > 0) {
+    const lockedSum = keys.reduce(
+      (acc, k, i) => acc + (keep.has(k) ? nums[i] : 0),
+      0,
+    );
+    const targetAdj = 100 - lockedSum;
+    const adjSum = adjustableIdx.reduce((acc, i) => acc + nums[i], 0);
+    if (adjSum > 0 && targetAdj >= 0) {
+      const scale = targetAdj / adjSum;
+      let running = 0;
+      adjustableIdx.forEach((i, pos) => {
+        if (pos === adjustableIdx.length - 1) {
+          const last = Math.round((targetAdj - running) * 10) / 10;
+          next[keys[i]] = String(Math.max(0, last));
+        } else {
+          const v = Math.round(nums[i] * scale * 10) / 10;
+          next[keys[i]] = String(Math.max(0, v));
+          running += v;
+        }
+      });
+      return next;
+    }
   }
-  if (Math.abs(check.diff) <= 5) {
+
+  // Fallback: scale all five to 100
+  if (sum > 0) {
     const scale = 100 / sum;
-    const next = { ...draft };
+    let running = 0;
     keys.forEach((k, i) => {
-      next[k] = String(Math.round(nums[i] * scale * 10) / 10);
+      if (i === keys.length - 1) {
+        next[k] = String(Math.round((100 - running) * 10) / 10);
+      } else {
+        const v = Math.round(nums[i] * scale * 10) / 10;
+        next[k] = String(v);
+        running += v;
+      }
     });
-    return next;
   }
-  return draft;
+  return next;
 }
 
 export async function applyCbcDraftToVerification(input: {

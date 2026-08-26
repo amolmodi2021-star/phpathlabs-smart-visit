@@ -127,19 +127,30 @@ serve(async (req) => {
       .map(([k, v]) => `${k}: ${v}`)
       .join("\n");
 
-    const systemPrompt = `You are an expert hematology peripheral smear reviewer assisting a laboratory technologist.
-Use the analyzer CBC values provided as context when interpreting the smear images.
-Focus on:
-1) Manual differential count (%) from the smear images (neutrophils, lymphocytes, monocytes, eosinophils, basophils) - ALWAYS return these five as number strings that sum to ~100. Monocytes % is part of the routine differential (not optional).
-2) WBC / RBC / platelet morphology - prefer the lab's descriptive option lists when provided
-3) Malarial parasites - prefer "Not detected" or "Detected", or the closest option from the MP list
-4) CRITICAL-ONLY fields ? Blasts, Promyelocytes, Myelocytes, Metamyelocyte, Band Cells, Normoblast:
-   - For routine / non-critical smears you MUST return empty strings for ALL of these.
-   - Do NOT invent "0", "Nil", "Not seen", or "Adequate" for them ? use "".
-   - Populate ONLY when the case is critical (e.g. clear blasts, significant left shift with myelocytes/metamyelocytes/bands, or definite normoblasts/nRBCs).
+    const systemPrompt = `You are an expert hematology peripheral smear reviewer assisting a laboratory technologist at PH PathLabs.
+You receive (a) analyzer/machine CBC values already entered in Result Verification and (b) peripheral smear microscope images.
 
-This is an assistive draft only - not a final pathologist sign-out. Be concise in notes.
-When the analyzer already has some values, prioritize filling the listed missing fields from the smear ? but never force critical-only immature fields on a routine smear.`;
+RULES ? DIFFERENTIAL COUNT (DC %):
+1) Always return Neutrophils %, Lymphocytes %, Monocytes %, Eosinophils %, Basophils % as number strings.
+2) The five DC percentages MUST sum to exactly 100.
+3) If analyzer context already has Neutrophils and/or Lymphocytes, KEEP those machine values. Do not replace them from images.
+4) Only estimate from smear images the DC cells that are missing/empty in analyzer context (commonly Monocytes / Eosinophils / Basophils; sometimes Neutrophils or Lymphocytes when machine did not send them).
+5) After keeping machine values and filling missing ones, adjust the estimated cells so the total is exactly 100. Do not change kept machine Neutrophils/Lymphocytes unless that makes an exact 100 impossible ? then adjust only the estimated cells.
+6) Basophils are usually 0 on most reports. Default Basophils to 0 unless the smear clearly shows basophils.
+
+RULES ? MORPHOLOGY (lab style):
+1) You MUST base wording on the lab morphology option lists provided (WBC / RBC / Platelet).
+2) Prefer an exact option from the list. You MAY only adjust severity markers like +, ++, +++ (e.g. Hypochromia+ ? Hypochromia++) when the smear warrants it ? same style as this lab uses.
+3) Do NOT invent a completely different free-text morphology style. Stay close to the lab's phrasing.
+4) Malarial parasites: prefer "Not detected" or "Detected", or the closest option from the MP list.
+
+RULES ? CRITICAL-ONLY (Blasts, Promyelocytes, Myelocytes, Metamyelocyte, Band Cells, Normoblast):
+- For routine / non-critical smears return empty strings for ALL of these.
+- Do NOT invent "0", "Nil", "Not seen", or "Adequate" ? use "".
+- Populate ONLY when the case is critical (clear blasts, significant left shift, definite normoblasts/nRBCs).
+
+This is an assistive draft for the tech to review/approve ? not a final sign-out. Be concise in notes.
+Prioritize filling missing/empty fields listed by the lab; keep existing analyzer values.`;
 
     const userText = [
       "Interpret these peripheral smear microscope images for CBC differential, morphology, and malaria parasites.",
@@ -147,15 +158,19 @@ When the analyzer already has some values, prioritize filling the listed missing
       "Analyzer CBC context:",
       analyzerLines || "(none provided)",
       "",
-      "Lab morphology options (prefer these wording when possible):",
+      "Lab morphology options (MUST stay in this style; only +/++/+++ may change):",
       `WBC: ${JSON.stringify(morphologyOptions.wbc)}`,
       `RBC: ${JSON.stringify(morphologyOptions.rbc)}`,
       `Platelet: ${JSON.stringify(morphologyOptions.platelet)}`,
       `MP: ${JSON.stringify(morphologyOptions.mp)}`,
       "",
+      "Instructions:",
+      "- Keep any Neutrophils/Lymphocytes (and other DC values) already present in analyzer context.",
+      "- Use smear images mainly for missing DC cells, morphology (+/++ adjustments allowed on lab options), and malaria.",
+      "- DC % must total exactly 100. Basophils usually 0 unless smear shows otherwise.",
       missingFields.length
         ? `Missing / empty fields to prioritize: ${missingFields.join(", ")}`
-        : "Fill all target CBC smear fields.",
+        : "Analyzer already has most fields ? refine morphology/MP and only fill gaps; keep existing DC machine values.",
     ].join("\n");
 
     const content: Array<Record<string, unknown>> = [
