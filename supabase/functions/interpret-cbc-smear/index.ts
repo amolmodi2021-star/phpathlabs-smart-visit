@@ -35,12 +35,12 @@ const toolParameters = {
       type: "string",
       description: 'Prefer "Not detected" or "Detected", or closest option from MP list',
     },
-    blasts: { type: "string", description: "Blasts if seen; empty string if none" },
-    promyelocytes: { type: "string", description: "Promyelocytes if seen; empty if none" },
-    myelocytes: { type: "string", description: "Myelocytes if seen; empty if none" },
-    metamyelocyte: { type: "string", description: "Metamyelocytes if seen; empty if none" },
-    band_cells: { type: "string", description: "Band cells if relevant; empty if none" },
-    normoblast: { type: "string", description: "Normoblasts / nRBCs if seen; empty if none" },
+    blasts: { type: "string", description: "CRITICAL ONLY. Leave empty string for routine smears. Fill only if blasts are clearly present in a critical case." },
+    promyelocytes: { type: "string", description: "CRITICAL ONLY. Empty unless clearly present in a critical case." },
+    myelocytes: { type: "string", description: "CRITICAL ONLY. Empty unless clearly present in a critical case." },
+    metamyelocyte: { type: "string", description: "CRITICAL ONLY. Empty unless clearly present in a critical case." },
+    band_cells: { type: "string", description: "CRITICAL ONLY. Empty for routine smears; fill only for significant left shift / critical case." },
+    normoblast: { type: "string", description: "CRITICAL ONLY. Empty unless nRBCs/normoblasts clearly present in a critical case." },
     confidence: {
       type: "string",
       enum: ["high", "medium", "low"],
@@ -118,13 +118,16 @@ serve(async (req) => {
     const systemPrompt = `You are an expert hematology peripheral smear reviewer assisting a laboratory technologist.
 Use the analyzer CBC values provided as context when interpreting the smear images.
 Focus on:
-1) Manual differential count (%) from the smear images (neutrophils, lymphocytes, monocytes, eosinophils, basophils) - numbers as strings that sum to ~100
+1) Manual differential count (%) from the smear images (neutrophils, lymphocytes, monocytes, eosinophils, basophils) - ALWAYS return these five as number strings that sum to ~100. Monocytes % is part of the routine differential (not optional).
 2) WBC / RBC / platelet morphology - prefer the lab's descriptive option lists when provided
 3) Malarial parasites - prefer "Not detected" or "Detected", or the closest option from the MP list
-4) Immature cells (blasts, promyelocytes, myelocytes, metamyelocytes, band cells, normoblasts) only if clearly present; otherwise empty string
+4) CRITICAL-ONLY fields ? Blasts, Promyelocytes, Myelocytes, Metamyelocyte, Band Cells, Normoblast:
+   - For routine / non-critical smears you MUST return empty strings for ALL of these.
+   - Do NOT invent "0", "Nil", "Not seen", or "Adequate" for them ? use "".
+   - Populate ONLY when the case is critical (e.g. clear blasts, significant left shift with myelocytes/metamyelocytes/bands, or definite normoblasts/nRBCs).
 
 This is an assistive draft only - not a final pathologist sign-out. Be concise in notes.
-When the analyzer already has some values, prioritize filling the listed missing fields from the smear.`;
+When the analyzer already has some values, prioritize filling the listed missing fields from the smear ? but never force critical-only immature fields on a routine smear.`;
 
     const userText = [
       "Interpret these peripheral smear microscope images for CBC differential, morphology, and malaria parasites.",

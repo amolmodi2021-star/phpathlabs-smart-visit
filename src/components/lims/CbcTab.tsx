@@ -37,6 +37,8 @@ import { checkDifferentialSum } from "@/lib/differentialCount";
 import { propagateRegistrationChange } from "@/lib/limsPropagation";
 import {
   CBC_AI_TARGET_CODES,
+  CBC_CRITICAL_ONLY_DRAFT_KEYS,
+  CBC_CRITICAL_ONLY_PARAM_CODES,
   CBC_DRAFT_TO_CODE,
   CBC_MAX_IMAGES,
   CBC_MIN_IMAGES_RECOMMENDED,
@@ -46,6 +48,7 @@ import {
   compressImageForCbcAi,
   isCbcLikeTest,
   normalizeDifferentialDraft,
+  scrubCriticalOnlyDraftFields,
   uploadCbcSmearImage,
   type CbcAiDraft,
 } from "@/lib/cbcSmear";
@@ -112,6 +115,8 @@ const DRAFT_EXTRA_FIELDS = [
   { key: "normoblast" as const, label: "Normoblast" },
 ];
 
+const CRITICAL_ONLY_CODE_SET = new Set<string>(CBC_CRITICAL_ONLY_PARAM_CODES as readonly string[]);
+
 function asUrlList(raw: unknown): string[] {
   if (!Array.isArray(raw)) return [];
   return raw.filter((u): u is string => typeof u === "string" && !!u.trim());
@@ -127,6 +132,7 @@ const CbcTab = () => {
   const [draft, setDraft] = useState<CbcAiDraft>({});
   const [cameraOpen, setCameraOpen] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
+  const [showCriticalFields, setShowCriticalFields] = useState(false);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search.trim()), 350);
@@ -317,7 +323,11 @@ const CbcTab = () => {
       return;
     }
     const src = (review.draft_result || review.ai_result || {}) as CbcAiDraft;
-    setDraft({ ...src });
+    setDraft(scrubCriticalOnlyDraftFields({ ...src }));
+    const hasCritical = CBC_CRITICAL_ONLY_DRAFT_KEYS.some(
+      (k) => String((src as CbcAiDraft)[k] ?? "").trim(),
+    );
+    setShowCriticalFields(hasCritical);
   }, [review?.id, review?.updated_at, review?.draft_result, review?.ai_result]);
 
   const testResults = useMemo(
@@ -349,6 +359,8 @@ const CbcTab = () => {
   const missingFields = useMemo(() => {
     const missing: string[] = [];
     for (const code of CBC_AI_TARGET_CODES) {
+      // Do not push AI to invent critical-only immature cells on routine cases
+      if (CRITICAL_ONLY_CODE_SET.has(code)) continue;
       const meta = paramByCode[code];
       if (!meta) continue;
       const row = testResults.find((r) => r.parameter_id === meta.parameterId);
@@ -464,7 +476,7 @@ const CbcTab = () => {
       if (data?.error) throw new Error(data.error);
 
       const { model_used, ...aiFields } = data as CbcAiDraft & { model_used?: string };
-      const normalized = normalizeDifferentialDraft(aiFields);
+      const normalized = scrubCriticalOnlyDraftFields(normalizeDifferentialDraft(aiFields));
       const { error: updErr } = await supabase
         .from("cbc_smear_reviews")
         .update({
@@ -513,7 +525,7 @@ const CbcTab = () => {
     }
     setBusy("approve");
     try {
-      const finalDraft = normalizeDifferentialDraft(draft);
+      const finalDraft = scrubCriticalOnlyDraftFields(normalizeDifferentialDraft(draft));
       await applyCbcDraftToVerification({
         registrationId: expandedId,
         testId: selectedTestId,
@@ -532,7 +544,7 @@ const CbcTab = () => {
         .eq("id", review.id);
       if (error) throw error;
       await propagateRegistrationChange(qc, expandedId, ["verification", "cbc"]);
-      toast.success("CBC smear approved — sent to Result Verification");
+      toast.success("CBC smear approved ? sent to Result Verification");
       await qc.invalidateQueries({ queryKey: ["cbc_candidate_ids"] });
       await qc.invalidateQueries({ queryKey: ["cbc_review", expandedId, selectedTestId] });
     } catch (e: any) {
@@ -849,18 +861,48 @@ const CbcTab = () => {
                                 </label>
                               </div>
 
-                              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                                {DRAFT_EXTRA_FIELDS.map((f) => (
-                                  <label key={f.key} className="text-xs space-y-1">
-                                    <span className="text-muted-foreground">{f.label}</span>
-                                    <Input
-                                      value={draft[f.key] ?? ""}
-                                      onChange={(e) =>
-                                        void saveDraftLocal({ ...draft, [f.key]: e.target.value })
-                                      }
-                                    />
-                                  </label>
-                                ))}
+                              <div className="rounded border border-dashed p-2 space-y-2">
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="text-[11px] text-muted-foreground leading-snug">
+                                    Critical only (Blasts, Promyelocytes, Myelocytes, Metamyelocyte, Band cells, Normoblast) ? leave blank unless the case is critical.
+                                  </div>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-7 shrink-0 text-xs"
+                                    onClick={() => setShowCriticalFields((v) => !v)}
+                                  >
+                                    {showCriticalFields ||
+                                    CBC_CRITICAL_ONLY_DRAFT_KEYS.some((k) =>
+                                      String(draft[k] ?? "").trim(),
+                                    )
+                                      ? "Hide"
+                                      : "Show"}
+                                  </Button>
+                                </div>
+                                {(showCriticalFields ||
+                                  CBC_CRITICAL_ONLY_DRAFT_KEYS.some((k) =>
+                                    String(draft[k] ?? "").trim(),
+                                  )) && (
+                                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                                    {DRAFT_EXTRA_FIELDS.map((f) => (
+                                      <label key={f.key} className="text-xs space-y-1">
+                                        <span className="text-muted-foreground">{f.label}</span>
+                                        <Input
+                                          value={draft[f.key] ?? ""}
+                                          placeholder="Blank if not critical"
+                                          onChange={(e) =>
+                                            void saveDraftLocal({
+                                              ...draft,
+                                              [f.key]: e.target.value,
+                                            })
+                                          }
+                                        />
+                                      </label>
+                                    ))}
+                                  </div>
+                                )}
                               </div>
 
                               {draft.notes && (

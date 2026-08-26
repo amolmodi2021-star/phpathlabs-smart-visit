@@ -18,6 +18,26 @@ export const CBC_MORPHOLOGY_PARAM_CODES = [
 
 export const CBC_MP_PARAM_CODE = "PRM0082";
 
+/** Immature cells ? leave blank unless case is critical */
+export const CBC_CRITICAL_ONLY_PARAM_CODES = [
+  "PRM0331", // Blasts
+  "PRM0332", // Promyelocytes
+  "PRM0333", // Myelocytes
+  "PRM0334", // Metamyelocyte
+  "PRM0335", // Band Cells
+  "PRM0336", // Normoblast
+] as const;
+
+export const CBC_CRITICAL_ONLY_DRAFT_KEYS = [
+  "blasts",
+  "promyelocytes",
+  "myelocytes",
+  "metamyelocyte",
+  "band_cells",
+  "normoblast",
+] as const;
+
+
 export const CBC_AI_TARGET_CODES = [
   ...CBC_DC_PARAM_CODES,
   ...CBC_MORPHOLOGY_PARAM_CODES,
@@ -111,6 +131,23 @@ export async function uploadCbcSmearImage(
   if (error) throw error;
   const { data } = supabase.storage.from(CBC_SMEARS_BUCKET).getPublicUrl(path);
   return data.publicUrl;
+}
+
+
+const CRITICAL_EMPTY_TOKENS = new Set(
+  ["", "0", "0.0", "-", "nil", "none", "n/a", "na", "not seen", "absent", "adequate", "nad"],
+);
+
+/** Clear non-critical filler values from immature-cell draft fields. */
+export function scrubCriticalOnlyDraftFields(draft: CbcAiDraft): CbcAiDraft {
+  const next = { ...draft };
+  for (const key of CBC_CRITICAL_ONLY_DRAFT_KEYS) {
+    const raw = String(next[key] ?? "").trim();
+    if (!raw || CRITICAL_EMPTY_TOKENS.has(raw.toLowerCase())) {
+      next[key] = "";
+    }
+  }
+  return next;
 }
 
 export function normalizeDifferentialDraft(draft: CbcAiDraft): CbcAiDraft {
