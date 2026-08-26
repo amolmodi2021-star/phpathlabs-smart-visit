@@ -795,14 +795,16 @@ const InvoicePreview = ({
       <html><head><title>Invoice ${data.invoice_number}</title>
       <link rel="stylesheet" href="${INVOICE_FONT_CSS_HREF}" />
       <style>
-        @page { size: A5; margin: 5mm; }
+        /* Side margins ≥12mm: preview can look fine at 5mm, but most printers clip
+           the outer ~5–10mm (hardware non-printable area) on left/right. */
+        @page { size: A5; margin: 8mm 12mm; }
         * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; box-sizing: border-box; }
         html, body { margin: 0; padding: 0; }
         body { font-family: ${INVOICE_FONT}; color: ${PALETTE.ink}; }
-        /* A5 printable area (210mm - 10mm margins). Clip so scale never creates page 2. */
+        /* A5 148×210mm − @page margins → 124×194mm. Clip so scale never creates page 2. */
         #invoice-page {
-          width: 138mm;
-          height: 200mm;
+          width: 124mm;
+          height: 194mm;
           overflow: hidden;
           margin: 0 auto;
           page-break-after: avoid;
@@ -811,6 +813,7 @@ const InvoicePreview = ({
         #invoice-sheet {
           width: 100%;
           transform-origin: top left;
+          padding: 0 1mm;
         }
         table { width: 100%; border-collapse: collapse; }
         td, th { vertical-align: middle; }
@@ -826,7 +829,7 @@ const InvoicePreview = ({
             if (!page || !sheet) return;
             sheet.style.transform = "none";
             sheet.style.width = "100%";
-            var maxH = page.clientHeight || Math.round((200 / 25.4) * 96);
+            var maxH = page.clientHeight || Math.round((194 / 25.4) * 96);
             var h = sheet.scrollHeight;
             var scale = h > maxH ? Math.max(0.38, maxH / h) : 1;
             if (scale < 1) {
