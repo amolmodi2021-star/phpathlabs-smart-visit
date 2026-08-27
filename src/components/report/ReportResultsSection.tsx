@@ -147,18 +147,33 @@ const ParamRow = ({ r, rowKey, compact, isMorph, showFlagText, rowFontSize, colC
   const displayResult = isCanonicalTimeValue(r.result_value) ? formatTimeResult(r.result_value) : r.result_value;
 
   return (
-    <tr key={rowKey} className={`border-b border-gray-100 ${isAbnormal ? 'bg-red-50 print:bg-transparent' : ''}`} style={{ fontSize: rowFontSize }}>
-      <td className={`px-3 ${nameWeight} ${py}`}>
+    <tr
+      key={rowKey}
+      data-abnormal={isAbnormal ? "1" : undefined}
+      className={`border-b border-gray-100 ${isAbnormal ? 'bg-red-50 print:bg-transparent' : ''}`}
+      style={{ fontSize: rowFontSize }}
+    >
+      <td
+        className={`px-3 ${nameWeight} ${py}`}
+        style={isAbnormal ? { fontWeight: 700 } : undefined}
+      >
         {r.parameter_name}
         {r.parameter_description && (
-          <div className="italic text-gray-500 leading-tight font-normal" style={{ fontSize: '0.75em', marginTop: '1px' }}>
+          <div className="italic text-gray-500 leading-tight font-normal" style={{ fontSize: '0.75em', marginTop: '1px', fontWeight: 400 }}>
             {r.parameter_description}
           </div>
         )}
       </td>
       {!showFlagText && (
         <td className={`text-right ${py}`} style={{ width: '24px' }}>
-          {showFlagBadge(r.flag) && <span className="flag-badge inline-flex items-center justify-center min-w-[18px] h-[18px] rounded bg-red-600 text-white text-xs leading-none font-bold">{r.flag}</span>}
+          {showFlagBadge(r.flag) && (
+            <span
+              className="flag-badge inline-flex items-center justify-center min-w-[18px] h-[18px] rounded bg-red-600 text-white text-xs leading-none font-bold"
+              style={{ fontWeight: 700 }}
+            >
+              {r.flag}
+            </span>
+          )}
         </td>
       )}
       {widenResult ? (
@@ -166,13 +181,21 @@ const ParamRow = ({ r, rowKey, compact, isMorph, showFlagText, rowFontSize, colC
           <td
             colSpan={rightSpan}
             className={`text-left px-2 ${resultWeight || 'text-gray-800'} ${py}`}
-            style={{ wordBreak: 'normal', overflowWrap: 'anywhere', whiteSpace: 'normal' }}
+            style={{
+              wordBreak: 'normal',
+              overflowWrap: 'anywhere',
+              whiteSpace: 'normal',
+              ...(isAbnormal ? { fontWeight: 700 } : {}),
+            }}
           >
             {displayResult}
           </td>
           {showBadge && (
             <td className={`text-center ${py}`}>
-              <span className={`font-bold ${r.flag === "H" || r.flag === "High" ? "text-red-600" : "text-blue-600"}`}>
+              <span
+                className={`font-bold ${r.flag === "H" || r.flag === "High" ? "text-red-600" : "text-blue-600"}`}
+                style={{ fontWeight: 700 }}
+              >
                 {r.flag === "H" ? "HIGH" : r.flag === "L" ? "LOW" : r.flag}
               </span>
             </td>
@@ -180,10 +203,16 @@ const ParamRow = ({ r, rowKey, compact, isMorph, showFlagText, rowFontSize, colC
         </>
       ) : (
         <>
-          <td className={`text-center ${resultWeight} ${py}`}>
+          <td
+            className={`text-center ${resultWeight} ${py}`}
+            style={isAbnormal ? { fontWeight: 700 } : undefined}
+          >
             {displayResult}
           </td>
-          <td className={`text-left px-2 text-gray-600 ${rangeWeight} ${py}`} style={{ whiteSpace: "pre-wrap" }}>
+          <td
+            className={`text-left px-2 text-gray-600 ${rangeWeight} ${py}`}
+            style={{ whiteSpace: "pre-wrap", ...(isAbnormal ? { fontWeight: 700 } : {}) }}
+          >
             {(() => {
               const rawText = r.normal_range_text != null ? String(r.normal_range_text) : "";
               // Emptiness check may trim; displayed value must keep leading/trailing/extra spaces.
@@ -200,7 +229,10 @@ const ParamRow = ({ r, rowKey, compact, isMorph, showFlagText, rowFontSize, colC
           {showFlagText && (
             <td className={`text-center ${py}`}>
               {showFlagBadge(r.flag) && (
-                <span className={`font-bold ${r.flag === "H" || r.flag === "High" ? "text-red-600" : "text-blue-600"}`}>
+                <span
+                  className={`font-bold ${r.flag === "H" || r.flag === "High" ? "text-red-600" : "text-blue-600"}`}
+                  style={{ fontWeight: 700 }}
+                >
                   {r.flag === "H" ? "HIGH" : r.flag === "L" ? "LOW" : r.flag}
                 </span>
               )}

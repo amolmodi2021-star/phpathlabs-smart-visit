@@ -133,6 +133,25 @@ input[type="number"] {
   background: transparent !important;
   color: black !important;
 }
+/* Keep H/L abnormal rows bold + red in print (native Print was flattening them). */
+.print-strip-colors [data-abnormal="1"] > td,
+.print-strip-colors [data-abnormal="1"] > td > span:not(.italic) {
+  font-weight: 700 !important;
+  color: #b91c1c !important; /* red-700 — remains readable on B&W and color printers */
+}
+.print-strip-colors [data-abnormal="1"] .italic,
+.print-strip-colors [data-abnormal="1"] .font-normal {
+  font-weight: 400 !important;
+  color: #4b5563 !important;
+}
+.print-strip-colors .flag-badge {
+  font-weight: 700 !important;
+  color: #000 !important;
+  border: 1px solid #000 !important;
+  background: transparent !important;
+  -webkit-print-color-adjust: exact !important;
+  print-color-adjust: exact !important;
+}
 /* CBC histogram fills (display:none). Trend bands are unmounted via React
    hideRefFill — never removeChild React SVG or charts go blank. */
 .print-strip-colors .hist-fill,

@@ -2540,6 +2540,23 @@ const LimsReportView = () => {
             -webkit-print-color-adjust: exact;
             print-color-adjust: exact;
           }
+
+          /* Reinforce H/L bold in native print (some drivers ignore Tailwind font-bold). */
+          body.lims-report-printing #print-container [data-abnormal="1"] > td {
+            font-weight: 700 !important;
+            color: #b91c1c !important;
+          }
+          body.lims-report-printing #print-container [data-abnormal="1"] .italic,
+          body.lims-report-printing #print-container [data-abnormal="1"] .font-normal {
+            font-weight: 400 !important;
+            color: #4b5563 !important;
+          }
+          body.lims-report-printing #print-container .flag-badge {
+            font-weight: 700 !important;
+            border: 1px solid #000 !important;
+            color: #000 !important;
+            background: transparent !important;
+          }
         }
       `}</style>
     </div>
