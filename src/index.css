@@ -133,16 +133,16 @@ input[type="number"] {
   background: transparent !important;
   color: black !important;
 }
-/* Keep H/L abnormal rows bold + red in print (native Print was flattening them). */
+/* Keep H/L abnormal rows bold in print (B&W printers — black only, no red). */
 .print-strip-colors [data-abnormal="1"] > td,
 .print-strip-colors [data-abnormal="1"] > td > span:not(.italic) {
   font-weight: 700 !important;
-  color: #b91c1c !important; /* red-700 — remains readable on B&W and color printers */
+  color: #000 !important;
 }
 .print-strip-colors [data-abnormal="1"] .italic,
 .print-strip-colors [data-abnormal="1"] .font-normal {
   font-weight: 400 !important;
-  color: #4b5563 !important;
+  color: #000 !important;
 }
 .print-strip-colors .flag-badge {
   font-weight: 700 !important;
