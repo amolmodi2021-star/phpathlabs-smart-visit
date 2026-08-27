@@ -2331,14 +2331,15 @@ const LimsReportView = () => {
                 </div>
               )}
 
-              {/* Footer: invoice barcode (left) + doctor signatures (right). Top edge = content floor. */}
+              {/* Footer: invoice barcode (left) + doctor signatures (right). Top edge = content floor.
+                  Historical-trends pages: barcode + page # only — never doctor signature. */}
               <div data-report-signature className={pickupFooterNote ? "" : "mt-auto"}>
                 <div className="pt-1 border-t flex justify-between items-end gap-3 print:break-inside-avoid">
                   <ReportInvoiceBarcode
                     invoiceNumber={invoiceNumberForBarcode}
                     barcodePng={invoiceBarcodePng}
                   />
-                  {!isProvisional && (() => {
+                  {!isProvisional && page.type !== "trends" && (() => {
                   const pageApprovers = page.approvers && page.approvers.length > 0
                     ? page.approvers
                     : Object.keys(signatureMap).length > 0 ? [Object.keys(signatureMap)[0]] : [];
