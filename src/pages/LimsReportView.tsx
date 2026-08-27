@@ -21,6 +21,7 @@ import { format } from "date-fns";
 import { logEvent, createShareLink } from "@/lib/reportShareLinks";
 import { patientDisplayName } from "@/lib/patientDisplayName";
 import { enqueueReportForWhatsAppConsole } from "@/lib/whatsappConsoleBridge";
+import { reportPdfCacheKey, setCachedReportPdf, getCachedReportPdf } from "@/lib/reportPdfSessionCache";
 import { resolveNormalRangeDisplay } from "@/lib/parameterNormalRange";
 import { resolveReportAgeText } from "@/lib/patientAge";
 import { renderCode128Png, replaceCanvasesWithPngImages } from "@/lib/code128Png";
@@ -124,15 +125,17 @@ const isBlankDataUrl = async (dataUrl: string): Promise<boolean> => {
 };
 
 type PageCaptureOptions = {
-  /** Override html-to-image pixelRatio (default: snip 1.5 / structured 2). */
+  /** Override html-to-image pixelRatio (default: snip 1.25 / structured 1.25). */
   pixelRatio?: number;
-  /** JPEG quality 0–1 (default 0.9). */
+  /** JPEG quality 0–1 (default 0.85). */
   quality?: number;
   /** Force image cache bust (default: false — cacheBust breaks data: assets). */
   cacheBust?: boolean;
   attempts?: number;
   /** Skip expensive pixel blank-check when data URL looks non-empty (dispatch/fast). */
   fastBlankCheck?: boolean;
+  /** Skip font embedding in html-to-image (much faster; webfonts already painted). */
+  skipFonts?: boolean;
 };
 
 /** Run async work over items with a fixed concurrency pool (preserves result order). */
@@ -156,8 +159,7 @@ async function mapPool<T, R>(
 };
 
 // Capture a page with retries (handles intermittent blank captures from html-to-image).
-// Structured pages: pixelRatio 2 (was 3) — sharp enough on screen/print, ~2× faster.
-// Snip / Dispatch queue: lower PR — full-page photo at PR3 hung OOM on "Downloading…".
+// Default: modest canvas (~0.85× CSS size @ PR1.25). Dispatch/download use even smaller.
 const captureWithRetry = async (
   el: HTMLElement,
   width: number,
@@ -166,10 +168,10 @@ const captureWithRetry = async (
   captureOpts?: PageCaptureOptions,
 ): Promise<string> => {
   const isSnipPage = !!el.querySelector("img[data-snip-image]");
-  const pixelRatio = captureOpts?.pixelRatio ?? (isSnipPage ? 1.25 : 2);
+  const pixelRatio = captureOpts?.pixelRatio ?? (isSnipPage ? 1 : 1.25);
   const attempts = captureOpts?.attempts ?? 2;
-  const captureMs = isSnipPage ? 15_000 : 20_000;
-  const jpegQuality = captureOpts?.quality ?? 0.9;
+  const captureMs = isSnipPage ? 12_000 : 16_000;
+  const jpegQuality = captureOpts?.quality ?? 0.85;
   const opts = {
     pixelRatio,
     backgroundColor: "#ffffff",
@@ -178,6 +180,7 @@ const captureWithRetry = async (
     // Never default-bust: html-to-image appends ?t=… which breaks data: signature/letterhead URLs
     // and hung Dispatch WhatsApp PDF generation on multi-page reports.
     cacheBust: captureOpts?.cacheBust ?? false,
+    skipFonts: captureOpts?.skipFonts ?? true,
     style: { transform: "none", transformOrigin: "top left" } as Record<string, string>,
   };
   let lastUrl = "";
@@ -188,7 +191,7 @@ const captureWithRetry = async (
         ? await withTimeout(toPng(el, { ...opts, quality: 1 }), captureMs, "snip/page PNG capture")
         : await withTimeout(toJpeg(el, { ...opts, quality: jpegQuality }), captureMs, "page JPEG capture");
       // Fast path: non-tiny JPEG on first try is almost never a blank capture.
-      if (captureOpts?.fastBlankCheck && attempt === 0 && lastUrl.length > 18_000) {
+      if (captureOpts?.fastBlankCheck && attempt === 0 && lastUrl.length > 12_000) {
         return lastUrl;
       }
       const blank = await isBlankDataUrl(lastUrl);
@@ -196,7 +199,7 @@ const captureWithRetry = async (
     } catch (e) {
       lastErr = e;
     }
-    await new Promise((r) => setTimeout(r, 120));
+    await new Promise((r) => setTimeout(r, 80));
   }
   if (!lastUrl) {
     throw (lastErr instanceof Error ? lastErr : new Error("Page capture failed"));
@@ -573,7 +576,9 @@ const LimsReportView = () => {
   const autoShareStartedRef = useRef(false);
   const autoQueueWaStartedRef = useRef(false);
   const autoManualWaStartedRef = useRef(false);
+  const eagerPdfStartedRef = useRef(false);
   const cachedPdfRef = useRef<{ blob: Blob; filename: string } | null>(null);
+  const pdfBuildInFlightRef = useRef<Promise<{ blob: Blob; filename: string } | null> | null>(null);
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState(false);
   const [hasDownloadedOnce, setHasDownloadedOnce] = useState(false);
@@ -674,6 +679,9 @@ const LimsReportView = () => {
   const loadAllData = async () => {
     setLoading(true);
     setHistoricalTrends([]);
+    cachedPdfRef.current = null;
+    eagerPdfStartedRef.current = false;
+    pdfBuildInFlightRef.current = null;
     try {
 
     // Parallel fetches
@@ -1616,47 +1624,74 @@ const LimsReportView = () => {
   };
 
   const buildPdfBlob = async (opts?: {
-    /** Faster capture for Dispatch WhatsApp queue (still includes histograms + snips). */
+    /** Faster capture for Dispatch WhatsApp / Download (still includes histograms + snips). */
     queueMode?: boolean;
   }): Promise<{ blob: Blob; filename: string } | null> => {
-    if (!printRef.current) return null;
+    if (!printRef.current && !cachedPdfRef.current) return null;
 
-    // Wait for measure-then-repack to settle so export matches densest safe layout.
-    const waitStart = Date.now();
-    while (!paginationReadyRef.current && Date.now() - waitStart < 8_000) {
-      await new Promise((r) => setTimeout(r, 30));
+    const cacheKey = registrationId
+      ? reportPdfCacheKey(registrationId, selectedTestIdsParam)
+      : "";
+    if (cacheKey) {
+      const hit = await getCachedReportPdf(cacheKey);
+      if (hit) {
+        cachedPdfRef.current = { blob: hit.blob, filename: hit.filename };
+        return { blob: hit.blob, filename: hit.filename };
+      }
     }
+    if (cachedPdfRef.current) return cachedPdfRef.current;
+    if (pdfBuildInFlightRef.current) return pdfBuildInFlightRef.current;
 
-    const pageElements = Array.from(printRef.current.querySelectorAll("[data-page]")) as HTMLElement[];
-    if (pageElements.length === 0) return null;
+    const run = (async (): Promise<{ blob: Blob; filename: string } | null> => {
+      if (!printRef.current) return null;
 
-    await waitForCaptureReady(printRef.current);
+      // Wait for measure-then-repack to settle so export matches densest safe layout.
+      const waitStart = Date.now();
+      while (!paginationReadyRef.current && Date.now() - waitStart < 6_000) {
+        await new Promise((r) => setTimeout(r, 25));
+      }
 
-    const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-    const NATIVE_W = Math.round((PAGE_WIDTH_MM / 25.4) * 96);
-    const NATIVE_H = Math.round((PAGE_HEIGHT_MM / 25.4) * 96);
-    // Download: PR2. Dispatch/WA: PR1.5 + fast blank skip + parallel pages.
-    const captureOpts: PageCaptureOptions = opts?.queueMode
-      ? { pixelRatio: 1.5, attempts: 2, quality: 0.82, cacheBust: false, fastBlankCheck: true }
-      : { pixelRatio: 2, attempts: 2, quality: 0.88, cacheBust: false, fastBlankCheck: true };
-    // Parallel capture (2 pages) — biggest win on multi-page reports; avoid higher
-    // concurrency on older lab PCs (html-to-image is memory-heavy).
-    const concurrency = Math.min(2, pageElements.length);
-    const jpegUrls = await mapPool(pageElements, concurrency, (el) =>
-      captureWithRetry(el, NATIVE_W, NATIVE_H, "jpeg", captureOpts),
-    );
-    for (let i = 0; i < jpegUrls.length; i++) {
-      if (i > 0) pdf.addPage();
-      pdf.addImage(jpegUrls[i], "JPEG", 0, 0, PAGE_WIDTH_MM, PAGE_HEIGHT_MM, undefined, "FAST");
+      const pageElements = Array.from(printRef.current.querySelectorAll("[data-page]")) as HTMLElement[];
+      if (pageElements.length === 0) return null;
+
+      await waitForCaptureReady(printRef.current);
+
+      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      const NATIVE_W = Math.round((PAGE_WIDTH_MM / 25.4) * 96);
+      const NATIVE_H = Math.round((PAGE_HEIGHT_MM / 25.4) * 96);
+      // Smaller raster = far less html-to-image work. jsPDF stretches to full A4.
+      // queueMode (~0.65× @ PR1) ≈ 4–6× fewer pixels than old PR2 full-size path.
+      const scale = opts?.queueMode ? 0.65 : 0.8;
+      const captureW = Math.round(NATIVE_W * scale);
+      const captureH = Math.round(NATIVE_H * scale);
+      const captureOpts: PageCaptureOptions = opts?.queueMode
+        ? { pixelRatio: 1, attempts: 1, quality: 0.78, cacheBust: false, fastBlankCheck: true, skipFonts: true }
+        : { pixelRatio: 1.25, attempts: 1, quality: 0.84, cacheBust: false, fastBlankCheck: true, skipFonts: true };
+      const concurrency = Math.min(3, pageElements.length);
+      const jpegUrls = await mapPool(pageElements, concurrency, (el) =>
+        captureWithRetry(el, captureW, captureH, "jpeg", captureOpts),
+      );
+      for (let i = 0; i < jpegUrls.length; i++) {
+        if (i > 0) pdf.addPage();
+        pdf.addImage(jpegUrls[i], "JPEG", 0, 0, PAGE_WIDTH_MM, PAGE_HEIGHT_MM, undefined, "FAST");
+      }
+
+      const patientNameRaw = patientDisplayName(approvedReports[0]);
+      const patientName = !approvedReports[0] || patientNameRaw === "—" ? "Report" : patientNameRaw;
+      const invoiceNum = approvedReports[0]?.invoice_number || "";
+      const filename = [patientName, invoiceNum].filter(Boolean).join(" ").replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim() + ".pdf";
+      const blob = pdf.output("blob") as Blob;
+      cachedPdfRef.current = { blob, filename };
+      if (cacheKey) await setCachedReportPdf(cacheKey, blob, filename);
+      return { blob, filename };
+    })();
+
+    pdfBuildInFlightRef.current = run;
+    try {
+      return await run;
+    } finally {
+      if (pdfBuildInFlightRef.current === run) pdfBuildInFlightRef.current = null;
     }
-
-    const patientNameRaw = patientDisplayName(approvedReports[0]);
-    const patientName = !approvedReports[0] || patientNameRaw === "—" ? "Report" : patientNameRaw;
-    const invoiceNum = approvedReports[0]?.invoice_number || "";
-    const filename = [patientName, invoiceNum].filter(Boolean).join(" ").replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim() + ".pdf";
-    const blob = pdf.output("blob") as Blob;
-    cachedPdfRef.current = { blob, filename };
-    return { blob, filename };
   };
 
   const notifyQueueWa = (ok: boolean, error?: string) => {
@@ -1681,12 +1716,11 @@ const LimsReportView = () => {
   };
 
   const handleDownloadPdf = async () => {
-    if (!printRef.current) return;
+    if (!printRef.current && !cachedPdfRef.current) return;
     setDownloading(true);
     try {
-      const fromDispatch = (location.state as { from?: string } | null)?.from === "dispatch";
-      // Dispatch View→Download: use fast queue capture (same visual quality as WhatsApp PDF).
-      const built = await buildPdfBlob({ queueMode: fromDispatch || manualWaRequested });
+      // Always use fast capture; reuse session/eager cache when present.
+      const built = cachedPdfRef.current || await buildPdfBlob({ queueMode: true });
       if (!built) { toast.error("No pages to export"); setDownloading(false); return; }
 
       const { blob, filename } = built;
@@ -1750,6 +1784,25 @@ const LimsReportView = () => {
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoShareRequested, hasDownloadedOnce]);
+
+  // ── Warm PDF cache once the report layout is ready (makes Download near-instant). ──
+  useEffect(() => {
+    if (loading) return;
+    if (!paginationReady) return;
+    if (!invoiceBarcodeReady) return;
+    if (pages.length === 0) return;
+    if (queueWaRequested || manualWaRequested) return; // those flows build immediately
+    if (eagerPdfStartedRef.current) return;
+    eagerPdfStartedRef.current = true;
+    const t = window.setTimeout(() => {
+      void buildPdfBlob({ queueMode: true }).catch((e) => {
+        console.warn("eager PDF build failed", e);
+        eagerPdfStartedRef.current = false;
+      });
+    }, 120);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, paginationReady, invoiceBarcodeReady, pages.length, queueWaRequested, manualWaRequested]);
 
   // ── Auto-queue report PDF to WhatsApp Console (when queueWa=1) ──
   // Wait for paginationReady so measure-repack does not cancel the scheduled start.

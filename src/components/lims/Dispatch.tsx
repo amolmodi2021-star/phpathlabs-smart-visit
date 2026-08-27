@@ -34,7 +34,7 @@ import {
 import { shortIdsKey } from "@/lib/queryKeys";
 import { useNewArrivalsBadge } from "@/hooks/useNewArrivalsBadge";
 import NewBadge from "./NewBadge";
-import { openReportForManualWhatsApp, queueApprovedReportWhatsApp } from "@/lib/dispatchReportWhatsApp";
+import { openReportForManualWhatsApp, queueApprovedReportWhatsApp, tryQueueCachedReportWhatsApp } from "@/lib/dispatchReportWhatsApp";
 import { ensureApprovedReportSnapshotHealed } from "@/lib/patientResultLookup";
 import { dismissFailedWhatsAppConsoleJobs, dismissAllFailedWhatsAppConsoleJobs } from "@/lib/whatsappConsoleBridge";
 import {
@@ -655,15 +655,24 @@ const Dispatch = () => {
 
     setActionKey(`${reg.id}||dispatch`);
     try {
-      toast.message("Generating report PDF for WhatsApp…");
+      toast.message("Queuing report PDF for WhatsApp…");
       // approved_reports.test_results ← backfill from patient_results if needed
       await ensureApprovedReportSnapshotHealed(supabase, reg.id);
-      const queued = await queueApprovedReportWhatsApp({
+      const pendingNames = entry.tests
+        .filter((t) => t.status !== "approved" && t.status !== "dispatched")
+        .map((t) => t.testName);
+      const cached = await tryQueueCachedReportWhatsApp({
         registrationId: reg.id,
         testIds,
-        pendingReportNames: entry.tests
-          .filter((t) => t.status !== "approved" && t.status !== "dispatched")
-          .map((t) => t.testName),
+        phone,
+        patientName: patientDisplayName(reg),
+        invoiceNumber: (reg as any).invoice_number,
+        pendingReportNames: pendingNames,
+      });
+      const queued = cached ?? await queueApprovedReportWhatsApp({
+        registrationId: reg.id,
+        testIds,
+        pendingReportNames: pendingNames,
       });
       if (!queued.ok) {
         throw new Error(queued.error || "Failed to queue report WhatsApp");
@@ -692,7 +701,9 @@ const Dispatch = () => {
         await qc.invalidateQueries({ queryKey: ["dispatch_failed_wa_outbox"] });
       }
       toast.success(`Dispatched & queued WhatsApp for ${patientDisplayName(reg)}`, {
-        description: `Report PDF sending to ${phone} via WhatsApp Console`,
+        description: cached?.fromCache
+          ? `Sent instantly from cache → ${phone}`
+          : `Report PDF sending to ${phone} via WhatsApp Console`,
       });
     } catch (err: any) {
       toast.error(err.message || "Dispatch failed");
@@ -726,12 +737,21 @@ const Dispatch = () => {
       toast.message("Generating report PDF for WhatsApp…");
       // approved_reports.test_results ← backfill from patient_results if needed
       await ensureApprovedReportSnapshotHealed(supabase, reg.id);
-      const queued = await queueApprovedReportWhatsApp({
+      const pendingNames = entry.tests
+        .filter((t) => t.status !== "approved" && t.status !== "dispatched")
+        .map((t) => t.testName);
+      const cached = await tryQueueCachedReportWhatsApp({
         registrationId: reg.id,
         testIds,
-        pendingReportNames: entry.tests
-          .filter((t) => t.status !== "approved" && t.status !== "dispatched")
-          .map((t) => t.testName),
+        phone,
+        patientName: patientDisplayName(reg),
+        invoiceNumber: (reg as any).invoice_number,
+        pendingReportNames: pendingNames,
+      });
+      const queued = cached ?? await queueApprovedReportWhatsApp({
+        registrationId: reg.id,
+        testIds,
+        pendingReportNames: pendingNames,
       });
       if (!queued.ok) {
         throw new Error(queued.error || "Failed to queue report WhatsApp");
