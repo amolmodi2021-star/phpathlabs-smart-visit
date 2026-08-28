@@ -29,6 +29,7 @@ import {
 import { patientDisplayName } from "@/lib/patientDisplayName";
 import {
   aggregateTestVolume,
+  EMPTY_EXPANSION_MAPS,
   expandRegistrationToLeafContributions,
   fetchDashboardExpansionMaps,
   type TestVolumeRow,
@@ -377,14 +378,26 @@ const Dashboard = () => {
   const healthCheckupTotalNet = healthCheckups.reduce((s, h) => s + h.netAmount, 0);
 
   // Tests booked by registration date (leaf tests only; packages/profiles/combos expanded)
-  const { data: expansionMaps, isLoading: mapsLoading } = useQuery({
-    queryKey: ["dashboard_test_expansion_maps"],
+  const {
+    data: expansionMaps,
+    isLoading: mapsLoading,
+    isError: mapsError,
+    error: mapsErrorObj,
+  } = useQuery({
+    queryKey: ["dashboard_test_expansion_maps_v2"],
     queryFn: fetchDashboardExpansionMaps,
     staleTime: 10 * 60_000,
+    refetchOnMount: "always",
+    retry: 2,
   });
 
-  const { data: bookedRegs = [], isLoading: bookedRegsLoading } = useQuery({
-    queryKey: ["dashboard_booked_regs", dateFrom, dateTo],
+  const {
+    data: bookedRegs = [],
+    isLoading: bookedRegsLoading,
+    isError: bookedRegsError,
+    error: bookedRegsErrorObj,
+  } = useQuery({
+    queryKey: ["dashboard_booked_regs_v2", dateFrom, dateTo],
     queryFn: async () => {
       const from = startOfDay(parseISO(dateFrom)).toISOString();
       const to = endOfDay(parseISO(dateTo)).toISOString();
@@ -409,13 +422,18 @@ const Dashboard = () => {
       }
       return all;
     },
+    staleTime: 60_000,
+    refetchOnMount: "always",
+    retry: 2,
   });
 
   const testVolumeRows = useMemo(() => {
     try {
-      if (!expansionMaps) return [] as TestVolumeRow[];
+      // Never block the table on maps — standalone tests use line prices;
+      // packages/profiles/combos expand when maps are available.
+      const maps = expansionMaps || EMPTY_EXPANSION_MAPS;
       const contributions = bookedRegs.flatMap((r) =>
-        expandRegistrationToLeafContributions(r, expansionMaps),
+        expandRegistrationToLeafContributions(r, maps),
       );
       return aggregateTestVolume(contributions);
     } catch (e) {
@@ -444,7 +462,12 @@ const Dashboard = () => {
     [filteredTestVolume],
   );
 
-  const testsLoading = mapsLoading || bookedRegsLoading;
+  const testsLoading = bookedRegsLoading || (mapsLoading && !expansionMaps);
+  const testsErrorMsg = bookedRegsError
+    ? (bookedRegsErrorObj as Error)?.message || "Failed to load registrations"
+    : mapsError
+      ? (mapsErrorObj as Error)?.message || "Failed to load test catalog"
+      : null;
 
   const modeRows = Object.entries(summary.modes)
     .filter(([, v]) => Math.abs(v) > 0.009)
@@ -671,6 +694,8 @@ const Dashboard = () => {
           </div>
           {testsLoading ? (
             <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+          ) : testsErrorMsg && filteredTestVolume.length === 0 ? (
+            <p className="text-sm text-destructive py-6 text-center">{testsErrorMsg}</p>
           ) : filteredTestVolume.length === 0 ? (
             <p className="text-sm text-muted-foreground py-6 text-center">No tests booked in this date range.</p>
           ) : (

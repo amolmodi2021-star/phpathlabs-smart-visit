@@ -210,7 +210,10 @@ async function fetchAllIds(table: string, columns: string): Promise<any[]> {
       .from(table)
       .select(columns)
       .range(from, from + pageSize - 1);
-    if (error) throw error;
+    if (error) {
+      console.warn(`[dashboardTestVolume] ${table}:`, error.message);
+      return all;
+    }
     const rows = data || [];
     all.push(...rows);
     if (rows.length < pageSize) break;
@@ -218,6 +221,16 @@ async function fetchAllIds(table: string, columns: string): Promise<any[]> {
   }
   return all;
 }
+
+export const EMPTY_EXPANSION_MAPS: ExpansionMaps = {
+  catalog: {},
+  packageLeaves: {},
+  profileLeaves: {},
+  comboLeaves: {},
+  packageIds: {},
+  profileIds: {},
+  comboIds: {},
+};
 
 function toIdMap(rows: any[]): Record<string, true> {
   const out: Record<string, true> = {};
