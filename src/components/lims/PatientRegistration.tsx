@@ -148,6 +148,8 @@ const PatientRegistration = ({
   }
   const d = draftBoot.current;
   const prefillApplied = useRef(false);
+  /** Booking estimate identity — used to detect sticky name after mobile is changed for a different family member. */
+  const bookingIdentityRef = useRef<{ mobile: string; name: string } | null>(null);
 
   // Patient fields
   const [mobileNumber, setMobileNumber] = useState(d?.mobileNumber ?? "");
@@ -316,7 +318,33 @@ const PatientRegistration = ({
       setPickerMobile(digits);
       setShowPatientPicker(true);
     }
+    bookingIdentityRef.current = {
+      mobile: digits,
+      name: String(homeVisitPrefill.patientName || "").replace(/\s+/g, " ").trim().toUpperCase(),
+    };
   }, [homeVisitOnly, homeVisitPrefill, allowHvCharges]);
+
+  // Family-visit guard: if mobile changes away from the booking WhatsApp, drop the sticky
+  // booking name so Registered Patients does not save ANJU with another member's mobile/DOB.
+  useEffect(() => {
+    if (!homeVisitOnly || patientLocked) return;
+    const booking = bookingIdentityRef.current;
+    if (!booking?.mobile || !booking.name) return;
+    const digits = mobileNumber.replace(/\D/g, "").slice(-10);
+    if (digits.length !== 10) return;
+    if (digits === booking.mobile) return;
+    const currentName = patientName.replace(/\s+/g, " ").trim().toUpperCase();
+    if (currentName && currentName !== booking.name) return;
+    setPatientName("");
+    setTitle("");
+    setGender("");
+    setDob("");
+    setDobDisplay("");
+    setUmrNumber("");
+    setFilledOnLock({ title: false, gender: false, dob: false, address: false });
+    toast.message("Mobile differs from booking — enter this patient's correct name");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mobileNumber, homeVisitOnly, patientLocked]);
 
   // Queries
   const { data: tests = [] } = useQuery({ queryKey: ["all_selectable_tests"], queryFn: getAllSelectableTests });
@@ -686,6 +714,19 @@ const PatientRegistration = ({
     if (visitType !== "pickup_point" && !address.trim()) throw new Error("Address is required");
     if (homeVisitOnly && !(getCurrentUserName()?.trim() || completingPhleboName.trim())) {
       throw new Error("Signed-in user name required for Completed by (Phlebo)");
+    }
+    // Block: booking name left behind after switching to another family member's mobile.
+    const booking = bookingIdentityRef.current;
+    if (
+      homeVisitOnly
+      && booking?.mobile
+      && booking.name
+      && cleanMobile !== booking.mobile
+      && patientName.replace(/\s+/g, " ").trim().toUpperCase() === booking.name
+    ) {
+      throw new Error(
+        `Mobile was changed but name is still the booking name (${booking.name}). Enter the correct patient name for this registration.`,
+      );
     }
     if (!deferPayment && collectedExceedsBill(paidAmount, billing.finalAmount)) {
       throw new Error(OVERPAYMENT_MESSAGE);
