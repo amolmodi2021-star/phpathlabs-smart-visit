@@ -708,7 +708,10 @@ const HomeVisitRegistrationWizard = ({ visit, open, onClose }: Props) => {
                         {p.title} {p.patientName}
                         {idx === 0 ? " (Primary)" : ""}
                       </p>
-                      <p className="text-xs text-muted-foreground">{p.mobile}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {p.mobile}
+                        {p.umr ? ` · ${p.umr}` : " · New patient (UMR on save)"}
+                      </p>
                       <div className="mt-1 flex flex-wrap gap-1">
                         {p.tests.map((t) => (
                           <span key={t.test_id} className="rounded bg-accent px-1 py-0.5 text-[10px]">

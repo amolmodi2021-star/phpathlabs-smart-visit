@@ -715,10 +715,12 @@ const PatientRegistration = ({
     if (homeVisitOnly && !(getCurrentUserName()?.trim() || completingPhleboName.trim())) {
       throw new Error("Signed-in user name required for Completed by (Phlebo)");
     }
-    // Block: booking name left behind after switching to another family member's mobile.
+    // Block sticky booking name only for free-typed identity (not after picking an existing UMR patient).
     const booking = bookingIdentityRef.current;
     if (
       homeVisitOnly
+      && !patientLocked
+      && !String(umrNumber || "").trim()
       && booking?.mobile
       && booking.name
       && cleanMobile !== booking.mobile
