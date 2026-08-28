@@ -29,6 +29,8 @@ import {
 import { patientDisplayName } from "@/lib/patientDisplayName";
 import {
   fetchDashboardTestVolume,
+  fetchTestVolumePatients,
+  type LeafContribution,
   type TestVolumeRow,
 } from "@/lib/dashboardTestVolume";
 type RegRow = {
@@ -381,7 +383,7 @@ const Dashboard = () => {
     isError: testsError,
     error: testsErrorObj,
   } = useQuery({
-    queryKey: ["dashboard_test_volume_v4", dateFrom, dateTo],
+    queryKey: ["dashboard_test_volume_v5", dateFrom, dateTo],
     queryFn: async () => {
       const from = startOfDay(parseISO(dateFrom)).toISOString();
       const to = endOfDay(parseISO(dateTo)).toISOString();
@@ -389,6 +391,23 @@ const Dashboard = () => {
     },
     staleTime: 60_000,
     refetchOnMount: "always",
+    retry: 2,
+  });
+
+  const {
+    data: drillPatients = [],
+    isLoading: drillLoading,
+    isError: drillError,
+    error: drillErrorObj,
+  } = useQuery({
+    queryKey: ["dashboard_test_volume_patients_v1", dateFrom, dateTo, drillTest?.testId],
+    enabled: !!drillTest?.testId,
+    queryFn: async () => {
+      const from = startOfDay(parseISO(dateFrom)).toISOString();
+      const to = endOfDay(parseISO(dateTo)).toISOString();
+      return fetchTestVolumePatients(from, to, drillTest!.testId);
+    },
+    staleTime: 60_000,
     retry: 2,
   });
 
@@ -742,7 +761,13 @@ const Dashboard = () => {
           <p className="text-sm text-muted-foreground">
             {drillTest?.qty || 0} booking{(drillTest?.qty || 0) === 1 ? "" : "s"} · Net {money(drillTest?.net || 0)}
           </p>
-          {!drillTest || drillTest.patients.length === 0 ? (
+          {drillLoading ? (
+            <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+          ) : drillError ? (
+            <p className="text-sm text-destructive py-4 text-center">
+              {(drillErrorObj as Error)?.message || "Failed to load patients"}
+            </p>
+          ) : drillPatients.length === 0 ? (
             <p className="text-sm text-muted-foreground py-4 text-center">No patients.</p>
           ) : (
             <div className="rounded-md border overflow-x-auto">
@@ -758,7 +783,7 @@ const Dashboard = () => {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {drillTest.patients.map((p, idx) => (
+                  {drillPatients.map((p: LeafContribution, idx: number) => (
                     <TableRow key={`${p.registrationId}-${idx}`}>
                       <TableCell className="font-mono text-xs whitespace-nowrap">{p.invoiceNumber}</TableCell>
                       <TableCell className="font-medium whitespace-nowrap">
@@ -776,9 +801,9 @@ const Dashboard = () => {
                 <TableFooter>
                   <TableRow>
                     <TableCell colSpan={3} className="text-right font-semibold">Total</TableCell>
-                    <TableCell className="text-right tabular-nums font-semibold">{money(drillTest.gross)}</TableCell>
-                    <TableCell className="text-right tabular-nums font-semibold">{money(drillTest.discount)}</TableCell>
-                    <TableCell className="text-right tabular-nums font-semibold">{money(drillTest.net)}</TableCell>
+                    <TableCell className="text-right tabular-nums font-semibold">{money(drillTest?.gross || 0)}</TableCell>
+                    <TableCell className="text-right tabular-nums font-semibold">{money(drillTest?.discount || 0)}</TableCell>
+                    <TableCell className="text-right tabular-nums font-semibold">{money(drillTest?.net || 0)}</TableCell>
                   </TableRow>
                 </TableFooter>
               </Table>

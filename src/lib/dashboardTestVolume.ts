@@ -21,7 +21,6 @@ export type TestVolumeRow = {
   gross: number;
   discount: number;
   net: number;
-  patients: LeafContribution[];
 };
 
 export type ExpansionMaps = {
@@ -275,14 +274,12 @@ export function aggregateTestVolume(contributions: LeafContribution[]): TestVolu
       gross: 0,
       discount: 0,
       net: 0,
-      patients: [],
     };
     prev.qty += 1;
     prev.gross += c.gross;
     prev.discount += c.discount;
     prev.net += c.net;
     if (!prev.testName && c.testName) prev.testName = c.testName;
-    prev.patients.push(c);
     map.set(c.testId, prev);
   }
   return Array.from(map.values())
@@ -291,9 +288,6 @@ export function aggregateTestVolume(contributions: LeafContribution[]): TestVolu
       gross: Math.round((r.gross + Number.EPSILON) * 100) / 100,
       discount: Math.round((r.discount + Number.EPSILON) * 100) / 100,
       net: Math.round((r.net + Number.EPSILON) * 100) / 100,
-      patients: r.patients
-        .slice()
-        .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))),
     }))
     .sort(
       (a, b) =>
@@ -429,7 +423,15 @@ export async function fetchExpansionMapsForRegs(regs: BookedReg[]): Promise<Expa
   return maps;
 }
 
-export async function fetchBookedRegistrations(fromIso: string, toIso: string): Promise<BookedReg[]> {
+export async function fetchBookedRegistrations(
+  fromIso: string,
+  toIso: string,
+  opts?: { lean?: boolean },
+): Promise<BookedReg[]> {
+  const lean = !!opts?.lean;
+  const selectCols = lean
+    ? "id, bill_cancelled, tests, cancelled_tests"
+    : "id, invoice_number, patient_name, title, created_at, bill_cancelled, tests, cancelled_tests";
   const pageSize = 500;
   const all: BookedReg[] = [];
   let fromIdx = 0;
@@ -437,9 +439,7 @@ export async function fetchBookedRegistrations(fromIso: string, toIso: string): 
     const rows = await withRetry("patient_registrations", async () => {
       const { data, error } = await supabase
         .from("patient_registrations")
-        .select(
-          "id, invoice_number, patient_name, title, created_at, bill_cancelled, tests, cancelled_tests",
-        )
+        .select(selectCols)
         .gte("created_at", fromIso)
         .lte("created_at", toIso)
         .order("created_at", { ascending: false })
@@ -462,10 +462,27 @@ export async function fetchDashboardTestVolume(
   fromIso: string,
   toIso: string,
 ): Promise<TestVolumeRow[]> {
-  const regs = await fetchBookedRegistrations(fromIso, toIso);
+  // Lean list: skip patient identity columns; no per-patient rows in response.
+  const regs = await fetchBookedRegistrations(fromIso, toIso, { lean: true });
   const maps = await fetchExpansionMapsForRegs(regs);
   const contributions = regs.flatMap((r) => expandRegistrationToLeafContributions(r, maps));
   return aggregateTestVolume(contributions);
+}
+
+/** On-demand drill-down: patient rows for one leaf test in the date range. */
+export async function fetchTestVolumePatients(
+  fromIso: string,
+  toIso: string,
+  testId: string,
+): Promise<LeafContribution[]> {
+  const tid = String(testId || "").trim();
+  if (!tid) return [];
+  const regs = await fetchBookedRegistrations(fromIso, toIso, { lean: false });
+  const maps = await fetchExpansionMapsForRegs(regs);
+  return regs
+    .flatMap((r) => expandRegistrationToLeafContributions(r, maps))
+    .filter((c) => c.testId === tid)
+    .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
 }
 
 /** @deprecated Prefer fetchExpansionMapsForRegs / fetchDashboardTestVolume */
