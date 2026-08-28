@@ -676,15 +676,6 @@ const HomeVisitRegistrationWizard = ({ visit, open, onClose }: Props) => {
 
           {step === "form" && (
             <>
-              {!addingExtra && visit?.estimates?.patient_name && (
-                <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
-                  Booking name on this visit: <strong>{String(visit.estimates.patient_name).toUpperCase()}</strong>
-                  {visit.estimates.whatsapp_number
-                    ? ` · ${String(visit.estimates.whatsapp_number).replace(/\D/g, "").slice(-10)}`
-                    : ""}
-                  . If you register a different family member, change mobile and name before Continue.
-                </p>
-              )}
               <PatientRegistration
                 key={formKey}
                 homeVisitOnly
