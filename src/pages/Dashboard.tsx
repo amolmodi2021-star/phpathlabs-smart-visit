@@ -412,17 +412,22 @@ const Dashboard = () => {
   });
 
   const testVolumeRows = useMemo(() => {
-    if (!expansionMaps) return [] as TestVolumeRow[];
-    const contributions = bookedRegs.flatMap((r) =>
-      expandRegistrationToLeafContributions(r, expansionMaps),
-    );
-    return aggregateTestVolume(contributions);
+    try {
+      if (!expansionMaps) return [] as TestVolumeRow[];
+      const contributions = bookedRegs.flatMap((r) =>
+        expandRegistrationToLeafContributions(r, expansionMaps),
+      );
+      return aggregateTestVolume(contributions);
+    } catch (e) {
+      console.error("Tests Booked aggregation failed", e);
+      return [] as TestVolumeRow[];
+    }
   }, [bookedRegs, expansionMaps]);
 
   const filteredTestVolume = useMemo(() => {
     const q = testSearch.trim().toLowerCase();
     if (!q) return testVolumeRows;
-    return testVolumeRows.filter((r) => r.testName.toLowerCase().includes(q));
+    return testVolumeRows.filter((r) => String(r.testName || "").toLowerCase().includes(q));
   }, [testVolumeRows, testSearch]);
 
   const testVolumeTotals = useMemo(

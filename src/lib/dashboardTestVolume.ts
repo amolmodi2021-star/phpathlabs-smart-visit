@@ -29,9 +29,10 @@ export type ExpansionMaps = {
   packageLeaves: Record<string, string[]>;
   profileLeaves: Record<string, string[]>;
   comboLeaves: Record<string, string[]>;
-  packageIds: Set<string>;
-  profileIds: Set<string>;
-  comboIds: Set<string>;
+  /** Plain lookup maps (not Set) so React Query structural sharing stays safe. */
+  packageIds: Record<string, true>;
+  profileIds: Record<string, true>;
+  comboIds: Record<string, true>;
 };
 
 function lineGross(t: any): number {
@@ -46,7 +47,7 @@ function lineNet(t: any): number {
   return Math.max(0, lineGross(t) - disc);
 }
 
-/** Discount fraction on a package / profile / combo line (0–1). */
+/** Discount fraction on a package / profile / combo line (0-1). */
 function containerDiscountPct(t: any): number {
   const gross = lineGross(t);
   if (gross <= 0) return 0;
@@ -63,9 +64,9 @@ function itemTypeOf(
     return typed as "test" | "package" | "profile" | "combo";
   }
   const id = String(t?.test_id || "");
-  if (id && maps.packageIds.has(id)) return "package";
-  if (id && maps.comboIds.has(id)) return "combo";
-  if (id && maps.profileIds.has(id)) return "profile";
+  if (id && maps.packageIds[id]) return "package";
+  if (id && maps.comboIds[id]) return "combo";
+  if (id && maps.profileIds[id]) return "profile";
   return "test";
 }
 
@@ -92,7 +93,7 @@ function uniqueIds(ids: string[]): string[] {
 
 /**
  * Expand registration billed lines into leaf-test contributions.
- * Packages / profiles / combos are not counted — only their leaf tests.
+ * Packages / profiles / combos are not counted -- only their leaf tests.
  * Cancelled bills and cancelled line/leaf ids are skipped.
  */
 export function expandRegistrationToLeafContributions(
@@ -120,8 +121,8 @@ export function expandRegistrationToLeafContributions(
   const out: LeafContribution[] = [];
   const base = {
     registrationId: reg.id,
-    invoiceNumber: String(reg.invoice_number || "—"),
-    patientName: String(reg.patient_name || "—"),
+    invoiceNumber: String(reg.invoice_number || "-"),
+    patientName: String(reg.patient_name || "-"),
     title: reg.title || null,
     createdAt: String(reg.created_at || ""),
   };
@@ -153,16 +154,13 @@ export function expandRegistrationToLeafContributions(
       continue;
     }
 
-    // Standalone leaf test
     const gross = lineGross(line);
     const net = lineNet(line);
     const discount = Math.max(0, Math.round((gross - net + Number.EPSILON) * 100) / 100);
     out.push({
       ...base,
       testId: leafId,
-      testName:
-        maps.catalog[leafId]?.name
-        || String(line?.test_name || "Test"),
+      testName: maps.catalog[leafId]?.name || String(line?.test_name || "Test"),
       gross,
       discount,
       net: Math.round((net + Number.EPSILON) * 100) / 100,
@@ -200,7 +198,7 @@ export function aggregateTestVolume(contributions: LeafContribution[]): TestVolu
       net: Math.round((r.net + Number.EPSILON) * 100) / 100,
       patients: r.patients.slice().sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))),
     }))
-    .sort((a, b) => b.qty - a.qty || a.testName.localeCompare(b.testName));
+    .sort((a, b) => b.qty - a.qty || String(a.testName || "").localeCompare(String(b.testName || "")));
 }
 
 async function fetchAllIds(table: string, columns: string): Promise<any[]> {
@@ -221,7 +219,16 @@ async function fetchAllIds(table: string, columns: string): Promise<any[]> {
   return all;
 }
 
-/** Load catalog prices + package/profile/combo → leaf test maps (once per dashboard load). */
+function toIdMap(rows: any[]): Record<string, true> {
+  const out: Record<string, true> = {};
+  for (const r of rows) {
+    const id = String(r?.id || "");
+    if (id) out[id] = true;
+  }
+  return out;
+}
+
+/** Load catalog prices + package/profile/combo -> leaf test maps (once per dashboard load). */
 export async function fetchDashboardExpansionMaps(): Promise<ExpansionMaps> {
   const [
     tests,
@@ -310,8 +317,8 @@ export async function fetchDashboardExpansionMaps(): Promise<ExpansionMaps> {
     packageLeaves,
     profileLeaves,
     comboLeaves,
-    packageIds: new Set(packages.map((p: any) => String(p.id))),
-    profileIds: new Set(profiles.map((p: any) => String(p.id))),
-    comboIds: new Set(combos.map((p: any) => String(p.id))),
+    packageIds: toIdMap(packages),
+    profileIds: toIdMap(profiles),
+    comboIds: toIdMap(combos),
   };
 }
