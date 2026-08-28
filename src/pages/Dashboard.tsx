@@ -19,14 +19,20 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Loader2, Users, IndianRupee, Percent, Wallet, HandCoins, CreditCard } from "lucide-react";
+import { Loader2, Users, IndianRupee, Percent, Wallet, HandCoins, CreditCard, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   isHiddenDailyReportType,
   paymentRowGross,
   paymentRowPaid,
 } from "@/lib/dailyReportMetrics";
-
+import { patientDisplayName } from "@/lib/patientDisplayName";
+import {
+  aggregateTestVolume,
+  expandRegistrationToLeafContributions,
+  fetchDashboardExpansionMaps,
+  type TestVolumeRow,
+} from "@/lib/dashboardTestVolume";
 type RegRow = {
   id: string;
   created_at: string;
@@ -66,6 +72,8 @@ const Dashboard = () => {
   const [dateFrom, setDateFrom] = useState(today);
   const [dateTo, setDateTo] = useState(today);
   const [showModes, setShowModes] = useState(false);
+  const [testSearch, setTestSearch] = useState("");
+  const [drillTest, setDrillTest] = useState<TestVolumeRow | null>(null);
 
   const setRange = (from: Date, to: Date) => {
     setDateFrom(format(from, "yyyy-MM-dd"));
@@ -368,6 +376,71 @@ const Dashboard = () => {
   const healthCheckupTotalCount = healthCheckups.reduce((s, h) => s + h.count, 0);
   const healthCheckupTotalNet = healthCheckups.reduce((s, h) => s + h.netAmount, 0);
 
+  // Tests booked by registration date (leaf tests only; packages/profiles/combos expanded)
+  const { data: expansionMaps, isLoading: mapsLoading } = useQuery({
+    queryKey: ["dashboard_test_expansion_maps"],
+    queryFn: fetchDashboardExpansionMaps,
+    staleTime: 10 * 60_000,
+  });
+
+  const { data: bookedRegs = [], isLoading: bookedRegsLoading } = useQuery({
+    queryKey: ["dashboard_booked_regs", dateFrom, dateTo],
+    queryFn: async () => {
+      const from = startOfDay(parseISO(dateFrom)).toISOString();
+      const to = endOfDay(parseISO(dateTo)).toISOString();
+      const pageSize = 500;
+      const all: any[] = [];
+      let fromIdx = 0;
+      for (;;) {
+        const { data, error } = await supabase
+          .from("patient_registrations")
+          .select(
+            "id, invoice_number, patient_name, title, created_at, bill_cancelled, tests, cancelled_tests",
+          )
+          .gte("created_at", from)
+          .lte("created_at", to)
+          .order("created_at", { ascending: false })
+          .range(fromIdx, fromIdx + pageSize - 1);
+        if (error) throw error;
+        const rows = data || [];
+        all.push(...rows);
+        if (rows.length < pageSize) break;
+        fromIdx += pageSize;
+      }
+      return all;
+    },
+  });
+
+  const testVolumeRows = useMemo(() => {
+    if (!expansionMaps) return [] as TestVolumeRow[];
+    const contributions = bookedRegs.flatMap((r) =>
+      expandRegistrationToLeafContributions(r, expansionMaps),
+    );
+    return aggregateTestVolume(contributions);
+  }, [bookedRegs, expansionMaps]);
+
+  const filteredTestVolume = useMemo(() => {
+    const q = testSearch.trim().toLowerCase();
+    if (!q) return testVolumeRows;
+    return testVolumeRows.filter((r) => r.testName.toLowerCase().includes(q));
+  }, [testVolumeRows, testSearch]);
+
+  const testVolumeTotals = useMemo(
+    () =>
+      filteredTestVolume.reduce(
+        (a, r) => ({
+          qty: a.qty + r.qty,
+          gross: a.gross + r.gross,
+          discount: a.discount + r.discount,
+          net: a.net + r.net,
+        }),
+        { qty: 0, gross: 0, discount: 0, net: 0 },
+      ),
+    [filteredTestVolume],
+  );
+
+  const testsLoading = mapsLoading || bookedRegsLoading;
+
   const modeRows = Object.entries(summary.modes)
     .filter(([, v]) => Math.abs(v) > 0.009)
     .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]));
@@ -574,6 +647,71 @@ const Dashboard = () => {
         </CardContent>
       </Card>
 
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">Tests Booked</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Leaf tests only (packages / profiles / combos expanded). Excludes cancelled bills and cancelled tests.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="relative max-w-sm">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              value={testSearch}
+              onChange={(e) => setTestSearch(e.target.value)}
+              placeholder="Search test…"
+              className="pl-8"
+            />
+          </div>
+          {testsLoading ? (
+            <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+          ) : filteredTestVolume.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-6 text-center">No tests booked in this date range.</p>
+          ) : (
+            <div className="rounded-md border overflow-x-auto max-h-[480px] overflow-y-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Test</TableHead>
+                    <TableHead className="text-right">Qty</TableHead>
+                    <TableHead className="text-right">Gross Amount</TableHead>
+                    <TableHead className="text-right">Discount Amount</TableHead>
+                    <TableHead className="text-right">Net Amount</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredTestVolume.map((row) => (
+                    <TableRow
+                      key={row.testId}
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => setDrillTest(row)}
+                    >
+                      <TableCell className="font-medium text-primary underline-offset-2 hover:underline">
+                        {row.testName}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">{row.qty}</TableCell>
+                      <TableCell className="text-right tabular-nums">{money(row.gross)}</TableCell>
+                      <TableCell className="text-right tabular-nums">{money(row.discount)}</TableCell>
+                      <TableCell className="text-right tabular-nums">{money(row.net)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+                <TableFooter>
+                  <TableRow>
+                    <TableCell className="font-semibold">Total</TableCell>
+                    <TableCell className="text-right tabular-nums font-semibold">{testVolumeTotals.qty}</TableCell>
+                    <TableCell className="text-right tabular-nums font-semibold">{money(testVolumeTotals.gross)}</TableCell>
+                    <TableCell className="text-right tabular-nums font-semibold">{money(testVolumeTotals.discount)}</TableCell>
+                    <TableCell className="text-right tabular-nums font-semibold">{money(testVolumeTotals.net)}</TableCell>
+                  </TableRow>
+                </TableFooter>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       <Dialog open={showModes} onOpenChange={setShowModes}>
         <DialogContent className="max-w-md">
           <DialogHeader>
@@ -617,6 +755,58 @@ const Dashboard = () => {
           <p className="text-xs text-muted-foreground">
             Received KPI ({money(summary.received)}) matches Daily Report Paid / Net Collection.
           </p>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={!!drillTest} onOpenChange={(o) => { if (!o) setDrillTest(null); }}>
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{drillTest?.testName || "Test"} — patients</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            {drillTest?.qty || 0} booking{(drillTest?.qty || 0) === 1 ? "" : "s"} · Net {money(drillTest?.net || 0)}
+          </p>
+          {!drillTest || drillTest.patients.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-4 text-center">No patients.</p>
+          ) : (
+            <div className="rounded-md border overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Invoice #</TableHead>
+                    <TableHead>Patient</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead className="text-right">Gross</TableHead>
+                    <TableHead className="text-right">Discount</TableHead>
+                    <TableHead className="text-right">Net</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {drillTest.patients.map((p, idx) => (
+                    <TableRow key={`${p.registrationId}-${idx}`}>
+                      <TableCell className="font-mono text-xs whitespace-nowrap">{p.invoiceNumber}</TableCell>
+                      <TableCell className="font-medium whitespace-nowrap">
+                        {patientDisplayName({ title: p.title, patient_name: p.patientName })}
+                      </TableCell>
+                      <TableCell className="text-xs whitespace-nowrap">
+                        {p.createdAt ? format(parseISO(p.createdAt), "dd-MM-yyyy hh:mm a") : "—"}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">{money(p.gross)}</TableCell>
+                      <TableCell className="text-right tabular-nums">{money(p.discount)}</TableCell>
+                      <TableCell className="text-right tabular-nums">{money(p.net)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+                <TableFooter>
+                  <TableRow>
+                    <TableCell colSpan={3} className="text-right font-semibold">Total</TableCell>
+                    <TableCell className="text-right tabular-nums font-semibold">{money(drillTest.gross)}</TableCell>
+                    <TableCell className="text-right tabular-nums font-semibold">{money(drillTest.discount)}</TableCell>
+                    <TableCell className="text-right tabular-nums font-semibold">{money(drillTest.net)}</TableCell>
+                  </TableRow>
+                </TableFooter>
+              </Table>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>
