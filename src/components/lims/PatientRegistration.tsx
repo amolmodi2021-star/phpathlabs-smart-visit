@@ -642,13 +642,10 @@ const PatientRegistration = ({
     return true;
   };
 
-  /** Exact name shown on the form — this is what Registered Patients must store. */
-  const formPatientName = () => patientName.replace(/\s+/g, " ").trim().toUpperCase();
-
   const buildSessionDraft = (): RegistrationSessionDraft => ({
     mobile: mobileNumber.replace(/\D/g, "").slice(-10),
     title,
-    patientName: formPatientName(),
+    patientName: patientName.replace(/\s+/g, " ").trim().toUpperCase(),
     gender,
     dob: dob || null,
     email: email || null,
@@ -737,10 +734,9 @@ const PatientRegistration = ({
       const hvc = allowHvCharges ? billing.homeVisitCharges : 0;
       const finalAmt = billing.totalAmount - billing.totalDiscount + hvc;
 
-      const cleanName = formPatientName();
       const regData = {
         mobile_number: cleanMobile,
-        patient_name: cleanName,
+        patient_name: patientName.replace(/\s+/g, ' ').trim().toUpperCase(),
         title,
         gender,
         dob: dob || null,
@@ -814,15 +810,6 @@ const PatientRegistration = ({
           : null,
       });
 
-      // Guarantee Registered Patients shows the form name (never booking/estimate fallback).
-      if (reg?.id && cleanName && String(reg.patient_name || "").trim().toUpperCase() !== cleanName) {
-        await supabase
-          .from("patient_registrations")
-          .update({ patient_name: cleanName } as any)
-          .eq("id", reg.id);
-        reg.patient_name = cleanName;
-      }
-
       // Add doctor to master list (history) — non-fatal
       ensureDoctor(doctorName);
 
@@ -831,6 +818,7 @@ const PatientRegistration = ({
       if (assignedUmr && !umrNumber) setUmrNumber(assignedUmr);
       if (visitType !== "pickup_point" && assignedUmr) {
         const { data: existing } = await supabase.from("patient_master").select("id").eq("umr_id", assignedUmr).limit(1).maybeSingle();
+        const cleanName = patientName.replace(/\s+/g, ' ').trim().toUpperCase();
         const cleanAddr = address ? address.replace(/\s+/g, ' ').trim().toUpperCase() : "";
         if (existing) {
           const upd: any = { last_visit_date: new Date().toISOString() };
@@ -860,7 +848,7 @@ const PatientRegistration = ({
 
         // Sync demographics across all previous registrations with same UMR
         const demoUpdates: any = {
-          patient_name: cleanName,
+          patient_name: patientName.replace(/\s+/g, ' ').trim().toUpperCase(),
           title,
           gender,
           dob: dob || null,
@@ -1124,12 +1112,7 @@ const PatientRegistration = ({
 
           <div>
             <Label className={triedSave && !patientName.trim() ? "text-destructive" : ""}>Patient Name *</Label>
-            <Input
-              value={patientName}
-              onChange={e => setPatientName(e.target.value.toUpperCase())}
-              placeholder="Full name"
-              className="uppercase"
-            />
+            <Input value={patientName} onChange={e => setPatientName(e.target.value.toUpperCase())} placeholder="Full name" className="uppercase" disabled={patientLocked} />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
