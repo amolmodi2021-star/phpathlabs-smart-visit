@@ -219,30 +219,24 @@ export function expandRegistrationToLeafContributions(
     const type = itemTypeOf(line, maps);
 
     if (type === "package" || type === "profile" || type === "combo") {
-      // Allocate container billed gross/net across leaves by catalog-price weight.
-      // Leaf catalog sum is often much higher than package list (e.g. SEHAT 1499 vs
-      // leaf catalogs 5550) - applying disc% to raw catalogs inflates totals.
+      // Gross = leaf catalog price. Net = share of container sold amount by catalog weight.
+      // Discount = catalog gross - allocated net (e.g. FBS 50 - 13.51 = 36.49 inside SEHAT).
       const leafIds = leavesForContainer(type, lineId, maps).filter((id) => !cancelled.has(id));
       if (leafIds.length === 0) continue;
-      const packageGross = lineGross(line);
       const packageNet = lineNet(line);
       const weights = leafIds.map((id) => Number(maps.catalog[id]?.price ?? 0) || 0);
       const sumW = weights.reduce((a, b) => a + b, 0);
-      let allocatedGross = 0;
       let allocatedNet = 0;
       leafIds.forEach((leafId, i) => {
         const isLast = i === leafIds.length - 1;
         const w = sumW > 0 ? weights[i] / sumW : 1 / leafIds.length;
-        const gross = isLast
-          ? Math.round((packageGross - allocatedGross + Number.EPSILON) * 100) / 100
-          : Math.round((packageGross * w + Number.EPSILON) * 100) / 100;
+        const cat = maps.catalog[leafId];
+        const gross = Math.round((weights[i] + Number.EPSILON) * 100) / 100;
         const net = isLast
           ? Math.round((packageNet - allocatedNet + Number.EPSILON) * 100) / 100
           : Math.round((packageNet * w + Number.EPSILON) * 100) / 100;
-        allocatedGross += gross;
         allocatedNet += net;
         const discount = Math.max(0, Math.round((gross - net + Number.EPSILON) * 100) / 100);
-        const cat = maps.catalog[leafId];
         out.push({
           ...base,
           testId: leafId,

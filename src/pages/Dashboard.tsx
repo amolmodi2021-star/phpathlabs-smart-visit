@@ -381,7 +381,7 @@ const Dashboard = () => {
     isError: testsError,
     error: testsErrorObj,
   } = useQuery({
-    queryKey: ["dashboard_test_volume_v3", dateFrom, dateTo],
+    queryKey: ["dashboard_test_volume_v4", dateFrom, dateTo],
     queryFn: async () => {
       const from = startOfDay(parseISO(dateFrom)).toISOString();
       const to = endOfDay(parseISO(dateTo)).toISOString();
