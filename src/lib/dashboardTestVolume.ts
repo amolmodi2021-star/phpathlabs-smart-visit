@@ -75,12 +75,6 @@ function lineNet(t: any): number {
   return Math.max(0, lineGross(t) - disc);
 }
 
-function containerDiscountPct(t: any): number {
-  const gross = lineGross(t);
-  if (gross <= 0) return 0;
-  const net = lineNet(t);
-  return Math.min(1, Math.max(0, (gross - net) / gross));
-}
 
 function itemTypeOf(
   t: any,
@@ -225,13 +219,30 @@ export function expandRegistrationToLeafContributions(
     const type = itemTypeOf(line, maps);
 
     if (type === "package" || type === "profile" || type === "combo") {
-      const pct = containerDiscountPct(line);
-      for (const leafId of leavesForContainer(type, lineId, maps)) {
-        if (cancelled.has(leafId)) continue;
+      // Allocate container billed gross/net across leaves by catalog-price weight.
+      // Leaf catalog sum is often much higher than package list (e.g. SEHAT 1499 vs
+      // leaf catalogs 5550) - applying disc% to raw catalogs inflates totals.
+      const leafIds = leavesForContainer(type, lineId, maps).filter((id) => !cancelled.has(id));
+      if (leafIds.length === 0) continue;
+      const packageGross = lineGross(line);
+      const packageNet = lineNet(line);
+      const weights = leafIds.map((id) => Number(maps.catalog[id]?.price ?? 0) || 0);
+      const sumW = weights.reduce((a, b) => a + b, 0);
+      let allocatedGross = 0;
+      let allocatedNet = 0;
+      leafIds.forEach((leafId, i) => {
+        const isLast = i === leafIds.length - 1;
+        const w = sumW > 0 ? weights[i] / sumW : 1 / leafIds.length;
+        const gross = isLast
+          ? Math.round((packageGross - allocatedGross + Number.EPSILON) * 100) / 100
+          : Math.round((packageGross * w + Number.EPSILON) * 100) / 100;
+        const net = isLast
+          ? Math.round((packageNet - allocatedNet + Number.EPSILON) * 100) / 100
+          : Math.round((packageNet * w + Number.EPSILON) * 100) / 100;
+        allocatedGross += gross;
+        allocatedNet += net;
+        const discount = Math.max(0, Math.round((gross - net + Number.EPSILON) * 100) / 100);
         const cat = maps.catalog[leafId];
-        const gross = Number(cat?.price ?? 0) || 0;
-        const net = Math.round((gross * (1 - pct) + Number.EPSILON) * 100) / 100;
-        const discount = Math.round((gross - net + Number.EPSILON) * 100) / 100;
         out.push({
           ...base,
           testId: leafId,
@@ -240,7 +251,7 @@ export function expandRegistrationToLeafContributions(
           discount,
           net,
         });
-      }
+      });
       continue;
     }
 
