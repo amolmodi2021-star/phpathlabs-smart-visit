@@ -22,8 +22,8 @@ export function reportPdfCacheKey(registrationId: string, testIds: string[] | st
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean);
-  // v2: capture scales page (does not crop right edge when queueMode downscales).
-  return `v2|${String(registrationId || "").trim()}|${[...ids].sort().join(",")}`;
+  // v3: full A4 @ PR2 / JPEG 0.9 (no downscaled queue capture).
+  return `v3|${String(registrationId || "").trim()}|${[...ids].sort().join(",")}`;
 }
 
 function openDb(): Promise<IDBDatabase> {

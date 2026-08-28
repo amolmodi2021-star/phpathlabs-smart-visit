@@ -125,9 +125,9 @@ const isBlankDataUrl = async (dataUrl: string): Promise<boolean> => {
 };
 
 type PageCaptureOptions = {
-  /** Override html-to-image pixelRatio (default: snip 1.25 / structured 1.25). */
+  /** Override html-to-image pixelRatio (default: snip 1.25 / structured 2). */
   pixelRatio?: number;
-  /** JPEG quality 0–1 (default 0.85). */
+  /** JPEG quality 0–1 (default 0.9). */
   quality?: number;
   /** Force image cache bust (default: false — cacheBust breaks data: assets). */
   cacheBust?: boolean;
@@ -159,9 +159,8 @@ async function mapPool<T, R>(
 };
 
 // Capture a page with retries (handles intermittent blank captures from html-to-image).
-// Default: modest canvas (~0.85× CSS size @ PR1.25). Dispatch/download use even smaller.
-// IMPORTANT: when width/height are smaller than the live A4 node, we must scale the clone
-// (transform: scale) — setting only width/height crops the right/bottom edges (overflow:hidden).
+// Always capture at full A4 CSS size; sharpness comes from pixelRatio (default 2).
+// If a caller passes smaller width/height, scale the clone (do not crop overflow:hidden).
 const A4_WIDTH_CSS_PX = Math.round((210 / 25.4) * 96); // ~794
 const A4_HEIGHT_CSS_PX = Math.round((297 / 25.4) * 96); // ~1123
 
@@ -173,10 +172,10 @@ const captureWithRetry = async (
   captureOpts?: PageCaptureOptions,
 ): Promise<string> => {
   const isSnipPage = !!el.querySelector("img[data-snip-image]");
-  const pixelRatio = captureOpts?.pixelRatio ?? (isSnipPage ? 1 : 1.25);
+  const pixelRatio = captureOpts?.pixelRatio ?? (isSnipPage ? 1.25 : 2);
   const attempts = captureOpts?.attempts ?? 2;
   const captureMs = isSnipPage ? 12_000 : 16_000;
-  const jpegQuality = captureOpts?.quality ?? 0.85;
+  const jpegQuality = captureOpts?.quality ?? 0.9;
   // offsetWidth ignores CSS transform (previewScale), so this is the true A4 layout size.
   const layoutW = el.offsetWidth || A4_WIDTH_CSS_PX;
   const layoutH = el.offsetHeight || A4_HEIGHT_CSS_PX;
@@ -189,9 +188,9 @@ const captureWithRetry = async (
     // Never default-bust: html-to-image appends ?t=… which breaks data: signature/letterhead URLs
     // and hung Dispatch WhatsApp PDF generation on multi-page reports.
     cacheBust: captureOpts?.cacheBust ?? false,
-    skipFonts: captureOpts?.skipFonts ?? true,
+    skipFonts: captureOpts?.skipFonts ?? false,
     style: {
-      // Clear previewScale, then downscale into the smaller canvas without cropping.
+      // Clear previewScale; only downscale if caller asked for a smaller canvas (avoid crop).
       transform: scale < 0.999 ? `scale(${scale})` : "none",
       transformOrigin: "top left",
       width: `${layoutW}px`,
@@ -1638,8 +1637,8 @@ const LimsReportView = () => {
     }
   };
 
-  const buildPdfBlob = async (opts?: {
-    /** Faster capture for Dispatch WhatsApp / Download (still includes histograms + snips). */
+  const buildPdfBlob = async (_opts?: {
+    /** Kept for callers; quality is no longer reduced for WhatsApp/dispatch. */
     queueMode?: boolean;
   }): Promise<{ blob: Blob; filename: string } | null> => {
     if (!printRef.current && !cachedPdfRef.current) return null;
@@ -1674,21 +1673,22 @@ const LimsReportView = () => {
       const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
       const NATIVE_W = Math.round((PAGE_WIDTH_MM / 25.4) * 96);
       const NATIVE_H = Math.round((PAGE_HEIGHT_MM / 25.4) * 96);
-      // Smaller raster = far less html-to-image work. jsPDF stretches to full A4.
-      // queueMode (~0.65× @ PR1) ≈ 4–6× fewer pixels than old PR2 full-size path.
-      const scale = opts?.queueMode ? 0.65 : 0.8;
-      const captureW = Math.round(NATIVE_W * scale);
-      const captureH = Math.round(NATIVE_H * scale);
-      const captureOpts: PageCaptureOptions = opts?.queueMode
-        ? { pixelRatio: 1, attempts: 1, quality: 0.78, cacheBust: false, fastBlankCheck: true, skipFonts: true }
-        : { pixelRatio: 1.25, attempts: 1, quality: 0.84, cacheBust: false, fastBlankCheck: true, skipFonts: true };
+      // Full A4 CSS size @ PR2 — readable on phone WhatsApp and print. Parallel pages only.
+      const captureOpts: PageCaptureOptions = {
+        pixelRatio: 2,
+        attempts: 2,
+        quality: 0.9,
+        cacheBust: false,
+        fastBlankCheck: true,
+        skipFonts: false,
+      };
       const concurrency = Math.min(3, pageElements.length);
       const jpegUrls = await mapPool(pageElements, concurrency, (el) =>
-        captureWithRetry(el, captureW, captureH, "jpeg", captureOpts),
+        captureWithRetry(el, NATIVE_W, NATIVE_H, "jpeg", captureOpts),
       );
       for (let i = 0; i < jpegUrls.length; i++) {
         if (i > 0) pdf.addPage();
-        pdf.addImage(jpegUrls[i], "JPEG", 0, 0, PAGE_WIDTH_MM, PAGE_HEIGHT_MM, undefined, "FAST");
+        pdf.addImage(jpegUrls[i], "JPEG", 0, 0, PAGE_WIDTH_MM, PAGE_HEIGHT_MM, undefined, "MEDIUM");
       }
 
       const patientNameRaw = patientDisplayName(approvedReports[0]);
@@ -1734,7 +1734,7 @@ const LimsReportView = () => {
     if (!printRef.current && !cachedPdfRef.current) return;
     setDownloading(true);
     try {
-      // Always use fast capture; reuse session/eager cache when present.
+      // Always use full-quality capture; reuse session/eager cache when present.
       const built = cachedPdfRef.current || await buildPdfBlob({ queueMode: true });
       if (!built) { toast.error("No pages to export"); setDownloading(false); return; }
 
