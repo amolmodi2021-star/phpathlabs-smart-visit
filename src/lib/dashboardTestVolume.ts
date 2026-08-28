@@ -29,11 +29,39 @@ export type ExpansionMaps = {
   packageLeaves: Record<string, string[]>;
   profileLeaves: Record<string, string[]>;
   comboLeaves: Record<string, string[]>;
-  /** Plain lookup maps (not Set) so React Query structural sharing stays safe. */
   packageIds: Record<string, true>;
   profileIds: Record<string, true>;
   comboIds: Record<string, true>;
 };
+
+export const EMPTY_EXPANSION_MAPS: ExpansionMaps = {
+  catalog: {},
+  packageLeaves: {},
+  profileLeaves: {},
+  comboLeaves: {},
+  packageIds: {},
+  profileIds: {},
+  comboIds: {},
+};
+
+type BookedReg = {
+  id: string;
+  invoice_number?: string | null;
+  patient_name?: string | null;
+  title?: string | null;
+  created_at?: string | null;
+  bill_cancelled?: boolean | null;
+  tests?: any;
+  cancelled_tests?: any;
+};
+
+const MASTER_TTL_MS = 30 * 60_000;
+let masterCache: {
+  at: number;
+  packageIds: Record<string, true>;
+  profileIds: Record<string, true>;
+  comboIds: Record<string, true>;
+} | null = null;
 
 function lineGross(t: any): number {
   return Number(t?.price ?? 0) || 0;
@@ -47,7 +75,6 @@ function lineNet(t: any): number {
   return Math.max(0, lineGross(t) - disc);
 }
 
-/** Discount fraction on a package / profile / combo line (0-1). */
 function containerDiscountPct(t: any): number {
   const gross = lineGross(t);
   if (gross <= 0) return 0;
@@ -91,22 +118,85 @@ function uniqueIds(ids: string[]): string[] {
   return out;
 }
 
+function chunkIds(ids: string[], size = 150): string[][] {
+  const u = uniqueIds(ids);
+  const chunks: string[][] = [];
+  for (let i = 0; i < u.length; i += size) chunks.push(u.slice(i, i + size));
+  return chunks;
+}
+
+async function withRetry<T>(label: string, fn: () => Promise<T>, attempts = 3): Promise<T> {
+  let last: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      last = e;
+      await new Promise((r) => setTimeout(r, 150 * (i + 1)));
+    }
+  }
+  throw new Error(`${label}: ${(last as Error)?.message || String(last)}`);
+}
+
+async function selectIn(
+  table: string,
+  columns: string,
+  filterCol: string,
+  ids: string[],
+): Promise<any[]> {
+  if (ids.length === 0) return [];
+  const all: any[] = [];
+  for (const part of chunkIds(ids)) {
+    const rows = await withRetry(`${table}.in(${filterCol})`, async () => {
+      const { data, error } = await (supabase as any)
+        .from(table)
+        .select(columns)
+        .in(filterCol, part);
+      if (error) throw error;
+      return data || [];
+    });
+    all.push(...rows);
+  }
+  return all;
+}
+
+async function selectAllIds(table: string): Promise<Record<string, true>> {
+  const rows = await withRetry(table, async () => {
+    const { data, error } = await (supabase as any).from(table).select("id");
+    if (error) throw error;
+    return data || [];
+  });
+  const out: Record<string, true> = {};
+  for (const r of rows) {
+    const id = String(r?.id || "");
+    if (id) out[id] = true;
+  }
+  return out;
+}
+
+async function loadMasterIdMaps(): Promise<{
+  packageIds: Record<string, true>;
+  profileIds: Record<string, true>;
+  comboIds: Record<string, true>;
+}> {
+  if (masterCache && Date.now() - masterCache.at < MASTER_TTL_MS) {
+    return masterCache;
+  }
+  const [packageIds, profileIds, comboIds] = await Promise.all([
+    selectAllIds("health_checkups"),
+    selectAllIds("billing_profiles"),
+    selectAllIds("combos"),
+  ]);
+  masterCache = { at: Date.now(), packageIds, profileIds, comboIds };
+  return masterCache;
+}
+
 /**
  * Expand registration billed lines into leaf-test contributions.
  * Packages / profiles / combos are not counted -- only their leaf tests.
- * Cancelled bills and cancelled line/leaf ids are skipped.
  */
 export function expandRegistrationToLeafContributions(
-  reg: {
-    id: string;
-    invoice_number?: string | null;
-    patient_name?: string | null;
-    title?: string | null;
-    created_at?: string | null;
-    bill_cancelled?: boolean | null;
-    tests?: any;
-    cancelled_tests?: any;
-  },
+  reg: BookedReg,
   maps: ExpansionMaps,
 ): LeafContribution[] {
   if (reg.bill_cancelled) return [];
@@ -159,8 +249,8 @@ export function expandRegistrationToLeafContributions(
     const discount = Math.max(0, Math.round((gross - net + Number.EPSILON) * 100) / 100);
     out.push({
       ...base,
-      testId: leafId,
-      testName: maps.catalog[leafId]?.name || String(line?.test_name || "Test"),
+      testId: lineId,
+      testName: maps.catalog[lineId]?.name || String(line?.test_name || "Test"),
       gross,
       discount,
       net: Math.round((net + Number.EPSILON) * 100) / 100,
@@ -196,142 +286,190 @@ export function aggregateTestVolume(contributions: LeafContribution[]): TestVolu
       gross: Math.round((r.gross + Number.EPSILON) * 100) / 100,
       discount: Math.round((r.discount + Number.EPSILON) * 100) / 100,
       net: Math.round((r.net + Number.EPSILON) * 100) / 100,
-      patients: r.patients.slice().sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))),
+      patients: r.patients
+        .slice()
+        .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))),
     }))
-    .sort((a, b) => b.qty - a.qty || String(a.testName || "").localeCompare(String(b.testName || "")));
+    .sort(
+      (a, b) =>
+        b.qty - a.qty || String(a.testName || "").localeCompare(String(b.testName || "")),
+    );
 }
 
-async function fetchAllIds(table: string, columns: string): Promise<any[]> {
-  const pageSize = 1000;
-  const all: any[] = [];
-  let from = 0;
-  for (;;) {
-    const { data, error } = await (supabase as any)
-      .from(table)
-      .select(columns)
-      .range(from, from + pageSize - 1);
-    if (error) {
-      console.warn(`[dashboardTestVolume] ${table}:`, error.message);
-      return all;
+/** Fast scoped maps: only containers + leaf prices needed for these registrations. */
+export async function fetchExpansionMapsForRegs(regs: BookedReg[]): Promise<ExpansionMaps> {
+  const master = await loadMasterIdMaps();
+  const maps: ExpansionMaps = {
+    catalog: {},
+    packageLeaves: {},
+    profileLeaves: {},
+    comboLeaves: {},
+    packageIds: master.packageIds,
+    profileIds: master.profileIds,
+    comboIds: master.comboIds,
+  };
+
+  const neededPackages = new Set<string>();
+  const neededProfiles = new Set<string>();
+  const neededCombos = new Set<string>();
+  const directTests = new Set<string>();
+
+  for (const reg of regs) {
+    if (reg.bill_cancelled) continue;
+    const lines = Array.isArray(reg.tests) ? reg.tests : [];
+    for (const line of lines) {
+      const id = String(line?.test_id || "").trim();
+      if (!id) continue;
+      const type = itemTypeOf(line, maps);
+      if (type === "package") neededPackages.add(id);
+      else if (type === "profile") neededProfiles.add(id);
+      else if (type === "combo") neededCombos.add(id);
+      else directTests.add(id);
     }
-    const rows = data || [];
-    all.push(...rows);
-    if (rows.length < pageSize) break;
-    from += pageSize;
   }
-  return all;
-}
 
-export const EMPTY_EXPANSION_MAPS: ExpansionMaps = {
-  catalog: {},
-  packageLeaves: {},
-  profileLeaves: {},
-  comboLeaves: {},
-  packageIds: {},
-  profileIds: {},
-  comboIds: {},
-};
+  const pkgIds = [...neededPackages];
+  const comboIds = [...neededCombos];
 
-function toIdMap(rows: any[]): Record<string, true> {
-  const out: Record<string, true> = {};
-  for (const r of rows) {
-    const id = String(r?.id || "");
-    if (id) out[id] = true;
-  }
-  return out;
-}
-
-/** Load catalog prices + package/profile/combo -> leaf test maps (once per dashboard load). */
-export async function fetchDashboardExpansionMaps(): Promise<ExpansionMaps> {
-  const [
-    tests,
-    packages,
-    profiles,
-    combos,
-    pkgTests,
-    pkgProfiles,
-    profileTests,
-    comboTests,
-    comboProfiles,
-  ] = await Promise.all([
-    fetchAllIds("tests", "id, test_name, display_name, price"),
-    fetchAllIds("health_checkups", "id"),
-    fetchAllIds("billing_profiles", "id"),
-    fetchAllIds("combos", "id"),
-    fetchAllIds("health_checkup_tests", "health_checkup_id, test_id"),
-    fetchAllIds("health_checkup_profiles", "health_checkup_id, profile_id"),
-    fetchAllIds("billing_profile_tests", "profile_id, test_id"),
-    fetchAllIds("combo_tests", "combo_id, test_id"),
-    fetchAllIds("combo_profiles", "combo_id, profile_id"),
+  const [pkgTests, pkgProfiles, comboTests, comboProfiles] = await Promise.all([
+    selectIn("health_checkup_tests", "health_checkup_id, test_id", "health_checkup_id", pkgIds),
+    selectIn("health_checkup_profiles", "health_checkup_id, profile_id", "health_checkup_id", pkgIds),
+    selectIn("combo_tests", "combo_id, test_id", "combo_id", comboIds),
+    selectIn("combo_profiles", "combo_id, profile_id", "combo_id", comboIds),
   ]);
 
-  const catalog: Record<string, { name: string; price: number }> = {};
-  for (const t of tests) {
+  for (const r of pkgTests) {
+    const pkg = String(r.health_checkup_id || "");
+    const tid = String(r.test_id || "");
+    if (!pkg || !tid) continue;
+    if (!maps.packageLeaves[pkg]) maps.packageLeaves[pkg] = [];
+    maps.packageLeaves[pkg].push(tid);
+  }
+  for (const r of pkgProfiles) {
+    const pid = String(r.profile_id || "");
+    if (pid) neededProfiles.add(pid);
+  }
+  for (const r of comboTests) {
+    const cid = String(r.combo_id || "");
+    const tid = String(r.test_id || "");
+    if (!cid || !tid) continue;
+    if (!maps.comboLeaves[cid]) maps.comboLeaves[cid] = [];
+    maps.comboLeaves[cid].push(tid);
+  }
+  for (const r of comboProfiles) {
+    const pid = String(r.profile_id || "");
+    if (pid) neededProfiles.add(pid);
+  }
+
+  const profileIds = [...neededProfiles];
+  const profileTests = await selectIn(
+    "billing_profile_tests",
+    "profile_id, test_id",
+    "profile_id",
+    profileIds,
+  );
+  for (const r of profileTests) {
+    const pid = String(r.profile_id || "");
+    const tid = String(r.test_id || "");
+    if (!pid || !tid) continue;
+    if (!maps.profileLeaves[pid]) maps.profileLeaves[pid] = [];
+    maps.profileLeaves[pid].push(tid);
+  }
+  for (const pid of Object.keys(maps.profileLeaves)) {
+    maps.profileLeaves[pid] = uniqueIds(maps.profileLeaves[pid]);
+  }
+
+  for (const r of pkgProfiles) {
+    const pkg = String(r.health_checkup_id || "");
+    const pid = String(r.profile_id || "");
+    if (!pkg || !pid) continue;
+    if (!maps.packageLeaves[pkg]) maps.packageLeaves[pkg] = [];
+    maps.packageLeaves[pkg].push(...(maps.profileLeaves[pid] || []));
+  }
+  for (const pkg of Object.keys(maps.packageLeaves)) {
+    maps.packageLeaves[pkg] = uniqueIds(maps.packageLeaves[pkg]);
+  }
+
+  for (const r of comboProfiles) {
+    const cid = String(r.combo_id || "");
+    const pid = String(r.profile_id || "");
+    if (!cid || !pid) continue;
+    if (!maps.comboLeaves[cid]) maps.comboLeaves[cid] = [];
+    maps.comboLeaves[cid].push(...(maps.profileLeaves[pid] || []));
+  }
+  for (const cid of Object.keys(maps.comboLeaves)) {
+    maps.comboLeaves[cid] = uniqueIds(maps.comboLeaves[cid]);
+  }
+
+  const leafIds = new Set<string>(directTests);
+  for (const leaves of Object.values(maps.packageLeaves)) leaves.forEach((id) => leafIds.add(id));
+  for (const leaves of Object.values(maps.profileLeaves)) leaves.forEach((id) => leafIds.add(id));
+  for (const leaves of Object.values(maps.comboLeaves)) leaves.forEach((id) => leafIds.add(id));
+
+  const testRows = await selectIn(
+    "tests",
+    "id, test_name, display_name, price",
+    "id",
+    [...leafIds],
+  );
+  for (const t of testRows) {
     const id = String(t.id || "");
     if (!id) continue;
-    catalog[id] = {
+    maps.catalog[id] = {
       name: String(t.display_name || t.test_name || "Test"),
       price: Number(t.price || 0) || 0,
     };
   }
 
-  const profileLeaves: Record<string, string[]> = {};
-  for (const r of profileTests) {
-    const pid = String(r.profile_id || "");
-    const tid = String(r.test_id || "");
-    if (!pid || !tid) continue;
-    if (!profileLeaves[pid]) profileLeaves[pid] = [];
-    profileLeaves[pid].push(tid);
-  }
-  for (const pid of Object.keys(profileLeaves)) {
-    profileLeaves[pid] = uniqueIds(profileLeaves[pid]);
-  }
+  return maps;
+}
 
-  const packageLeaves: Record<string, string[]> = {};
-  for (const r of pkgTests) {
-    const pkg = String(r.health_checkup_id || "");
-    const tid = String(r.test_id || "");
-    if (!pkg || !tid) continue;
-    if (!packageLeaves[pkg]) packageLeaves[pkg] = [];
-    packageLeaves[pkg].push(tid);
+export async function fetchBookedRegistrations(fromIso: string, toIso: string): Promise<BookedReg[]> {
+  const pageSize = 500;
+  const all: BookedReg[] = [];
+  let fromIdx = 0;
+  for (;;) {
+    const rows = await withRetry("patient_registrations", async () => {
+      const { data, error } = await supabase
+        .from("patient_registrations")
+        .select(
+          "id, invoice_number, patient_name, title, created_at, bill_cancelled, tests, cancelled_tests",
+        )
+        .gte("created_at", fromIso)
+        .lte("created_at", toIso)
+        .order("created_at", { ascending: false })
+        .range(fromIdx, fromIdx + pageSize - 1);
+      if (error) throw error;
+      return (data || []) as BookedReg[];
+    });
+    all.push(...rows);
+    if (rows.length < pageSize) break;
+    fromIdx += pageSize;
   }
-  for (const r of pkgProfiles) {
-    const pkg = String(r.health_checkup_id || "");
-    const pid = String(r.profile_id || "");
-    if (!pkg || !pid) continue;
-    if (!packageLeaves[pkg]) packageLeaves[pkg] = [];
-    packageLeaves[pkg].push(...(profileLeaves[pid] || []));
-  }
-  for (const pkg of Object.keys(packageLeaves)) {
-    packageLeaves[pkg] = uniqueIds(packageLeaves[pkg]);
-  }
+  return all;
+}
 
-  const comboLeaves: Record<string, string[]> = {};
-  for (const r of comboTests) {
-    const cid = String(r.combo_id || "");
-    const tid = String(r.test_id || "");
-    if (!cid || !tid) continue;
-    if (!comboLeaves[cid]) comboLeaves[cid] = [];
-    comboLeaves[cid].push(tid);
-  }
-  for (const r of comboProfiles) {
-    const cid = String(r.combo_id || "");
-    const pid = String(r.profile_id || "");
-    if (!cid || !pid) continue;
-    if (!comboLeaves[cid]) comboLeaves[cid] = [];
-    comboLeaves[cid].push(...(profileLeaves[pid] || []));
-  }
-  for (const cid of Object.keys(comboLeaves)) {
-    comboLeaves[cid] = uniqueIds(comboLeaves[cid]);
-  }
+/**
+ * Background-friendly pipeline: load date-range regs, then only the package/profile/combo
+ * leaf maps + catalog prices needed for those lines, then aggregate.
+ */
+export async function fetchDashboardTestVolume(
+  fromIso: string,
+  toIso: string,
+): Promise<TestVolumeRow[]> {
+  const regs = await fetchBookedRegistrations(fromIso, toIso);
+  const maps = await fetchExpansionMapsForRegs(regs);
+  const contributions = regs.flatMap((r) => expandRegistrationToLeafContributions(r, maps));
+  return aggregateTestVolume(contributions);
+}
 
+/** @deprecated Prefer fetchExpansionMapsForRegs / fetchDashboardTestVolume */
+export async function fetchDashboardExpansionMaps(): Promise<ExpansionMaps> {
+  const master = await loadMasterIdMaps();
   return {
-    catalog,
-    packageLeaves,
-    profileLeaves,
-    comboLeaves,
-    packageIds: toIdMap(packages),
-    profileIds: toIdMap(profiles),
-    comboIds: toIdMap(combos),
+    ...EMPTY_EXPANSION_MAPS,
+    packageIds: master.packageIds,
+    profileIds: master.profileIds,
+    comboIds: master.comboIds,
   };
 }

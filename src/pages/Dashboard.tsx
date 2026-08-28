@@ -28,10 +28,7 @@ import {
 } from "@/lib/dailyReportMetrics";
 import { patientDisplayName } from "@/lib/patientDisplayName";
 import {
-  aggregateTestVolume,
-  EMPTY_EXPANSION_MAPS,
-  expandRegistrationToLeafContributions,
-  fetchDashboardExpansionMaps,
+  fetchDashboardTestVolume,
   type TestVolumeRow,
 } from "@/lib/dashboardTestVolume";
 type RegRow = {
@@ -377,70 +374,23 @@ const Dashboard = () => {
   const healthCheckupTotalCount = healthCheckups.reduce((s, h) => s + h.count, 0);
   const healthCheckupTotalNet = healthCheckups.reduce((s, h) => s + h.netAmount, 0);
 
-  // Tests booked by registration date (leaf tests only; packages/profiles/combos expanded)
+  // Tests booked: load regs + scoped package/profile/combo leaf maps in one background query.
   const {
-    data: expansionMaps,
-    isLoading: mapsLoading,
-    isError: mapsError,
-    error: mapsErrorObj,
+    data: testVolumeRows = [],
+    isLoading: testsLoading,
+    isError: testsError,
+    error: testsErrorObj,
   } = useQuery({
-    queryKey: ["dashboard_test_expansion_maps_v2"],
-    queryFn: fetchDashboardExpansionMaps,
-    staleTime: 10 * 60_000,
-    refetchOnMount: "always",
-    retry: 2,
-  });
-
-  const {
-    data: bookedRegs = [],
-    isLoading: bookedRegsLoading,
-    isError: bookedRegsError,
-    error: bookedRegsErrorObj,
-  } = useQuery({
-    queryKey: ["dashboard_booked_regs_v2", dateFrom, dateTo],
+    queryKey: ["dashboard_test_volume_v3", dateFrom, dateTo],
     queryFn: async () => {
       const from = startOfDay(parseISO(dateFrom)).toISOString();
       const to = endOfDay(parseISO(dateTo)).toISOString();
-      const pageSize = 500;
-      const all: any[] = [];
-      let fromIdx = 0;
-      for (;;) {
-        const { data, error } = await supabase
-          .from("patient_registrations")
-          .select(
-            "id, invoice_number, patient_name, title, created_at, bill_cancelled, tests, cancelled_tests",
-          )
-          .gte("created_at", from)
-          .lte("created_at", to)
-          .order("created_at", { ascending: false })
-          .range(fromIdx, fromIdx + pageSize - 1);
-        if (error) throw error;
-        const rows = data || [];
-        all.push(...rows);
-        if (rows.length < pageSize) break;
-        fromIdx += pageSize;
-      }
-      return all;
+      return fetchDashboardTestVolume(from, to);
     },
     staleTime: 60_000,
     refetchOnMount: "always",
     retry: 2,
   });
-
-  const testVolumeRows = useMemo(() => {
-    try {
-      // Never block the table on maps — standalone tests use line prices;
-      // packages/profiles/combos expand when maps are available.
-      const maps = expansionMaps || EMPTY_EXPANSION_MAPS;
-      const contributions = bookedRegs.flatMap((r) =>
-        expandRegistrationToLeafContributions(r, maps),
-      );
-      return aggregateTestVolume(contributions);
-    } catch (e) {
-      console.error("Tests Booked aggregation failed", e);
-      return [] as TestVolumeRow[];
-    }
-  }, [bookedRegs, expansionMaps]);
 
   const filteredTestVolume = useMemo(() => {
     const q = testSearch.trim().toLowerCase();
@@ -462,12 +412,9 @@ const Dashboard = () => {
     [filteredTestVolume],
   );
 
-  const testsLoading = bookedRegsLoading || (mapsLoading && !expansionMaps);
-  const testsErrorMsg = bookedRegsError
-    ? (bookedRegsErrorObj as Error)?.message || "Failed to load registrations"
-    : mapsError
-      ? (mapsErrorObj as Error)?.message || "Failed to load test catalog"
-      : null;
+  const testsErrorMsg = testsError
+    ? (testsErrorObj as Error)?.message || "Failed to load tests booked"
+    : null;
 
   const modeRows = Object.entries(summary.modes)
     .filter(([, v]) => Math.abs(v) > 0.009)
@@ -679,7 +626,7 @@ const Dashboard = () => {
         <CardHeader className="pb-2">
           <CardTitle className="text-base">Tests Booked</CardTitle>
           <p className="text-sm text-muted-foreground">
-            Leaf tests only (packages / profiles / combos expanded). Excludes cancelled bills and cancelled tests.
+            Leaf tests only — packages / profiles / combos expanded with package discount applied. Excludes cancelled bills and cancelled tests.
           </p>
         </CardHeader>
         <CardContent className="space-y-3">
