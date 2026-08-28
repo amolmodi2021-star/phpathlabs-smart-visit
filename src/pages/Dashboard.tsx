@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   format,
@@ -74,11 +74,19 @@ const Dashboard = () => {
   const [showModes, setShowModes] = useState(false);
   const [testSearch, setTestSearch] = useState("");
   const [drillTest, setDrillTest] = useState<TestVolumeRow | null>(null);
+  /** Tests Booked stays idle until user clicks Load (saves egress). */
+  const [testsBookedArmed, setTestsBookedArmed] = useState(false);
 
   const setRange = (from: Date, to: Date) => {
     setDateFrom(format(from, "yyyy-MM-dd"));
     setDateTo(format(to, "yyyy-MM-dd"));
   };
+
+  useEffect(() => {
+    setTestsBookedArmed(false);
+    setDrillTest(null);
+    setTestSearch("");
+  }, [dateFrom, dateTo]);
 
   const presets = [
     {
@@ -376,21 +384,23 @@ const Dashboard = () => {
   const healthCheckupTotalCount = healthCheckups.reduce((s, h) => s + h.count, 0);
   const healthCheckupTotalNet = healthCheckups.reduce((s, h) => s + h.netAmount, 0);
 
-  // Tests booked: load regs + scoped package/profile/combo leaf maps in one background query.
+  // Tests booked: server-side RPC; only runs after Load.
   const {
     data: testVolumeRows = [],
     isLoading: testsLoading,
+    isFetching: testsFetching,
     isError: testsError,
     error: testsErrorObj,
+    refetch: refetchTestsBooked,
   } = useQuery({
-    queryKey: ["dashboard_test_volume_v5", dateFrom, dateTo],
+    queryKey: ["dashboard_test_volume_v6", dateFrom, dateTo],
+    enabled: testsBookedArmed,
     queryFn: async () => {
       const from = startOfDay(parseISO(dateFrom)).toISOString();
       const to = endOfDay(parseISO(dateTo)).toISOString();
       return fetchDashboardTestVolume(from, to);
     },
     staleTime: 60_000,
-    refetchOnMount: "always",
     retry: 2,
   });
 
@@ -400,8 +410,8 @@ const Dashboard = () => {
     isError: drillError,
     error: drillErrorObj,
   } = useQuery({
-    queryKey: ["dashboard_test_volume_patients_v1", dateFrom, dateTo, drillTest?.testId],
-    enabled: !!drillTest?.testId,
+    queryKey: ["dashboard_test_volume_patients_v2", dateFrom, dateTo, drillTest?.testId],
+    enabled: testsBookedArmed && !!drillTest?.testId,
     queryFn: async () => {
       const from = startOfDay(parseISO(dateFrom)).toISOString();
       const to = endOfDay(parseISO(dateTo)).toISOString();
@@ -643,12 +653,46 @@ const Dashboard = () => {
 
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-base">Tests Booked</CardTitle>
-          <p className="text-sm text-muted-foreground">
-            Leaf tests only — packages / profiles / combos expanded with package discount applied. Excludes cancelled bills and cancelled tests.
-          </p>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <CardTitle className="text-base">Tests Booked</CardTitle>
+              <p className="text-sm text-muted-foreground mt-1">
+                Server-side leaf expansion (packages / profiles / combos). Nothing loads until you click Load. Patient rows load only when a test is clicked.
+              </p>
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              variant={testsBookedArmed ? "outline" : "default"}
+              disabled={testsBookedArmed && (testsLoading || testsFetching)}
+              onClick={() => {
+                if (!testsBookedArmed) {
+                  setTestsBookedArmed(true);
+                  return;
+                }
+                void refetchTestsBooked();
+              }}
+            >
+              {(testsBookedArmed && (testsLoading || testsFetching)) ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                  Loading…
+                </>
+              ) : testsBookedArmed ? (
+                "Reload"
+              ) : (
+                "Load"
+              )}
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="space-y-3">
+          {!testsBookedArmed ? (
+            <p className="text-sm text-muted-foreground py-6 text-center">
+              Click Load to fetch Tests Booked for the selected dates.
+            </p>
+          ) : (
+          <>
           <div className="relative max-w-sm">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
@@ -658,7 +702,7 @@ const Dashboard = () => {
               className="pl-8"
             />
           </div>
-          {testsLoading ? (
+          {testsLoading || testsFetching ? (
             <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
           ) : testsErrorMsg && filteredTestVolume.length === 0 ? (
             <p className="text-sm text-destructive py-6 text-center">{testsErrorMsg}</p>
@@ -704,6 +748,8 @@ const Dashboard = () => {
                 </TableFooter>
               </Table>
             </div>
+          )}
+          </>
           )}
         </CardContent>
       </Card>
