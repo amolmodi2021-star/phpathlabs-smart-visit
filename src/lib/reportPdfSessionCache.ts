@@ -22,7 +22,8 @@ export function reportPdfCacheKey(registrationId: string, testIds: string[] | st
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean);
-  return String(registrationId || "").trim() + "|" + [...ids].sort().join(",");
+  // v2: capture scales page (does not crop right edge when queueMode downscales).
+  return `v2|${String(registrationId || "").trim()}|${[...ids].sort().join(",")}`;
 }
 
 function openDb(): Promise<IDBDatabase> {

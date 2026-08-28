@@ -160,6 +160,11 @@ async function mapPool<T, R>(
 
 // Capture a page with retries (handles intermittent blank captures from html-to-image).
 // Default: modest canvas (~0.85× CSS size @ PR1.25). Dispatch/download use even smaller.
+// IMPORTANT: when width/height are smaller than the live A4 node, we must scale the clone
+// (transform: scale) — setting only width/height crops the right/bottom edges (overflow:hidden).
+const A4_WIDTH_CSS_PX = Math.round((210 / 25.4) * 96); // ~794
+const A4_HEIGHT_CSS_PX = Math.round((297 / 25.4) * 96); // ~1123
+
 const captureWithRetry = async (
   el: HTMLElement,
   width: number,
@@ -172,6 +177,10 @@ const captureWithRetry = async (
   const attempts = captureOpts?.attempts ?? 2;
   const captureMs = isSnipPage ? 12_000 : 16_000;
   const jpegQuality = captureOpts?.quality ?? 0.85;
+  // offsetWidth ignores CSS transform (previewScale), so this is the true A4 layout size.
+  const layoutW = el.offsetWidth || A4_WIDTH_CSS_PX;
+  const layoutH = el.offsetHeight || A4_HEIGHT_CSS_PX;
+  const scale = Math.min(width / layoutW, height / layoutH);
   const opts = {
     pixelRatio,
     backgroundColor: "#ffffff",
@@ -181,7 +190,13 @@ const captureWithRetry = async (
     // and hung Dispatch WhatsApp PDF generation on multi-page reports.
     cacheBust: captureOpts?.cacheBust ?? false,
     skipFonts: captureOpts?.skipFonts ?? true,
-    style: { transform: "none", transformOrigin: "top left" } as Record<string, string>,
+    style: {
+      // Clear previewScale, then downscale into the smaller canvas without cropping.
+      transform: scale < 0.999 ? `scale(${scale})` : "none",
+      transformOrigin: "top left",
+      width: `${layoutW}px`,
+      height: `${layoutH}px`,
+    } as Record<string, string>,
   };
   let lastUrl = "";
   let lastErr: unknown = null;
