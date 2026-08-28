@@ -333,12 +333,15 @@ const HomeVisitRegistrationWizard = ({ visit, open, onClose }: Props) => {
         );
 
         const isPrimary = i === 0;
+        // Form name is the source of truth for Registered Patients (per patient in this visit).
+        const formName = String(draft.patientName || "").replace(/\s+/g, " ").trim().toUpperCase();
+        if (!formName) throw new Error(`Patient ${i + 1}: name is required`);
         // Always link extra family members to this visit. Invoice + UMR numbers
         // are allocated inside register_patient_atomic (row-locked counters) and
         // this loop awaits each patient so allocations stay in session order.
         const regData = {
           mobile_number: draft.mobile,
-          patient_name: draft.patientName,
+          patient_name: formName,
           title: draft.title,
           gender: draft.gender,
           dob: draft.dob,
@@ -405,6 +408,15 @@ const HomeVisitRegistrationWizard = ({ visit, open, onClose }: Props) => {
             : null,
         });
 
+        // Guarantee Registered Patients row matches the form name for this patient.
+        if (reg?.id && String(reg.patient_name || "").trim().toUpperCase() !== formName) {
+          await supabase
+            .from("patient_registrations")
+            .update({ patient_name: formName } as any)
+            .eq("id", reg.id);
+          reg.patient_name = formName;
+        }
+
         ensureDoctor(draft.doctorName);
 
         const assignedUmr = (reg?.umr_number as string) || draft.umr;
@@ -416,7 +428,7 @@ const HomeVisitRegistrationWizard = ({ visit, open, onClose }: Props) => {
             .limit(1)
             .maybeSingle();
           const row = {
-            patient_name: draft.patientName,
+            patient_name: formName,
             title: draft.title || null,
             mobile_number: draft.mobile,
             gender: draft.gender,
@@ -443,7 +455,7 @@ const HomeVisitRegistrationWizard = ({ visit, open, onClose }: Props) => {
           await supabase
             .from("estimates")
             .update({
-              patient_name: draft.patientName,
+              patient_name: formName,
               title: draft.title || null,
               gender: draft.gender || null,
               dob: draft.dob || null,
@@ -457,6 +469,7 @@ const HomeVisitRegistrationWizard = ({ visit, open, onClose }: Props) => {
 
         registered.push({
           ...reg,
+          patient_name: formName,
           tests: draft.calculations.testDetails,
           calculations: draft.calculations,
         });
