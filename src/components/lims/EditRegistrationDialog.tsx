@@ -415,10 +415,10 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
       // Add doctor to master list (history) — non-fatal
       ensureDoctor(updateData.doctor_name);
 
-      // Fan-out demographics to ALL records sharing this UMR (sister visits,
-      // approved report snapshots, CRM, patient master, loyalty cards, estimates,
-      // and pending LIMS analyzer orders). Audit-trail tables are intentionally
-      // left untouched. Failures here are non-fatal — the primary save succeeded.
+  // Fan-out demographics to ALL records sharing this UMR (sister visits,
+  // approved report snapshots, patient master, linked home-visit estimates,
+  // and pending LIMS analyzer orders). Audit-trail tables are intentionally
+  // left untouched. Failures here are non-fatal — the primary save succeeded.
       try {
         const syncResult = await syncPatientDemographicsByUmr(reg.id, {
           umr_number: reg.umr_number,

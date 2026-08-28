@@ -12,6 +12,9 @@ import type { QueryClient } from "@tanstack/react-query";
  * Audit-trail tables (abnormal_history, payment_transactions,
  * pickup_point_invoice_items) are intentionally NOT touched — they are
  * immutable records of what was sent / paid at that moment in time.
+ *
+ * Home-visit estimates ARE updated (by umr_number and via home_visit_id),
+ * because Completed HV / Home Visits UI display patient_name from estimates.
  */
 
 export interface PatientDemographics {
@@ -97,9 +100,56 @@ export async function syncPatientDemographicsByUmr(
     ? supabase.from("patient_master").update(masterUpd as any).eq("umr_id", umr)
     : Promise.resolve({ error: null } as any);
 
-  // 5. Estimates do not store UMR — skip.
+  // 5. Estimates linked to this patient:
+  //    - estimates.umr_number when set at HV completion
+  //    - estimate_id via home_visits for any registration with this UMR
+  //    (Completed HV / Home Visits UI reads patient_name from estimates — must stay in sync.)
+  const estimatesUpdate = (async () => {
+    const demoPatch: Record<string, any> = {
+      patient_name: demo.patient_name,
+      title: demo.title ?? null,
+      gender: demo.gender ?? null,
+      dob: demo.dob ?? null,
+      email: demo.email ?? null,
+      doctor_name: demo.doctor_name ?? "SELF",
+      whatsapp_number: demo.mobile_number ?? null,
+      umr_number: umr,
+    };
 
-  // 6. LIMS test orders — keyed by sample_id (= invoice number prefix).
+    const { data: regs, error: regsErr } = await supabase
+      .from("patient_registrations")
+      .select("home_visit_id")
+      .eq("umr_number", umr);
+    if (regsErr) return { error: regsErr };
+
+    const hvIds = [...new Set((regs || []).map((r: any) => r.home_visit_id).filter(Boolean))];
+    const estimateIds = new Set<string>();
+
+    if (hvIds.length > 0) {
+      const { data: hvs, error: hvErr } = await supabase
+        .from("home_visits")
+        .select("estimate_id")
+        .in("id", hvIds);
+      if (hvErr) return { error: hvErr };
+      (hvs || []).forEach((h: any) => {
+        if (h?.estimate_id) estimateIds.add(String(h.estimate_id));
+      });
+    }
+
+    const tasks: PromiseLike<{ error: any }>[] = [
+      supabase.from("estimates").update(demoPatch as any).eq("umr_number", umr),
+    ];
+    if (estimateIds.size > 0) {
+      tasks.push(
+        supabase.from("estimates").update(demoPatch as any).in("id", [...estimateIds]),
+      );
+    }
+    const settled = await Promise.all(tasks);
+    const firstErr = settled.find((r) => r?.error)?.error;
+    return { error: firstErr || null };
+  })();
+
+  // 6. LIMS test orders — keyed by sample_id (= invoice number).
   //    Pull all invoices belonging to this UMR first, then update by IN clause.
   const ordersUpdate = (async () => {
     const { data: regs } = await supabase
@@ -115,12 +165,13 @@ export async function syncPatientDemographicsByUmr(
   })();
 
   const results = await Promise.allSettled([
-    sisterRegs, approved, master, ordersUpdate,
+    sisterRegs, approved, master, estimatesUpdate, ordersUpdate,
   ]);
   const labels = [
     "patient_registrations (sister visits)",
     "approved_reports",
     "patient_master",
+    "estimates (home-visit linked)",
     "lims_test_orders",
   ];
   results.forEach((r, i) => {
@@ -160,9 +211,12 @@ export function invalidatePatientCaches(qc: QueryClient): void {
     "due_payments",
     "bad_debts",
     "approved_reports",
+    "estimates",
+    "home_visits",
+    "completed_home_visits",
+    "registered_home_visit_ids",
     "lims_report_view",
     "patient_master",
-    "estimates",
   ];
   keys.forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
 }

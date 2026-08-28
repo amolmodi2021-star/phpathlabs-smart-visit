@@ -437,6 +437,24 @@ const HomeVisitRegistrationWizard = ({ visit, open, onClose }: Props) => {
           }
         }
 
+        // Keep the booking estimate in sync with the primary registered patient
+        // (Completed HV / Home Visits list read name + mobile from estimates).
+        if (isPrimary && visit?.estimates?.id) {
+          await supabase
+            .from("estimates")
+            .update({
+              patient_name: draft.patientName,
+              title: draft.title || null,
+              gender: draft.gender || null,
+              dob: draft.dob || null,
+              email: draft.email || null,
+              doctor_name: (draft.doctorName || "SELF").toUpperCase(),
+              whatsapp_number: draft.mobile,
+              umr_number: assignedUmr || null,
+            } as any)
+            .eq("id", visit.estimates.id);
+        }
+
         registered.push({
           ...reg,
           tests: draft.calculations.testDetails,
