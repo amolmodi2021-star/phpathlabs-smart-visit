@@ -108,7 +108,8 @@ function buildYDomain(
 
   // Two-sided normal band — zoom tightly so green stays large
   let yMin = Math.min(minVal, low ?? minVal) - pad * 0.45;
-  let yMax = Math.max(maxVal, high ?? maxVal) + pad * 0.45;
+  // Extra headroom so point labels ("316.42 H") above high outliers are not clipped
+  let yMax = Math.max(maxVal, high ?? maxVal) + pad * 0.65;
 
   if (low != null && high != null && high > low) {
     const band = high - low;
@@ -173,8 +174,10 @@ const CustomDot = (props: any) => {
  * Prefer label above the point; if that would collide with a green ref line
  * (value below the line but close enough that the label sits on it), put the
  * label below the point / dashed line instead.
+ * Also place below when the point sits near the top of the plot so the value
+ * is not clipped by the chart edge (common for high H flags).
  */
-const shouldPlaceValueBelowRefLine = (
+const shouldPlaceValueBelow = (
   value: number,
   low: number | undefined,
   high: number | undefined,
@@ -184,6 +187,10 @@ const shouldPlaceValueBelowRefLine = (
   const span = Math.max(yMax - yMin, Math.abs(value) * 0.2, 1);
   // ~label height + gap as a fraction of the y-domain
   const clearance = span * 0.3;
+  // Near top of domain: label-above would clip (SVG text extends above baseline)
+  if (Number.isFinite(value) && value >= yMax - span * 0.18) {
+    return true;
+  }
   if (high != null && Number.isFinite(high) && value <= high && high - value <= clearance) {
     return true;
   }
@@ -205,20 +212,35 @@ const ValueLabel = (props: any) => {
     payload?.flag,
   );
   const text = formatValue(num);
-  const placeBelow = shouldPlaceValueBelowRefLine(num, low, high, Number(yMin), Number(yMax));
-  // SVG y grows downward: below the point = larger y
-  const textY = placeBelow ? y + 14 : y - 9;
+  const placeBelow = shouldPlaceValueBelow(num, low, high, Number(yMin), Number(yMax));
+  // SVG y grows downward: below the point = larger y. Above uses dy so glyphs stay clear of the dot.
+  const textY = placeBelow ? y + 14 : y - 10;
   const fill = flag ? "#dc2626" : "#166534";
 
   if (!flag) {
     return (
-      <text x={x} y={textY} textAnchor="middle" fontSize={8} fill={fill} fontWeight={600}>
+      <text
+        x={x}
+        y={textY}
+        textAnchor="middle"
+        dominantBaseline={placeBelow ? "hanging" : "auto"}
+        fontSize={8}
+        fill={fill}
+        fontWeight={600}
+      >
         {text}
       </text>
     );
   }
   return (
-    <text x={x} y={textY} textAnchor="middle" fontSize={8} fontWeight={700}>
+    <text
+      x={x}
+      y={textY}
+      textAnchor="middle"
+      dominantBaseline={placeBelow ? "hanging" : "auto"}
+      fontSize={8}
+      fontWeight={700}
+    >
       <tspan fill="#dc2626">{text}</tspan>
       <tspan fill="#dc2626" dx={2} fontSize={7} fontWeight={800}>
         {flag}
@@ -293,8 +315,8 @@ function ChartCard({
   const { yMin, yMax } = buildYDomain(values, boundLow, boundHigh);
   const yDecimals = axisDecimals(yMax - yMin);
   const yTicks = buildLabeledYTicks(yMin, yMax, 3);
-  // Slightly shorter plot so multi-line Ref + 6 cards can fit; AutoScale shrinks further if needed.
-  const chartH = forPdf ? 96 : 140;
+  // Slightly taller plot so top label margin + headroom still leave a readable chart.
+  const chartH = forPdf ? 104 : 140;
   const refText = (trend.rangeLabel || "").trim() || "—";
   const areaLow = boundLow ?? trend.low;
   const areaHigh = boundHigh ?? trend.high;
@@ -323,7 +345,7 @@ function ChartCard({
 
       <div style={{ width: "100%", height: chartH }} className="shrink-0">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={sortedData} margin={{ left: 0, right: 28, top: 14, bottom: 4 }}>
+          <LineChart data={sortedData} margin={{ left: 0, right: 28, top: 22, bottom: 4 }}>
             {/* Grey grid only at labeled Y ticks — no unlabeled extras / no verticals */}
             <CartesianGrid
               strokeDasharray="3 3"
