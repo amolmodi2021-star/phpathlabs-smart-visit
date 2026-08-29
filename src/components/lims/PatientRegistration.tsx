@@ -156,6 +156,10 @@ const PatientRegistration = ({
   const [showPatientPicker, setShowPatientPicker] = useState(false);
   const [pickerMobile, setPickerMobile] = useState("");
   const [patientLocked, setPatientLocked] = useState(d?.patientLocked ?? false);
+  /** Count of existing patients last seen on this mobile (from picker search). */
+  const [existingOnMobileCount, setExistingOnMobileCount] = useState<number | null>(null);
+  const [showNewUmrConfirm, setShowNewUmrConfirm] = useState(false);
+  const pendingSubmitRef = useRef<"save" | "session" | null>(null);
   const [filledOnLock, setFilledOnLock] = useState(
     d?.filledOnLock ?? { title: false, gender: false, dob: false, address: false },
   );
@@ -909,6 +913,9 @@ const PatientRegistration = ({
     setPatientLocked(false);
     setFilledOnLock({ title: false, gender: false, dob: false, address: false });
     setShowPatientPicker(false); setPickerMobile("");
+    setExistingOnMobileCount(null);
+    setShowNewUmrConfirm(false);
+    pendingSubmitRef.current = null;
     setDuplicateRegInfo(null);
     if (homeVisitOnly) {
       setCompletingPhleboName(homeVisitPrefill?.completingPhleboName?.trim() || "");
@@ -949,6 +956,39 @@ const PatientRegistration = ({
     setShowPatientPicker(false);
   };
 
+  const openPatientPicker = () => {
+    const digits = mobileNumber.replace(/\D/g, "").slice(-10);
+    if (digits.length !== 10) {
+      toast.error("Enter a valid 10-digit mobile first");
+      return;
+    }
+    setPickerMobile(digits);
+    setShowPatientPicker(true);
+  };
+
+  const willCreateNewUmr =
+    visitType !== "pickup_point" &&
+    mobileNumber.replace(/\D/g, "").slice(-10).length === 10 &&
+    !String(umrNumber || "").trim();
+
+  const runAfterUmrGuard = (kind: "save" | "session") => {
+    if (!willCreateNewUmr) {
+      if (kind === "session") continueToSession();
+      else saveMutation.mutate();
+      return;
+    }
+    pendingSubmitRef.current = kind;
+    setShowNewUmrConfirm(true);
+  };
+
+  const confirmCreateNewUmr = () => {
+    const kind = pendingSubmitRef.current;
+    pendingSubmitRef.current = null;
+    setShowNewUmrConfirm(false);
+    if (kind === "session") continueToSession();
+    else if (kind === "save") saveMutation.mutate();
+  };
+
   return (
     <div className={embedded ? "space-y-4" : "space-y-4 max-w-2xl"}>
       {invoiceData && !deferPayment && (
@@ -965,7 +1005,61 @@ const PatientRegistration = ({
         onClose={() => setShowPatientPicker(false)}
         onSelect={handlePatientPicked}
         onNewPatient={handleNewPatient}
+        onPatientsLoaded={setExistingOnMobileCount}
       />
+
+      <AlertDialog
+        open={showNewUmrConfirm}
+        onOpenChange={(o) => {
+          if (!o) {
+            setShowNewUmrConfirm(false);
+            pendingSubmitRef.current = null;
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <div className="mx-auto mb-1 flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10 text-destructive">
+              <AlertTriangle className="h-6 w-6" />
+            </div>
+            <AlertDialogTitle className="text-center">New UMR will be created</AlertDialogTitle>
+            <AlertDialogDescription className="text-center space-y-2">
+              <span className="block">
+                No existing patient is selected. Saving will allocate a <span className="font-semibold text-destructive">new UMR number</span>.
+              </span>
+              {(existingOnMobileCount ?? 0) > 0 ? (
+                <span className="block text-destructive font-medium">
+                  {existingOnMobileCount} patient{(existingOnMobileCount ?? 0) === 1 ? "" : "s"} already exist on this mobile — select them to reuse their UMR.
+                </span>
+              ) : (
+                <span className="block">
+                  If this person already visited before, open the patient list and select them instead of creating a duplicate UMR.
+                </span>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="sm:justify-center flex-col sm:flex-row gap-2">
+            <AlertDialogCancel className="mt-0">Go Back</AlertDialogCancel>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setShowNewUmrConfirm(false);
+                pendingSubmitRef.current = null;
+                openPatientPicker();
+              }}
+            >
+              Select Existing Patient
+            </Button>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={confirmCreateNewUmr}
+            >
+              Create New UMR Anyway
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={!!duplicateRegInfo} onOpenChange={(o) => { if (!o) setDuplicateRegInfo(null); }}>
         <AlertDialogContent>
@@ -1018,6 +1112,8 @@ const PatientRegistration = ({
                     if (digits.length === 10) {
                       setPickerMobile(digits);
                       setShowPatientPicker(true);
+                    } else {
+                      setExistingOnMobileCount(null);
                     }
                   }}
                   placeholder="Paste number (any format)"
@@ -1032,27 +1128,52 @@ const PatientRegistration = ({
                 />
               </div>
               {mobileNumber && (
-                <p className="text-xs text-muted-foreground mt-1 flex items-center gap-2">
+                <p className="text-xs text-muted-foreground mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
                   <span>
                     Formatted: {mobileNumber.replace(/\D/g, "").slice(-10) || "Need 10+ digits"}
                     {mobileNumber.replace(/\D/g, "").slice(-10).length === 10 && " ✓"}
                   </span>
-                  {patientLocked && (
+                  {mobileNumber.replace(/\D/g, "").slice(-10).length === 10 && visitType !== "pickup_point" && (
                     <button
                       type="button"
-                      className="text-primary underline"
-                      onClick={() => {
-                        const digits = mobileNumber.replace(/\D/g, "").slice(-10);
-                        if (digits.length === 10) {
-                          setPickerMobile(digits);
-                          setShowPatientPicker(true);
-                        }
-                      }}
+                      className="text-primary underline font-medium"
+                      onClick={openPatientPicker}
                     >
-                      Change Patient
+                      {patientLocked ? "Change Patient" : "Select Existing Patient"}
                     </button>
                   )}
+                  {patientLocked && umrNumber ? (
+                    <span className="text-emerald-700 font-medium">UMR: {umrNumber}</span>
+                  ) : null}
                 </p>
+              )}
+              {willCreateNewUmr && (
+                <div
+                  role="alert"
+                  className="mt-2 rounded-md border border-destructive bg-destructive/10 text-destructive px-3 py-2 text-xs sm:text-sm font-medium flex flex-wrap items-start gap-2"
+                >
+                  <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0 space-y-1">
+                    <p>
+                      A <span className="underline underline-offset-2">NEW UMR NUMBER WILL BE CREATED</span> on save
+                      {existingOnMobileCount != null && existingOnMobileCount > 0
+                        ? ` — ${existingOnMobileCount} existing patient${existingOnMobileCount === 1 ? "" : "s"} found on this mobile.`
+                        : "."}
+                    </p>
+                    <p className="font-normal opacity-90">
+                      If this patient already exists, click <span className="font-semibold">Select Existing Patient</span> and choose them.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="destructive"
+                    className="shrink-0 h-7"
+                    onClick={openPatientPicker}
+                  >
+                    Select Existing
+                  </Button>
+                </div>
               )}
             </div>
             {!homeVisitOnly && (
@@ -1570,14 +1691,14 @@ const PatientRegistration = ({
                     setShowHvcConfirm(true);
                     return;
                   }
-                  continueToSession();
+                  runAfterUmrGuard("session");
                   return;
                 }
                 if (visitType === "home_visit" && allowHvCharges && (!homeVisitCharges || homeVisitCharges === 0)) {
                   setShowHvcConfirm(true);
                   return;
                 }
-                saveMutation.mutate();
+                runAfterUmrGuard("save");
               }}
               disabled={saveMutation.isPending || selectedTests.length === 0}
             >
@@ -1607,8 +1728,8 @@ const PatientRegistration = ({
               onClick={() => {
                 setShowHvcConfirm(false);
                 if (!deferPayment && blockIfOverpaid(paidAmount, billing.finalAmount)) return;
-                if (deferPayment) continueToSession();
-                else saveMutation.mutate();
+                if (deferPayment) runAfterUmrGuard("session");
+                else runAfterUmrGuard("save");
               }}
             >
               Save Without Charges

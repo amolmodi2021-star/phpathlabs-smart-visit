@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -38,6 +38,8 @@ interface Props {
   onSelect: (p: PatientPick) => void;
   /** Called when user chooses "New Patient on this mobile" — registration form stays editable, mobile prefilled. */
   onNewPatient: (mobile10: string) => void;
+  /** Fired after search finishes so the form can warn about duplicate UMR risk. */
+  onPatientsLoaded?: (count: number) => void;
 }
 
 interface RegRow {
@@ -52,19 +54,23 @@ interface RegRow {
   doctor_name: string | null;
 }
 
-const PatientSelectDialog = ({ open, mobile10, onClose, onSelect, onNewPatient }: Props) => {
+const PatientSelectDialog = ({ open, mobile10, onClose, onSelect, onNewPatient, onPatientsLoaded }: Props) => {
   const qc = useQueryClient();
   const [loading, setLoading] = useState(false);
   const [patients, setPatients] = useState<RegRow[]>([]);
   const [editingUmr, setEditingUmr] = useState<string | null>(null);
   const [draft, setDraft] = useState<RegRow | null>(null);
   const [saving, setSaving] = useState(false);
+  const [confirmNew, setConfirmNew] = useState(false);
+  const onPatientsLoadedRef = useRef(onPatientsLoaded);
+  onPatientsLoadedRef.current = onPatientsLoaded;
 
   useEffect(() => {
     if (!open || mobile10.length !== 10) return;
     setLoading(true);
     setEditingUmr(null);
     setDraft(null);
+    setConfirmNew(false);
     (async () => {
       // Pull from patient_master (canonical) first, then fall back to patient_registrations
       // for any UMR that isn't yet in master. One row per UMR.
@@ -109,6 +115,7 @@ const PatientSelectDialog = ({ open, mobile10, onClose, onSelect, onNewPatient }
         });
       });
       setPatients(out);
+      onPatientsLoadedRef.current?.(out.length);
       setLoading(false);
     })();
   }, [open, mobile10]);
@@ -294,11 +301,40 @@ const PatientSelectDialog = ({ open, mobile10, onClose, onSelect, onNewPatient }
           </div>
         )}
 
-        <div className="border-t pt-3 flex justify-between items-center">
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={() => onNewPatient(mobile10)}>
-            <UserPlus className="h-4 w-4 mr-1" /> New Patient on this Mobile
-          </Button>
+        <div className="border-t pt-3 space-y-2">
+          {patients.length > 0 && (
+            <p className="text-xs text-destructive font-medium leading-snug">
+              {patients.length} existing patient{patients.length === 1 ? "" : "s"} found on this mobile.
+              Prefer Select above to reuse their UMR — avoid creating a duplicate.
+            </p>
+          )}
+          <div className="flex justify-between items-center gap-2">
+            <Button variant="outline" onClick={onClose}>Close</Button>
+            {!confirmNew ? (
+              <Button
+                variant={patients.length > 0 ? "destructive" : "default"}
+                onClick={() => {
+                  if (patients.length > 0) setConfirmNew(true);
+                  else onNewPatient(mobile10);
+                }}
+              >
+                <UserPlus className="h-4 w-4 mr-1" /> New Patient on this Mobile
+              </Button>
+            ) : (
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <Button size="sm" variant="outline" onClick={() => setConfirmNew(false)}>
+                  Back — Select Existing
+                </Button>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  onClick={() => onNewPatient(mobile10)}
+                >
+                  Confirm New UMR
+                </Button>
+              </div>
+            )}
+          </div>
         </div>
       </DialogContent>
     </Dialog>
