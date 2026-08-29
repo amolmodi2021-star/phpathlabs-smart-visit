@@ -1637,8 +1637,18 @@ const LimsReportView = () => {
     }
   };
 
+  /** Yield so the browser can paint/GC between heavy page rasters (helps low-RAM PCs). */
+  const yieldToMain = () =>
+    new Promise<void>((resolve) => {
+      if (typeof (window as any).scheduler?.yield === "function") {
+        (window as any).scheduler.yield().then(() => resolve(), () => resolve());
+        return;
+      }
+      setTimeout(() => resolve(), 0);
+    });
+
   const buildPdfBlob = async (_opts?: {
-    /** Kept for callers; quality is no longer reduced for WhatsApp/dispatch. */
+    /** Kept for callers; quality stays full; pages are captured sequentially for low-RAM PCs. */
     queueMode?: boolean;
   }): Promise<{ blob: Blob; filename: string } | null> => {
     if (!printRef.current && !cachedPdfRef.current) return null;
@@ -1673,22 +1683,60 @@ const LimsReportView = () => {
       const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
       const NATIVE_W = Math.round((PAGE_WIDTH_MM / 25.4) * 96);
       const NATIVE_H = Math.round((PAGE_HEIGHT_MM / 25.4) * 96);
-      // Full A4 CSS size @ PR2 — readable on phone WhatsApp and print. Parallel pages only.
+      // Full A4 @ PR2 / JPEG 0.9 — same visual quality. Capture ONE page at a time
+      // (parallel pages OOM low-spec PCs on large reports e.g. 100+ tests + trends).
       const captureOpts: PageCaptureOptions = {
         pixelRatio: 2,
-        attempts: 2,
+        attempts: 1,
         quality: 0.9,
         cacheBust: false,
         fastBlankCheck: true,
-        skipFonts: false,
+        // Fonts are already painted in the DOM; re-embedding them is very costly.
+        skipFonts: true,
       };
-      const concurrency = Math.min(3, pageElements.length);
-      const jpegUrls = await mapPool(pageElements, concurrency, (el) =>
-        captureWithRetry(el, NATIVE_W, NATIVE_H, "jpeg", captureOpts),
-      );
-      for (let i = 0; i < jpegUrls.length; i++) {
-        if (i > 0) pdf.addPage();
-        pdf.addImage(jpegUrls[i], "JPEG", 0, 0, PAGE_WIDTH_MM, PAGE_HEIGHT_MM, undefined, "MEDIUM");
+
+      const wrappers = pageElements.map((el) => el.parentElement as HTMLElement | null);
+      const prevVisibility = wrappers.map((w) => (w ? w.style.visibility : ""));
+      const prevContentVis = wrappers.map((w) => (w ? (w.style as any).contentVisibility || "" : ""));
+
+      try {
+        for (let i = 0; i < pageElements.length; i++) {
+          wrappers.forEach((w, j) => {
+            if (!w) return;
+            if (j === i) {
+              w.style.visibility = "visible";
+              (w.style as any).contentVisibility = "visible";
+            } else {
+              w.style.visibility = "hidden";
+              (w.style as any).contentVisibility = "hidden";
+            }
+          });
+          await yieldToMain();
+
+          let jpegUrl = await captureWithRetry(
+            pageElements[i],
+            NATIVE_W,
+            NATIVE_H,
+            "jpeg",
+            captureOpts,
+          );
+          if (i > 0) pdf.addPage();
+          pdf.addImage(jpegUrl, "JPEG", 0, 0, PAGE_WIDTH_MM, PAGE_HEIGHT_MM, undefined, "MEDIUM");
+          jpegUrl = "";
+          if (
+            queueWaRequested &&
+            (i === 0 || i === pageElements.length - 1 || (i + 1) % 4 === 0)
+          ) {
+            toast.message(`Building report PDF… ${i + 1}/${pageElements.length} pages`);
+          }
+          await yieldToMain();
+        }
+      } finally {
+        wrappers.forEach((w, j) => {
+          if (!w) return;
+          w.style.visibility = prevVisibility[j];
+          (w.style as any).contentVisibility = prevContentVis[j];
+        });
       }
 
       const patientNameRaw = patientDisplayName(approvedReports[0]);
@@ -1841,6 +1889,10 @@ const LimsReportView = () => {
     let launched = false;
     let finished = false;
     let cancelled = false;
+    const pageCount = Math.max(1, pages.length);
+    // Large reports (100+ tests / many trends) need far more than 90s on average PCs.
+    const buildTimeoutMs = Math.min(360_000, Math.max(120_000, pageCount * 12_000));
+    const failSafeMs = buildTimeoutMs + 90_000;
 
     const failSafe = window.setTimeout(() => {
       if (finished || !launched) return;
@@ -1848,13 +1900,13 @@ const LimsReportView = () => {
       toast.error(msg);
       notifyQueueWa(false, msg);
       setDownloading(false);
-    }, 150_000);
+    }, failSafeMs);
 
     const t = window.setTimeout(async () => {
       if (cancelled) return;
       launched = true;
       setDownloading(true);
-      toast.message("Building report PDF…");
+      toast.message(`Building report PDF… (${pageCount} page${pageCount === 1 ? "" : "s"})`);
       try {
         const report = approvedReports[0];
         const phone = report?.mobile_number || registration?.mobile_number || "";
@@ -1882,7 +1934,7 @@ const LimsReportView = () => {
 
         const built = cachedPdfRef.current || await withTimeout(
           buildPdfBlob({ queueMode: true }),
-          90_000,
+          buildTimeoutMs,
           "report PDF build",
         );
         if (!built) throw new Error("No pages to export");
