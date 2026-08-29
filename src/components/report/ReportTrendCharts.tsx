@@ -171,31 +171,29 @@ const CustomDot = (props: any) => {
 };
 
 /**
- * Prefer label above the point; if that would collide with a green ref line
- * (value below the line but close enough that the label sits on it), put the
- * label below the point / dashed line instead.
- * Also place below when the point sits near the top of the plot so the value
- * is not clipped by the chart edge (common for high H flags).
+ * Prefer label above the point, tight to the dot.
+ * Place below only when the point is near the top (label-above would clip).
+ * Never place below near the bottom — that overlaps X-axis dates.
  */
 const shouldPlaceValueBelow = (
   value: number,
-  low: number | undefined,
+  _low: number | undefined,
   high: number | undefined,
   yMin: number,
   yMax: number,
 ): boolean => {
+  if (!Number.isFinite(value) || !Number.isFinite(yMin) || !Number.isFinite(yMax)) return false;
   const span = Math.max(yMax - yMin, Math.abs(value) * 0.2, 1);
-  // ~label height + gap as a fraction of the y-domain
-  const clearance = span * 0.3;
-  // Near top of domain: label-above would clip (SVG text extends above baseline)
-  if (Number.isFinite(value) && value >= yMax - span * 0.18) {
-    return true;
-  }
+  const nearBottom = value <= yMin + span * 0.28;
+  // Keep labels off the date ticks
+  if (nearBottom) return false;
+
+  const nearTop = value >= yMax - span * 0.2;
+  if (nearTop) return true;
+
+  // Just under the high ref line: label above would sit on the dashed line
+  const clearance = span * 0.18;
   if (high != null && Number.isFinite(high) && value <= high && high - value <= clearance) {
-    return true;
-  }
-  if (low != null && Number.isFinite(low) && value < low && low - value <= clearance) {
-    // Point below low line — label above would cross the low dashed line
     return true;
   }
   return false;
@@ -213,8 +211,8 @@ const ValueLabel = (props: any) => {
   );
   const text = formatValue(num);
   const placeBelow = shouldPlaceValueBelow(num, low, high, Number(yMin), Number(yMax));
-  // SVG y grows downward: below the point = larger y. Above uses dy so glyphs stay clear of the dot.
-  const textY = placeBelow ? y + 14 : y - 10;
+  // Dot r≈4.5 — keep label gap ~1–2px so values sit tight to the point
+  const textY = placeBelow ? y + 7 : y - 6;
   const fill = flag ? "#dc2626" : "#166534";
 
   if (!flag) {
