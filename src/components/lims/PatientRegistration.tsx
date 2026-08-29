@@ -1147,34 +1147,6 @@ const PatientRegistration = ({
                   ) : null}
                 </p>
               )}
-              {willCreateNewUmr && (
-                <div
-                  role="alert"
-                  className="mt-2 rounded-md border border-destructive bg-destructive/10 text-destructive px-3 py-2 text-xs sm:text-sm font-medium flex flex-wrap items-start gap-2"
-                >
-                  <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
-                  <div className="flex-1 min-w-0 space-y-1">
-                    <p>
-                      A <span className="underline underline-offset-2">NEW UMR NUMBER WILL BE CREATED</span> on save
-                      {existingOnMobileCount != null && existingOnMobileCount > 0
-                        ? ` — ${existingOnMobileCount} existing patient${existingOnMobileCount === 1 ? "" : "s"} found on this mobile.`
-                        : "."}
-                    </p>
-                    <p className="font-normal opacity-90">
-                      If this patient already exists, click <span className="font-semibold">Select Existing Patient</span> and choose them.
-                    </p>
-                  </div>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="destructive"
-                    className="shrink-0 h-7"
-                    onClick={openPatientPicker}
-                  >
-                    Select Existing
-                  </Button>
-                </div>
-              )}
             </div>
             {!homeVisitOnly && (
             <div>
@@ -1208,6 +1180,27 @@ const PatientRegistration = ({
             </div>
             )}
           </div>
+
+          {willCreateNewUmr && (existingOnMobileCount ?? 0) > 0 && (
+            <div
+              role="alert"
+              className="flex items-center gap-2 rounded border border-destructive/70 bg-destructive/10 text-destructive px-2.5 py-1.5 text-xs font-medium"
+            >
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+              <p className="min-w-0 flex-1 leading-snug">
+                <span className="underline underline-offset-2">NEW UMR WILL BE CREATED</span>
+                {" — "}
+                {existingOnMobileCount} existing patient{(existingOnMobileCount ?? 0) === 1 ? "" : "s"} on this mobile. Select them to reuse UMR.
+              </p>
+              <button
+                type="button"
+                className="shrink-0 underline font-semibold whitespace-nowrap"
+                onClick={openPatientPicker}
+              >
+                Select Existing
+              </button>
+            </div>
+          )}
 
           {/* Demographics — existing UMR locks filled fields; blanks stay editable and save back to master */}
           <div className="grid grid-cols-2 gap-3">
