@@ -54,6 +54,8 @@ const amtEq = (a: number, b: number) => Math.abs(num(a) - num(b)) < 0.005;
 
 const todayKey = () => format(new Date(), "yyyy-MM-dd");
 const yesterdayKey = () => format(addDays(new Date(), -1), "yyyy-MM-dd");
+/** Wide scan start for Pending inventory (date filter ignored when Pending is on). */
+const ALL_TIME_FROM = "2020-01-01";
 const clampPast = (day: string, latest: string) => (day > latest ? latest : day);
 
 const stamp = (iso: string | null | undefined) => {
@@ -97,11 +99,10 @@ const DailyCollectionReport = () => {
   const effectiveTo = clampPast(dateTo < effectiveFrom ? effectiveFrom : dateTo, latestAllowed);
 
   const { data: transactions = [], isLoading, isFetching } = useQuery({
-    queryKey: ["accounts_daily_collection", effectiveFrom, effectiveTo],
-    enabled: effectiveFrom <= effectiveTo,
+    queryKey: ["accounts_daily_collection", ALL_TIME_FROM, latestAllowed],
     queryFn: async () => {
-      const from = startOfDay(parseISO(effectiveFrom)).toISOString();
-      const to = endOfDay(parseISO(effectiveTo)).toISOString();
+      const from = startOfDay(parseISO(ALL_TIME_FROM)).toISOString();
+      const to = endOfDay(parseISO(latestAllowed)).toISOString();
       const pageSize = 1000;
       const all: any[] = [];
       let fromIdx = 0;
@@ -126,14 +127,12 @@ const DailyCollectionReport = () => {
   });
 
   const { data: tallyRows = [], isLoading: tallyLoading } = useQuery({
-    queryKey: ["accounts_tally_day_status", effectiveFrom, effectiveTo],
-    enabled: effectiveFrom <= effectiveTo,
+    queryKey: ["accounts_tally_day_status", "all"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("accounts_tally_day_status" as any)
         .select("*")
-        .gte("day_key", effectiveFrom)
-        .lte("day_key", effectiveTo);
+        .lte("day_key", latestAllowed);
       if (error) throw error;
       return ((data || []) as any[]).map((r) => ({
         ...r,
@@ -148,12 +147,13 @@ const DailyCollectionReport = () => {
     return m;
   }, [tallyRows]);
 
-  const dayRows: DayRow[] = useMemo(() => {
+  /** All collection days (activity + any tally-marked day), never includes today. */
+  const allDayRows: DayRow[] = useMemo(() => {
     const today = todayKey();
     const byDay = new Map<string, DayRow>();
 
     const ensure = (dayKey: string): DayRow | null => {
-      if (dayKey >= today) return null;
+      if (!dayKey || dayKey >= today || dayKey > latestAllowed) return null;
       let row = byDay.get(dayKey);
       if (!row) {
         row = {
@@ -171,27 +171,19 @@ const DailyCollectionReport = () => {
       return row;
     };
 
-    try {
-      const days = eachDayOfInterval({
-        start: parseISO(effectiveFrom),
-        end: parseISO(effectiveTo),
-      });
-      days.forEach((d) => ensure(format(d, "yyyy-MM-dd")));
-    } catch {
-      // invalid range
-    }
+    for (const st of tallyRows) ensure(st.day_key);
 
-    for (const t of transactions) {
-      if (isHiddenDailyReportType(t.transaction_type)) continue;
-      const dayKey = format(parseISO(t.transaction_date), "yyyy-MM-dd");
+    for (const tx of transactions) {
+      if (isHiddenDailyReportType(tx.transaction_type)) continue;
+      const dayKey = format(parseISO(tx.transaction_date), "yyyy-MM-dd");
       const row = ensure(dayKey);
       if (!row) continue;
-      row.paid += paymentRowPaid(t);
-      row.cash += Number(t.cash_amount || 0);
-      row.gpay += Number(t.gpay_amount || 0);
-      row.paytm += Number(t.paytm_amount || 0);
-      row.neft += Number(t.neft_amount || 0);
-      row.creditCard += Number(t.credit_card_amount || 0);
+      row.paid += paymentRowPaid(tx);
+      row.cash += Number(tx.cash_amount || 0);
+      row.gpay += Number(tx.gpay_amount || 0);
+      row.paytm += Number(tx.paytm_amount || 0);
+      row.neft += Number(tx.neft_amount || 0);
+      row.creditCard += Number(tx.credit_card_amount || 0);
     }
 
     return Array.from(byDay.values())
@@ -205,16 +197,59 @@ const DailyCollectionReport = () => {
         creditCard: num(r.creditCard),
       }))
       .sort((a, b) => a.dayKey.localeCompare(b.dayKey));
-  }, [transactions, effectiveFrom, effectiveTo]);
+  }, [transactions, tallyRows, latestAllowed]);
 
-  const displayRows = useMemo(() => {
-    if (!pendingOnly) return dayRows;
-    return dayRows.filter((r) => {
-      const st = uiStatusFor(r, tallyByDay.get(r.dayKey));
-      return st === "unentered" || st === "reverify";
-    });
-  }, [dayRows, pendingOnly, tallyByDay]);
+  const allByDay = useMemo(() => {
+    const m = new Map<string, DayRow>();
+    for (const r of allDayRows) m.set(r.dayKey, r);
+    return m;
+  }, [allDayRows]);
 
+  /** Date-filter view: every calendar day in From-To (zeros for quiet days). */
+  const rangeDayRows: DayRow[] = useMemo(() => {
+    const rows: DayRow[] = [];
+    try {
+      const days = eachDayOfInterval({
+        start: parseISO(effectiveFrom),
+        end: parseISO(effectiveTo),
+      });
+      for (const d of days) {
+        const dayKey = format(d, "yyyy-MM-dd");
+        if (dayKey > latestAllowed) continue;
+        const existing = allByDay.get(dayKey);
+        rows.push(
+          existing || {
+            dayKey,
+            dateLabel: format(d, "dd-MM-yyyy"),
+            paid: 0,
+            cash: 0,
+            gpay: 0,
+            paytm: 0,
+            neft: 0,
+            creditCard: 0,
+          },
+        );
+      }
+    } catch {
+      // invalid range
+    }
+    return rows;
+  }, [allByDay, effectiveFrom, effectiveTo, latestAllowed]);
+
+  /** Pending inventory ignores From/To - all unentered + reverify dates. */
+  const pendingRows: DayRow[] = useMemo(
+    () =>
+      allDayRows.filter((r) => {
+        const st = uiStatusFor(r, tallyByDay.get(r.dayKey));
+        return st === "unentered" || st === "reverify";
+      }),
+    [allDayRows, tallyByDay],
+  );
+
+  const displayRows = useMemo(
+    () => (pendingOnly ? pendingRows : rangeDayRows),
+    [pendingOnly, pendingRows, rangeDayRows],
+  );
   const totals = useMemo(
     () =>
       displayRows.reduce(
@@ -231,14 +266,8 @@ const DailyCollectionReport = () => {
     [displayRows],
   );
 
-  const pendingCount = useMemo(
-    () =>
-      dayRows.filter((r) => {
-        const st = uiStatusFor(r, tallyByDay.get(r.dayKey));
-        return st === "unentered" || st === "reverify";
-      }).length,
-    [dayRows, tallyByDay],
-  );
+  const pendingCount = pendingRows.length;
+
 
   const markMutation = useMutation({
     mutationFn: async (opts: { row: DayRow; mode: "enter" | "reverify" }) => {
@@ -345,8 +374,12 @@ const DailyCollectionReport = () => {
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Daily Collection");
-    const fromLabel = format(parseISO(effectiveFrom), "dd-MM-yyyy");
-    const toLabel = format(parseISO(effectiveTo), "dd-MM-yyyy");
+    const fromLabel = pendingOnly
+      ? "Pending"
+      : format(parseISO(effectiveFrom), "dd-MM-yyyy");
+    const toLabel = pendingOnly
+      ? format(new Date(), "dd-MM-yyyy")
+      : format(parseISO(effectiveTo), "dd-MM-yyyy");
     XLSX.writeFile(wb, `Daily_Collection_${fromLabel}_to_${toLabel}.xlsx`);
     toast.success("Excel downloaded");
   };
@@ -358,7 +391,7 @@ const DailyCollectionReport = () => {
       <CardHeader className="pb-3 space-y-3">
         <CardTitle className="text-base">Daily Collection</CardTitle>
         <p className="text-sm text-muted-foreground">
-          Date-wise totals (same Paid/modes as Daily Report). Mark Entered after posting to Tally; if amounts change later the row asks for Reverify. Current day is never shown.
+          Date-wise totals (same Paid/modes as Daily Report). Mark Entered after posting to Tally; if amounts change later the row asks for Reverify. Pending lists every unentered/reverify date (ignores From/To). Current day is never shown.
         </p>
         <div className="flex flex-wrap items-end gap-3">
           <div>
@@ -420,7 +453,7 @@ const DailyCollectionReport = () => {
           </div>
         ) : displayRows.length === 0 ? (
           <p className="text-sm text-muted-foreground py-8 text-center">
-            {pendingOnly ? "No pending dates in this range." : "No dates in this range."}
+            {pendingOnly ? "No pending or reverify dates." : "No dates in this range."}
           </p>
         ) : (
           <div className="rounded-md border overflow-x-auto max-h-[70vh] overflow-y-auto">
