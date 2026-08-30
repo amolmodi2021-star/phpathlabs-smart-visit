@@ -19,7 +19,7 @@ export type CloudinaryFailureReason =
   | "cloudinary_4xx"
   | "cloudinary_network";
 
-export type CloudinaryPurpose = "whatsapp" | "outsourced_pdf";
+export type CloudinaryPurpose = "whatsapp" | "outsourced_pdf" | "bills";
 
 interface ActiveAccount {
   cloudName: string;
@@ -61,7 +61,9 @@ async function getActiveAccount(purpose: CloudinaryPurpose = "whatsapp"): Promis
     throw new Error(
       purpose === "outsourced_pdf"
         ? "cloudinary_4xx: no active Outsourced PDF Cloudinary account — configure it in LIMS → Settings → Cloudinary"
-        : "cloudinary_4xx: no active Cloudinary account configured",
+        : purpose === "bills"
+          ? "cloudinary_4xx: no active Bills Cloudinary account — configure it in Accounts → Settings → Cloudinary (Bills)"
+          : "cloudinary_4xx: no active Cloudinary account configured",
     );
   }
   const value = { cloudName: data.cloud_name, uploadPreset: data.upload_preset };
