@@ -19,7 +19,6 @@ const Accounts = () => {
       <Tabs value={subTab} onValueChange={setSubTab} className="w-full">
         <TabsList className="h-auto flex-wrap justify-start gap-1">
           <TabsTrigger value="daily_collection">Daily Collection</TabsTrigger>
-          {/* Future: <TabsTrigger value="…">…</TabsTrigger> */}
         </TabsList>
 
         <TabsContent value="daily_collection" className="mt-3">
