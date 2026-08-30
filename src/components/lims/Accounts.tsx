@@ -3,7 +3,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import DailyCollectionReport from "@/components/lims/accounts/DailyCollectionReport";
 
 /**
- * LIMS → Accounts
+ * Accounts (main sidebar).
  * Shell for accountant tools. Add more sub-tabs here later (e.g. dues summary, GST).
  */
 const Accounts = () => {

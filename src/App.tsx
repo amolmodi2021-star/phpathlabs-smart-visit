@@ -28,6 +28,7 @@ import Marketing from "./pages/Marketing";
 // CRM module disabled (cost optimization 2026-04-28)
 import LimsDemo from "./pages/LimsDemo";
 import Lims from "./pages/Lims";
+import Accounts from "./pages/Accounts";
 import WhatsAppSettingsPage from "./pages/WhatsAppSettingsPage";
 import WhatsAppChat from "./pages/WhatsAppChat";
 import LimsReportView from "./pages/LimsReportView";
@@ -156,6 +157,7 @@ const App = () => (
             <Route path="/loyalty-cards" element={<TabGate route="/loyalty-cards"><LoyaltyCards /></TabGate>} />
             <Route path="/marketing" element={<TabGate route="/marketing"><Marketing /></TabGate>} />
             <Route path="/lims" element={<TabGate route="/lims"><Lims /></TabGate>} />
+            <Route path="/accounts" element={<TabGate route="/accounts"><Accounts /></TabGate>} />
             <Route path="/lims-demo" element={<TabGate route="/lims-demo"><LimsDemo /></TabGate>} />
             <Route path="/whatsapp-webhook" element={<TabGate route="/whatsapp-webhook"><WhatsAppWebhook /></TabGate>} />
             <Route path="/whatsapp-settings" element={<TabGate route="/whatsapp-settings"><WhatsAppSettingsPage /></TabGate>} />

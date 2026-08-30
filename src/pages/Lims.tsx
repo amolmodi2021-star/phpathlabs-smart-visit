@@ -1,5 +1,5 @@
-import { Component, lazy, Suspense, useState, type ReactNode } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Component, lazy, Suspense, useEffect, useState, type ReactNode } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -25,7 +25,6 @@ const Dispatch = lazy(() => import("@/components/lims/Dispatch"));
 const LimsSettings = lazy(() => import("@/components/lims/LimsSettings"));
 const DailyReport = lazy(() => import("@/components/lims/DailyReport"));
 const Billing = lazy(() => import("@/components/lims/Billing"));
-const Accounts = lazy(() => import("@/components/lims/Accounts"));
 
 const allLimsTabs = [
   { key: "register", label: "New Registration", component: PatientRegistration },
@@ -42,7 +41,6 @@ const allLimsTabs = [
   { key: "bad_debts", label: "Bad Debts", component: BadDebts },
   { key: "billing", label: "Billing", component: Billing },
   { key: "daily_report", label: "Daily Report", component: DailyReport },
-  { key: "accounts", label: "Accounts", component: Accounts },
   { key: "completed_hv", label: "Completed Home Visits", component: CompletedHomeVisits },
   { key: "settings", label: "Settings", component: LimsSettings },
 ];
@@ -100,7 +98,16 @@ class TabErrorBoundary extends Component<
 }
 
 const Lims = () => {
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+
+  // Accounts moved to its own sidebar route
+  useEffect(() => {
+    if (searchParams.get("tab") === "accounts") {
+      navigate("/accounts", { replace: true });
+    }
+  }, [searchParams, navigate]);
+
   const allowed = getAllowedSections("/lims");
   const visibleTabs = allowed ? allLimsTabs.filter((t) => allowed.includes(t.key)) : allLimsTabs;
   const activeTab = searchParams.get("tab") || (visibleTabs[0]?.key ?? "register");

@@ -42,9 +42,20 @@ export function isTabAllowed(route: string): boolean {
   // Default-deny: empty permissions means no tabs (roles must grant explicitly)
   if (Object.keys(tabs).length === 0) return false;
   const perm = tabs[route];
-  if (perm === undefined) return false;
-  if (typeof perm === "boolean") return perm;
-  if (typeof perm === "object" && perm !== null) return perm.enabled === true;
+  if (perm !== undefined) {
+    if (typeof perm === "boolean") return perm;
+    if (typeof perm === "object" && perm !== null) return perm.enabled === true;
+    return false;
+  }
+  // Legacy: Accounts used to live under LIMS → Accounts section
+  if (route === "/accounts") {
+    const lims = tabs["/lims"];
+    if (lims === true) return true;
+    if (typeof lims === "object" && lims !== null && lims.enabled === true) {
+      if (!Array.isArray(lims.sections)) return true;
+      return lims.sections.includes("accounts");
+    }
+  }
   return false;
 }
 
@@ -70,7 +81,7 @@ export function isActionAllowed(actionKey: string): boolean {
 export function getFirstAllowedRoute(): string {
   const tabs = getUserPermissions();
     const allRoutes = ["/", "/business-dashboard", "/dashboard", "/home-visits", "/phlebotomists", "/tests", "/templates",
-      "/abnormal-history", "/phlebo-dashboard", "/loyalty-cards", "/marketing", "/crm", "/lims",
+      "/abnormal-history", "/phlebo-dashboard", "/loyalty-cards", "/marketing", "/crm", "/lims", "/accounts",
       "/whatsapp-webhook", "/whatsapp-settings", "/whatsapp-chat", "/lims-demo", "/report-layout", "/signature-management", "/users", "/cloud-usage", "/report-analytics"];
   for (const r of allRoutes) {
     if (isTabAllowed(r)) return r;

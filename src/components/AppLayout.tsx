@@ -4,7 +4,7 @@ import { logout, getCurrentUser, isTabAllowed, isActionAllowed, refreshCurrentUs
 import {
   FileText, LayoutDashboard, Home, Users, TestTubes, MessageSquare,
   Menu, X, LogOut, FlaskConical, AlertTriangle, BarChart3, CreditCard,
-  Layers, PenTool, Zap, Webhook, Megaphone, Contact, Activity, Settings, Trash2, Loader2, UserCog, MessageCircle, KeyRound, Cloud, BarChart2, PieChart,
+  Layers, PenTool, Zap, Webhook, Megaphone, Contact, Activity, Settings, Trash2, Loader2, UserCog, MessageCircle, KeyRound, Cloud, BarChart2, PieChart, Wallet,
 } from "lucide-react";
 import ChangePasswordDialog from "@/components/ChangePasswordDialog";
 import { Button } from "@/components/ui/button";
@@ -29,6 +29,7 @@ const allNavItems = [
   { to: "/marketing", label: "Marketing", icon: Megaphone },
   // CRM link removed (cost optimization 2026-04-28) — module disabled.
   { to: "/lims", label: "LIMS", icon: Activity },
+  { to: "/accounts", label: "Accounts", icon: Wallet },
   { to: "/report-analytics", label: "Report Analytics", icon: BarChart2 },
   { to: "/whatsapp-webhook", label: "WhatsApp Webhook", icon: Webhook },
   { to: "/whatsapp-settings", label: "WhatsApp Settings", icon: Settings },
