@@ -388,11 +388,8 @@ const DailyCollectionReport = () => {
 
   return (
     <Card>
-      <CardHeader className="pb-3 space-y-3">
+      <CardHeader className="py-3 space-y-2">
         <CardTitle className="text-base">Daily Collection</CardTitle>
-        <p className="text-sm text-muted-foreground">
-          Date-wise totals (same Paid/modes as Daily Report). Mark Entered after posting to Tally; if amounts change later the row asks for Reverify. Pending lists every unentered/reverify date (ignores From/To). Current day is never shown.
-        </p>
         <div className="flex flex-wrap items-end gap-3">
           <div>
             <Label htmlFor="acc-from" className="text-xs">From date</Label>

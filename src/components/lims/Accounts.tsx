@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import DailyCollectionReport from "@/components/lims/accounts/DailyCollectionReport";
 
 /**
@@ -10,21 +10,19 @@ const Accounts = () => {
   const [subTab, setSubTab] = useState("daily_collection");
 
   return (
-    <div className="space-y-3">
-      <div>
-        <h2 className="text-lg font-semibold tracking-tight">Accounts</h2>
-        <p className="text-sm text-muted-foreground">Simple collection reports for the accountant.</p>
+    <div className="space-y-2 -mt-1 md:-mt-2">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <h2 className="text-lg font-semibold tracking-tight leading-none">Accounts</h2>
+        <Tabs value={subTab} onValueChange={setSubTab}>
+          <TabsList className="h-8">
+            <TabsTrigger value="daily_collection" className="h-7 px-2.5 text-xs">
+              Daily Collection
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
       </div>
 
-      <Tabs value={subTab} onValueChange={setSubTab} className="w-full">
-        <TabsList className="h-auto flex-wrap justify-start gap-1">
-          <TabsTrigger value="daily_collection">Daily Collection</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="daily_collection" className="mt-3">
-          <DailyCollectionReport />
-        </TabsContent>
-      </Tabs>
+      {subTab === "daily_collection" && <DailyCollectionReport />}
     </div>
   );
 };
