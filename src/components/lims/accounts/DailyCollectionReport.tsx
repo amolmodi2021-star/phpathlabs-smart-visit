@@ -24,22 +24,33 @@ type DayRow = {
 };
 
 const money = (n: number) =>
-  n < 0 ? `−₹${Math.abs(n).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-    : `₹${n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  n < 0
+    ? `\u2212\u20B9${Math.abs(n).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    : `\u20B9${n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 const num = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
-/** Accountant view: one row per date — Paid + modes (same rules as Daily Report). */
+const todayKey = () => format(new Date(), "yyyy-MM-dd");
+const yesterdayKey = () => format(addDays(new Date(), -1), "yyyy-MM-dd");
+
+/** Clamp to yesterday or earlier ? Accounts never shows current-day totals. */
+const clampPast = (day: string, latest: string) => (day > latest ? latest : day);
+
+/** Accountant view: one row per date ? Paid + modes (same rules as Daily Report). Never includes today. */
 const DailyCollectionReport = () => {
-  const today = format(new Date(), "yyyy-MM-dd");
-  const [dateFrom, setDateFrom] = useState(today);
-  const [dateTo, setDateTo] = useState(today);
+  const latestAllowed = yesterdayKey();
+  const [dateFrom, setDateFrom] = useState(latestAllowed);
+  const [dateTo, setDateTo] = useState(latestAllowed);
+
+  const effectiveFrom = clampPast(dateFrom, latestAllowed);
+  const effectiveTo = clampPast(dateTo < effectiveFrom ? effectiveFrom : dateTo, latestAllowed);
 
   const { data: transactions = [], isLoading, isFetching } = useQuery({
-    queryKey: ["accounts_daily_collection", dateFrom, dateTo],
+    queryKey: ["accounts_daily_collection", effectiveFrom, effectiveTo],
+    enabled: effectiveFrom <= effectiveTo,
     queryFn: async () => {
-      const from = startOfDay(parseISO(dateFrom)).toISOString();
-      const to = endOfDay(parseISO(dateTo)).toISOString();
+      const from = startOfDay(parseISO(effectiveFrom)).toISOString();
+      const to = endOfDay(parseISO(effectiveTo)).toISOString();
       const pageSize = 1000;
       const all: any[] = [];
       let fromIdx = 0;
@@ -64,9 +75,11 @@ const DailyCollectionReport = () => {
   });
 
   const dayRows: DayRow[] = useMemo(() => {
+    const today = todayKey();
     const byDay = new Map<string, DayRow>();
 
-    const ensure = (dayKey: string): DayRow => {
+    const ensure = (dayKey: string): DayRow | null => {
+      if (dayKey >= today) return null; // never show current (or future) date
       let row = byDay.get(dayKey);
       if (!row) {
         row = {
@@ -84,21 +97,21 @@ const DailyCollectionReport = () => {
       return row;
     };
 
-    // Prefill every calendar day in range so blank days show ₹0
     try {
       const days = eachDayOfInterval({
-        start: parseISO(dateFrom),
-        end: parseISO(dateTo),
+        start: parseISO(effectiveFrom),
+        end: parseISO(effectiveTo),
       });
       days.forEach((d) => ensure(format(d, "yyyy-MM-dd")));
     } catch {
-      // invalid range — skip prefill
+      // invalid range
     }
 
     for (const t of transactions) {
       if (isHiddenDailyReportType(t.transaction_type)) continue;
       const dayKey = format(parseISO(t.transaction_date), "yyyy-MM-dd");
       const row = ensure(dayKey);
+      if (!row) continue;
       row.paid += paymentRowPaid(t);
       row.cash += Number(t.cash_amount || 0);
       row.gpay += Number(t.gpay_amount || 0);
@@ -118,7 +131,7 @@ const DailyCollectionReport = () => {
         creditCard: num(r.creditCard),
       }))
       .sort((a, b) => a.dayKey.localeCompare(b.dayKey));
-  }, [transactions, dateFrom, dateTo]);
+  }, [transactions, effectiveFrom, effectiveTo]);
 
   const totals = useMemo(
     () =>
@@ -136,16 +149,23 @@ const DailyCollectionReport = () => {
     [dayRows],
   );
 
-  const sameDay = dateFrom === dateTo;
+  const sameDay = effectiveFrom === effectiveTo;
+  const canGoNext = sameDay && format(addDays(parseISO(effectiveFrom), 1), "yyyy-MM-dd") <= latestAllowed;
+
+  const setRangeClamped = (from: string, to: string) => {
+    const f = clampPast(from, latestAllowed);
+    const t = clampPast(to, latestAllowed);
+    setDateFrom(f);
+    setDateTo(t < f ? f : t);
+  };
 
   const goPrev = () => {
     if (!sameDay) {
       toast.message("Previous works when From and To are the same date");
       return;
     }
-    const prev = format(addDays(parseISO(dateFrom), -1), "yyyy-MM-dd");
-    setDateFrom(prev);
-    setDateTo(prev);
+    const prev = format(addDays(parseISO(effectiveFrom), -1), "yyyy-MM-dd");
+    setRangeClamped(prev, prev);
   };
 
   const goNext = () => {
@@ -153,9 +173,12 @@ const DailyCollectionReport = () => {
       toast.message("Next works when From and To are the same date");
       return;
     }
-    const next = format(addDays(parseISO(dateFrom), 1), "yyyy-MM-dd");
-    setDateFrom(next);
-    setDateTo(next);
+    const next = format(addDays(parseISO(effectiveFrom), 1), "yyyy-MM-dd");
+    if (next > latestAllowed) {
+      toast.message("Current day is not shown in Accounts");
+      return;
+    }
+    setRangeClamped(next, next);
   };
 
   const exportExcel = () => {
@@ -184,8 +207,8 @@ const DailyCollectionReport = () => {
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Daily Collection");
-    const fromLabel = format(parseISO(dateFrom), "dd-MM-yyyy");
-    const toLabel = format(parseISO(dateTo), "dd-MM-yyyy");
+    const fromLabel = format(parseISO(effectiveFrom), "dd-MM-yyyy");
+    const toLabel = format(parseISO(effectiveTo), "dd-MM-yyyy");
     XLSX.writeFile(wb, `Daily_Collection_${fromLabel}_to_${toLabel}.xlsx`);
     toast.success("Excel downloaded");
   };
@@ -195,7 +218,7 @@ const DailyCollectionReport = () => {
       <CardHeader className="pb-3 space-y-3">
         <CardTitle className="text-base">Daily Collection</CardTitle>
         <p className="text-sm text-muted-foreground">
-          Date-wise totals only (same Paid and payment modes as Daily Report). No patient list.
+          Date-wise totals only (same Paid and payment modes as Daily Report). Current day is never included.
         </p>
         <div className="flex flex-wrap items-end gap-3">
           <div>
@@ -203,11 +226,11 @@ const DailyCollectionReport = () => {
             <Input
               id="acc-from"
               type="date"
-              value={dateFrom}
+              value={effectiveFrom}
+              max={latestAllowed}
               onChange={(e) => {
-                const v = e.target.value;
-                setDateFrom(v);
-                if (v > dateTo) setDateTo(v);
+                const v = clampPast(e.target.value, latestAllowed);
+                setRangeClamped(v, effectiveTo < v ? v : effectiveTo);
               }}
               className="w-[160px]"
             />
@@ -217,11 +240,11 @@ const DailyCollectionReport = () => {
             <Input
               id="acc-to"
               type="date"
-              value={dateTo}
+              value={effectiveTo}
+              max={latestAllowed}
               onChange={(e) => {
-                const v = e.target.value;
-                setDateTo(v);
-                if (v < dateFrom) setDateFrom(v);
+                const v = clampPast(e.target.value, latestAllowed);
+                setRangeClamped(effectiveFrom > v ? v : effectiveFrom, v);
               }}
               className="w-[160px]"
             />
@@ -242,8 +265,8 @@ const DailyCollectionReport = () => {
             variant="outline"
             size="sm"
             onClick={goNext}
-            disabled={!sameDay}
-            title={sameDay ? "Go to next day" : "Set From and To to the same date to use Next"}
+            disabled={!canGoNext}
+            title={canGoNext ? "Go to next day" : "Current day is not shown in Accounts"}
           >
             Next
             <ChevronRight className="h-4 w-4 ml-1" />
