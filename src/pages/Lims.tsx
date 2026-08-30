@@ -25,6 +25,7 @@ const Dispatch = lazy(() => import("@/components/lims/Dispatch"));
 const LimsSettings = lazy(() => import("@/components/lims/LimsSettings"));
 const DailyReport = lazy(() => import("@/components/lims/DailyReport"));
 const Billing = lazy(() => import("@/components/lims/Billing"));
+const Accounts = lazy(() => import("@/components/lims/Accounts"));
 
 const allLimsTabs = [
   { key: "register", label: "New Registration", component: PatientRegistration },
@@ -41,6 +42,7 @@ const allLimsTabs = [
   { key: "bad_debts", label: "Bad Debts", component: BadDebts },
   { key: "billing", label: "Billing", component: Billing },
   { key: "daily_report", label: "Daily Report", component: DailyReport },
+  { key: "accounts", label: "Accounts", component: Accounts },
   { key: "completed_hv", label: "Completed Home Visits", component: CompletedHomeVisits },
   { key: "settings", label: "Settings", component: LimsSettings },
 ];

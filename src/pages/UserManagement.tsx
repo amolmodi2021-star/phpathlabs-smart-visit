@@ -105,6 +105,7 @@ const ALL_TABS = [
       { key: "bad_debts", label: "Bad Debts" },
       { key: "billing", label: "Billing" },
       { key: "daily_report", label: "Daily Report" },
+      { key: "accounts", label: "Accounts" },
       { key: "completed_hv", label: "Completed Home Visits" },
       { key: "settings", label: "Settings" },
     ],
