@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from "@/components/ui/table";
-import { Loader2, Download, ChevronRight } from "lucide-react";
+import { Loader2, Download, ChevronLeft, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { isHiddenDailyReportType, paymentRowPaid } from "@/lib/dailyReportMetrics";
 
@@ -138,6 +138,16 @@ const DailyCollectionReport = () => {
 
   const sameDay = dateFrom === dateTo;
 
+  const goPrev = () => {
+    if (!sameDay) {
+      toast.message("Previous works when From and To are the same date");
+      return;
+    }
+    const prev = format(addDays(parseISO(dateFrom), -1), "yyyy-MM-dd");
+    setDateFrom(prev);
+    setDateTo(prev);
+  };
+
   const goNext = () => {
     if (!sameDay) {
       toast.message("Next works when From and To are the same date");
@@ -216,6 +226,17 @@ const DailyCollectionReport = () => {
               className="w-[160px]"
             />
           </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={goPrev}
+            disabled={!sameDay}
+            title={sameDay ? "Go to previous day" : "Set From and To to the same date to use Previous"}
+          >
+            <ChevronLeft className="h-4 w-4 mr-1" />
+            Previous
+          </Button>
           <Button
             type="button"
             variant="outline"
