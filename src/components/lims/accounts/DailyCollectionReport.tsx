@@ -93,7 +93,7 @@ const DailyCollectionReport = () => {
   const latestAllowed = yesterdayKey();
   const [dateFrom, setDateFrom] = useState(latestAllowed);
   const [dateTo, setDateTo] = useState(latestAllowed);
-  const [pendingOnly, setPendingOnly] = useState(false);
+  const [pendingOnly, setPendingOnly] = useState(true);
 
   const effectiveFrom = clampPast(dateFrom, latestAllowed);
   const effectiveTo = clampPast(dateTo < effectiveFrom ? effectiveFrom : dateTo, latestAllowed);
