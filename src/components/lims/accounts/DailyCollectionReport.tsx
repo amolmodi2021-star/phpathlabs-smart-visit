@@ -78,6 +78,13 @@ const uiStatusFor = (row: DayRow, st: TallyStatusRow | undefined): TallyUiStatus
   return snapshotMatches(row, st) ? "entered" : "reverify";
 };
 
+const tallyStatusLabel = (row: DayRow, st: TallyStatusRow | undefined): string => {
+  const ui = uiStatusFor(row, st);
+  if (ui === "unentered" || ui === "reverify") return "Pending";
+  if ((st?.verify_count || 0) > 1) return "Reverified and entered";
+  return "Entered";
+};
+
 /** Accountant view: date totals + Tally Entered / Reverify tracking. Never includes today. */
 const DailyCollectionReport = () => {
   const qc = useQueryClient();
@@ -261,7 +268,7 @@ const DailyCollectionReport = () => {
       return mode;
     },
     onSuccess: (mode) => {
-      toast.success(mode === "enter" ? "Marked Entered in Tally" : "Reverified & Entered");
+      toast.success(mode === "enter" ? "Marked Entered in Tally" : "Reverified and entered");
       qc.invalidateQueries({ queryKey: ["accounts_tally_day_status"] });
     },
     onError: (e: any) => toast.error(e?.message || "Failed to update Tally status"),
@@ -306,7 +313,6 @@ const DailyCollectionReport = () => {
     }
     const rows = displayRows.map((r) => {
       const st = tallyByDay.get(r.dayKey);
-      const ui = uiStatusFor(r, st);
       return {
         Date: r.dateLabel,
         "Total Collection (Paid)": r.paid,
@@ -315,7 +321,7 @@ const DailyCollectionReport = () => {
         Paytm: r.paytm,
         NEFT: r.neft,
         "Credit Card": r.creditCard,
-        "Tally Status": ui === "unentered" ? "Unentered" : ui === "reverify" ? "Reverify" : "Entered",
+        "Tally Status": tallyStatusLabel(r, st),
         "Entered At": st ? stamp(st.entered_at) : "",
         "Last Verified At": st ? stamp(st.last_verified_at) : "",
         "Entered By": st?.entered_by || "",
@@ -398,7 +404,7 @@ const DailyCollectionReport = () => {
             onClick={() => setPendingOnly((v) => !v)}
           >
             <Filter className="h-4 w-4 mr-1.5" />
-            {pendingOnly ? "Show all dates" : `Unentered / Reverify (${pendingCount})`}
+            {pendingOnly ? "Show all dates" : `Pending (${pendingCount})`}
           </Button>
           <Button type="button" size="sm" onClick={exportExcel} disabled={loading || displayRows.length === 0}>
             <Download className="h-4 w-4 mr-1.5" />
@@ -414,7 +420,7 @@ const DailyCollectionReport = () => {
           </div>
         ) : displayRows.length === 0 ? (
           <p className="text-sm text-muted-foreground py-8 text-center">
-            {pendingOnly ? "No unentered or reverify dates in this range." : "No dates in this range."}
+            {pendingOnly ? "No pending dates in this range." : "No dates in this range."}
           </p>
         ) : (
           <div className="rounded-md border overflow-x-auto max-h-[70vh] overflow-y-auto">
@@ -454,41 +460,47 @@ const DailyCollectionReport = () => {
                       <TableCell className="text-right tabular-nums">{money(r.neft)}</TableCell>
                       <TableCell className="text-right tabular-nums">{money(r.creditCard)}</TableCell>
                       <TableCell className="whitespace-nowrap">
-                        {ui === "unentered" && (
-                          <Button
-                            type="button"
-                            size="sm"
-                            className="h-7"
-                            disabled={markMutation.isPending}
-                            onClick={() => markMutation.mutate({ row: r, mode: "enter" })}
+                        <div className="flex flex-col items-start gap-1.5">
+                          <Badge
+                            variant="outline"
+                            className={cn(
+                              ui === "entered" && "border-emerald-600 text-emerald-700 bg-emerald-50",
+                              (ui === "unentered" || ui === "reverify") && "border-amber-600 text-amber-800 bg-amber-50",
+                            )}
                           >
-                            Entered
-                          </Button>
-                        )}
-                        {ui === "entered" && (
-                          <Badge variant="outline" className="border-emerald-600 text-emerald-700 bg-emerald-50">
-                            {(st?.verify_count || 0) > 1 ? "Reverified & Entered" : "Entered"}
+                            {tallyStatusLabel(r, st)}
                           </Badge>
-                        )}
-                        {ui === "reverify" && (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="destructive"
-                            className="h-7"
-                            disabled={markMutation.isPending}
-                            onClick={() => markMutation.mutate({ row: r, mode: "reverify" })}
-                          >
-                            Reverify
-                          </Button>
-                        )}
+                          {ui === "unentered" && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              className="h-7"
+                              disabled={markMutation.isPending}
+                              onClick={() => markMutation.mutate({ row: r, mode: "enter" })}
+                            >
+                              Mark Entered
+                            </Button>
+                          )}
+                          {ui === "reverify" && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="destructive"
+                              className="h-7"
+                              disabled={markMutation.isPending}
+                              onClick={() => markMutation.mutate({ row: r, mode: "reverify" })}
+                            >
+                              Reverify
+                            </Button>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
                         {st ? (
                           <div className="leading-snug">
                             <div>Entered: {stamp(st.entered_at)}</div>
                             <div>
-                              {st.verify_count > 1 ? "Reverified & entered: " : "Verified: "}
+                              {st.verify_count > 1 ? "Reverified and entered: " : "Verified: "}
                               {stamp(st.last_verified_at)}
                             </div>
                           </div>
