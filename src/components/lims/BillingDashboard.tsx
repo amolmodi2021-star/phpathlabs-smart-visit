@@ -36,6 +36,7 @@ const BillingDashboard = () => {
   const [to, setTo] = useState("");
   const [payOpen, setPayOpen] = useState<PickupInvoice | null>(null);
   const [pdfOpen, setPdfOpen] = useState<PickupInvoice | null>(null);
+  const [pdfWaQueue, setPdfWaQueue] = useState(false);
   const [ledgerOpen, setLedgerOpen] = useState<{ id: string; name: string } | null>(null);
 
   const { data: invoices = [], isLoading } = useQuery({
@@ -196,8 +197,24 @@ const BillingDashboard = () => {
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex gap-1 justify-end">
-                        <Button size="icon" variant="ghost" title="View / Download PDF" onClick={() => setPdfOpen(inv)}>
+                        <Button size="icon" variant="ghost" title="View / Download PDF" onClick={() => { setPdfWaQueue(false); setPdfOpen(inv); }}>
                           <FileText className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          title="Send invoice PDF on WhatsApp"
+                          onClick={() => {
+                            const pp = pickupMap.get(inv.pickup_point_id);
+                            if (!pp?.phone || String(pp.phone).replace(/\D/g, "").slice(-10).length !== 10) {
+                              toast.error("Pickup point has no valid WhatsApp number");
+                              return;
+                            }
+                            setPdfWaQueue(true);
+                            setPdfOpen(inv);
+                          }}
+                        >
+                          <Send className="h-4 w-4" />
                         </Button>
                         <Button size="icon" variant="ghost" title="Record Payment" onClick={() => setPayOpen(inv)} disabled={inv.due_amount <= 0}>
                           <IndianRupee className="h-4 w-4" />
@@ -236,8 +253,9 @@ const BillingDashboard = () => {
       />
       <PickupInvoicePDF
         open={!!pdfOpen}
-        onClose={() => setPdfOpen(null)}
+        onClose={() => { setPdfOpen(null); setPdfWaQueue(false); }}
         invoice={pdfOpen}
+        autoQueueWhatsApp={pdfWaQueue}
       />
     </div>
   );

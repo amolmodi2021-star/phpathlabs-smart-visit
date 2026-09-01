@@ -2,13 +2,14 @@ import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from
 import { supabase } from "@/integrations/supabase/client";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Download, X, Loader2 } from "lucide-react";
+import { Download, X, Loader2, Send } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import jsPDF from "jspdf";
 import { toJpeg, getFontEmbedCSS } from "html-to-image";
 import { getInvoiceItems, getInvoiceLedger, amountInWords, type PickupInvoice } from "@/lib/pickupBilling";
 import { getCurrentUserName } from "@/lib/auth";
+import { enqueueReportForWhatsAppConsole } from "@/lib/whatsappConsoleBridge";
 
 /** A4 at 96dpi — preview width matches capture width. */
 const A4_WIDTH_MM = 210;
@@ -163,6 +164,8 @@ interface Props {
   open: boolean;
   onClose: () => void;
   invoice: PickupInvoice | null;
+  /** When true, build PDF after layout and queue WhatsApp Console delivery, then close. */
+  autoQueueWhatsApp?: boolean;
 }
 
 /** Pack row indices into pages; never split a row across pages. */
@@ -318,18 +321,20 @@ function PageChromeFooter({
   );
 }
 
-const PickupInvoicePDF = ({ open, onClose, invoice }: Props) => {
+const PickupInvoicePDF = ({ open, onClose, invoice, autoQueueWhatsApp = false }: Props) => {
   const [settings, setSettings] = useState<Record<string, string>>({});
   const [pickup, setPickup] = useState<PickupPoint | null>(null);
   const [items, setItems] = useState<InvoiceItemRow[]>([]);
   const [ledger, setLedger] = useState<LedgerRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState(false);
+  const [sendingWa, setSendingWa] = useState(false);
   const [invoiceItemPages, setInvoiceItemPages] = useState<number[][]>([[]]);
   const [ledgerPages, setLedgerPages] = useState<number[][]>([[]]);
   const [layoutReady, setLayoutReady] = useState(false);
   const [preparedBy, setPreparedBy] = useState("—");
   const [preparedAt, setPreparedAt] = useState("");
+  const waAutoQueuedRef = useRef(false);
 
   const measureRef = useRef<HTMLDivElement>(null);
 
@@ -337,6 +342,7 @@ const PickupInvoicePDF = ({ open, onClose, invoice }: Props) => {
     if (!open || !invoice) return;
     setLoading(true);
     setLayoutReady(false);
+    waAutoQueuedRef.current = false;
     setPreparedBy(getCurrentUserName() || "—");
     setPreparedAt(format(new Date(), "dd-MM-yyyy hh:mm a"));
     (async () => {
@@ -481,36 +487,95 @@ const PickupInvoicePDF = ({ open, onClose, invoice }: Props) => {
     }
   };
 
+  const buildPdfBlob = async (): Promise<{ blob: Blob; filename: string }> => {
+    if (!invoice || !pickup) throw new Error("Invoice not ready");
+    await ensureRupeeFontsReady();
+    await new Promise((r) => setTimeout(r, 100));
+
+    const pageNodes = Array.from(
+      document.querySelectorAll<HTMLElement>('[data-invoice-a4-page]'),
+    ).sort(
+      (a, b) =>
+        Number(a.getAttribute("data-invoice-a4-page") || 0) -
+        Number(b.getAttribute("data-invoice-a4-page") || 0),
+    );
+    if (pageNodes.length === 0) throw new Error("No invoice pages to capture");
+
+    const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+    const pageW = pdf.internal.pageSize.getWidth();
+    const pageH = pdf.internal.pageSize.getHeight();
+
+    for (let i = 0; i < pageNodes.length; i++) {
+      const dataUrl = await capturePage(pageNodes[i]);
+      if (!dataUrl) throw new Error(`Could not render page ${i + 1}`);
+      if (i > 0) pdf.addPage();
+      pdf.addImage(dataUrl, "JPEG", 0, 0, pageW, pageH, undefined, "FAST");
+    }
+
+    const safeName = (pickup.name || "PICKUP").replace(/[^A-Z0-9_-]/gi, "_");
+    const filename = `${safeName}_${invoice.invoice_number}.pdf`;
+    return { blob: pdf.output("blob"), filename };
+  };
+
+  const buildWhatsAppCaption = () => {
+    const labName = (pickup?.name || "Pickup Point").trim();
+    const amount = Number(invoice?.total_amount || 0).toLocaleString("en-IN", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+    const period =
+      invoice?.period_from && invoice?.period_to
+        ? `${format(new Date(invoice.period_from), "dd-MM-yyyy")} to ${format(new Date(invoice.period_to), "dd-MM-yyyy")}`
+        : "—";
+    return (
+      `*${labName}*\n` +
+      `Invoice No: ${invoice?.invoice_number || "—"}\n` +
+      `Amount: ₹${amount}\n` +
+      `Period: ${period}\n` +
+      `\n*PH PathLabs - Vesu*`
+    );
+  };
+
+  const sendWhatsApp = async (opts?: { closeAfter?: boolean }) => {
+    if (!invoice || !pickup) return;
+    const phone = String(pickup.phone || "").replace(/\D/g, "").slice(-10);
+    if (phone.length !== 10) {
+      toast.error("Pickup point has no valid WhatsApp number");
+      return;
+    }
+    setSendingWa(true);
+    try {
+      const { blob, filename } = await buildPdfBlob();
+      const res = await enqueueReportForWhatsAppConsole({
+        phone,
+        patient_name: pickup.name,
+        invoice_number: invoice.invoice_number,
+        caption: buildWhatsAppCaption(),
+        blob,
+        filename,
+      });
+      if (!res.ok) throw new Error(res.error || "Failed to queue WhatsApp");
+      toast.success("Invoice PDF queued for WhatsApp Console");
+      if (opts?.closeAfter) onClose();
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "WhatsApp send failed";
+      toast.error(msg);
+    } finally {
+      setSendingWa(false);
+    }
+  };
+
   const download = async () => {
     if (!invoice || !pickup) return;
     setDownloading(true);
     try {
-      await ensureRupeeFontsReady();
-      await new Promise((r) => setTimeout(r, 100));
-
-      const pageNodes = Array.from(
-        document.querySelectorAll<HTMLElement>('[data-invoice-a4-page]'),
-      ).sort(
-        (a, b) =>
-          Number(a.getAttribute("data-invoice-a4-page") || 0) -
-          Number(b.getAttribute("data-invoice-a4-page") || 0),
-      );
-
-      if (pageNodes.length === 0) throw new Error("No invoice pages to capture");
-
-      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-      const pageW = pdf.internal.pageSize.getWidth();
-      const pageH = pdf.internal.pageSize.getHeight();
-
-      for (let i = 0; i < pageNodes.length; i++) {
-        const dataUrl = await capturePage(pageNodes[i]);
-        if (!dataUrl) throw new Error(`Could not render page ${i + 1}`);
-        if (i > 0) pdf.addPage();
-        pdf.addImage(dataUrl, "JPEG", 0, 0, pageW, pageH, undefined, "FAST");
-      }
-
-      const safeName = (pickup.name || "PICKUP").replace(/[^A-Z0-9_-]/gi, "_");
-      pdf.save(`${safeName}_${invoice.invoice_number}.pdf`);
+      const { blob, filename } = await buildPdfBlob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
       toast.success("A4 PDF downloaded");
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Download failed";
@@ -519,6 +584,14 @@ const PickupInvoicePDF = ({ open, onClose, invoice }: Props) => {
       setDownloading(false);
     }
   };
+
+  useEffect(() => {
+    if (!open || !autoQueueWhatsApp || !layoutReady || loading || sendingWa) return;
+    if (waAutoQueuedRef.current) return;
+    waAutoQueuedRef.current = true;
+    void sendWhatsApp({ closeAfter: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, autoQueueWhatsApp, layoutReady, loading]);
 
   if (!invoice) return null;
 
@@ -757,10 +830,21 @@ const PickupInvoicePDF = ({ open, onClose, invoice }: Props) => {
               size="sm"
               className="bg-[#2E3192] hover:bg-[#23266F] text-white"
               onClick={download}
-              disabled={downloading || loading || !layoutReady}
+              disabled={downloading || sendingWa || loading || !layoutReady}
             >
               {downloading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Download className="h-4 w-4 mr-1" />}
               Download PDF
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="border-[#2E3192] text-[#2E3192]"
+              onClick={() => void sendWhatsApp()}
+              disabled={downloading || sendingWa || loading || !layoutReady}
+              title="Send invoice PDF on WhatsApp"
+            >
+              {sendingWa ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Send className="h-4 w-4 mr-1" />}
+              WhatsApp
             </Button>
             <Button size="sm" variant="ghost" onClick={onClose}>
               <X className="h-4 w-4" />
