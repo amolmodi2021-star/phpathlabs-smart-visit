@@ -9,6 +9,47 @@ import jsPDF from "jspdf";
 import { toJpeg } from "html-to-image";
 import { getInvoiceItems, getInvoiceLedger, amountInWords, type PickupInvoice } from "@/lib/pickupBilling";
 
+/** Fonts that include U+20B9 (₹). Arial alone often shows a box in PDF/WhatsApp captures. */
+const INVOICE_FONT =
+  '"Noto Sans", "IBM Plex Sans", "Segoe UI", system-ui, sans-serif';
+const INVOICE_FONT_CSS =
+  "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Noto+Sans:wght@400;500;600;700&display=swap";
+
+async function ensureRupeeFontsReady(): Promise<void> {
+  if (typeof document === "undefined" || !document.fonts) return;
+  try {
+    if (!document.querySelector('link[data-pickup-invoice-fonts="1"]')) {
+      const link = document.createElement("link");
+      link.rel = "stylesheet";
+      link.href = INVOICE_FONT_CSS;
+      link.setAttribute("data-pickup-invoice-fonts", "1");
+      document.head.appendChild(link);
+    }
+    await document.fonts.ready;
+    const specs = [
+      '400 12px "Noto Sans"',
+      '700 12px "Noto Sans"',
+      '400 12px "IBM Plex Sans"',
+      '700 12px "IBM Plex Sans"',
+    ];
+    await Promise.all(specs.map((spec) => document.fonts.load(spec, "₹").catch(() => undefined)));
+    for (let i = 0; i < 40; i++) {
+      if (
+        document.fonts.check('400 12px "Noto Sans"', "₹") ||
+        document.fonts.check('400 12px "IBM Plex Sans"', "₹")
+      ) {
+        return;
+      }
+      await new Promise((r) => setTimeout(r, 50));
+    }
+  } catch {
+    // non-fatal — capture still proceeds
+  }
+}
+
+const formatInr = (n: number) =>
+  `₹${Number(n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
 interface Props {
   open: boolean;
   onClose: () => void;
@@ -43,6 +84,7 @@ const PickupInvoicePDF = ({ open, onClose, invoice }: Props) => {
     if (!open || !invoice) return;
     setLoading(true);
     (async () => {
+      await ensureRupeeFontsReady();
       const [s, pp, it, lg] = await Promise.all([
         supabase.from("app_settings").select("setting_key, setting_value").in("setting_key", SETTING_KEYS),
         supabase.from("pickup_points").select("*").eq("id", invoice.pickup_point_id).single(),
@@ -81,6 +123,7 @@ const PickupInvoicePDF = ({ open, onClose, invoice }: Props) => {
     if (!invoice || !pickup) return;
     setDownloading(true);
     try {
+      await ensureRupeeFontsReady();
       // Wait for any pending image paints (logo)
       await new Promise((r) => setTimeout(r, 80));
 
@@ -146,13 +189,15 @@ const PickupInvoicePDF = ({ open, onClose, invoice }: Props) => {
               style={{
                 width: "210mm",
                 minHeight: "297mm",
+                height: "auto",
                 margin: "0 auto",
                 padding: "10mm 12mm",
                 background: "#ffffff",
                 color: "#111",
-                fontFamily: "Arial, Helvetica, sans-serif",
+                fontFamily: INVOICE_FONT,
                 fontSize: 13,
                 boxSizing: "border-box",
+                overflow: "visible",
               }}
             >
               {/* Header: centered logo; address single line above blue divider */}
@@ -197,6 +242,12 @@ const PickupInvoicePDF = ({ open, onClose, invoice }: Props) => {
                       <tr><td style={{ color: "#666" }}>Period From</td><td style={{ textAlign: "right" }}>{format(new Date(invoice.period_from), "dd-MM-yyyy")}</td></tr>
                       <tr><td style={{ color: "#666" }}>Period To</td><td style={{ textAlign: "right" }}>{format(new Date(invoice.period_to), "dd-MM-yyyy")}</td></tr>
                       <tr><td style={{ color: "#666" }}>Patients</td><td style={{ textAlign: "right" }}>{invoice.patient_count}</td></tr>
+                      <tr>
+                        <td style={{ color: "#111", fontWeight: 700, paddingTop: 4 }}>Amount</td>
+                        <td style={{ textAlign: "right", fontWeight: 700, paddingTop: 4, whiteSpace: "nowrap" }}>
+                          {formatInr(Number(invoice.total_amount))}
+                        </td>
+                      </tr>
                     </tbody>
                   </table>
                 </div>
@@ -251,7 +302,7 @@ const PickupInvoicePDF = ({ open, onClose, invoice }: Props) => {
                   ))}
                   <tr style={{ background: "#F0F1FA", fontWeight: 700 }}>
                     <td style={td} colSpan={5}>Grand Total</td>
-                    <td style={{ ...td, textAlign: "right" }}>₹{Number(invoice.total_amount).toFixed(2)}</td>
+                    <td style={{ ...td, textAlign: "right" }}>{formatInr(Number(invoice.total_amount))}</td>
                   </tr>
                 </tbody>
               </table>
@@ -282,7 +333,7 @@ const PickupInvoicePDF = ({ open, onClose, invoice }: Props) => {
                 padding: "10mm 12mm",
                 background: "#ffffff",
                 color: "#111",
-                fontFamily: "Arial, Helvetica, sans-serif",
+                fontFamily: INVOICE_FONT,
                 fontSize: 13,
                 boxSizing: "border-box",
               }}
