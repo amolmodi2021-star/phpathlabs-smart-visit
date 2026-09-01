@@ -107,6 +107,8 @@ function buildVoucherXml(job, company) {
             <DATE>${tallyDate(job.voucher_date)}</DATE>
             <NARRATION>${xmlEscape(job.narration)}</NARRATION>
             <VOUCHERTYPENAME>${xmlEscape(job.voucher_type || "Receipt")}</VOUCHERTYPENAME>
+            <PARTYLEDGERNAME>${xmlEscape((lines.find((l) => l.is_debit) || lines[0] || {}).ledger || "")}</PARTYLEDGERNAME>
+            <PERSISTEDVIEW>Accounting Voucher View</PERSISTEDVIEW>
             ${entries}
           </VOUCHER>
         </TALLYMESSAGE>
@@ -140,12 +142,20 @@ async function postToTally(cfg, xml) {
     body: xml,
   });
   const text = await res.text();
-  if (/<LINEERROR>([^<]+)/i.test(text)) {
-    const m = text.match(/<LINEERROR>([^<]+)/i);
-    throw new Error(m?.[1] || "Tally LINEERROR");
+  const lineErr = text.match(/<LINEERROR>([^<]+)<\/LINEERROR>/i);
+  if (lineErr && lineErr[1].trim()) {
+    throw new Error(lineErr[1].trim());
   }
-  if (/ERROR|FAILED/i.test(text) && !/<CREATED>/i.test(text) && !/<ALTERED>/i.test(text)) {
-    throw new Error(text.slice(0, 400));
+  const created = Number((text.match(/<CREATED>(\d+)<\/CREATED>/i) || [])[1] || 0);
+  const altered = Number((text.match(/<ALTERED>(\d+)<\/ALTERED>/i) || [])[1] || 0);
+  const errors = Number((text.match(/<ERRORS>(\d+)<\/ERRORS>/i) || [])[1] || 0);
+  const exceptions = Number((text.match(/<EXCEPTIONS>(\d+)<\/EXCEPTIONS>/i) || [])[1] || 0);
+  if (errors > 0 || exceptions > 0 || (created + altered) < 1) {
+    throw new Error(
+      `Tally did not create voucher (CREATED=${created}, ALTERED=${altered}, ERRORS=${errors}). ` +
+        `Create missing ledgers in Tally (Cash, GPay, Paytm, NEFT, Credit Card Clearing, Lab Collection) then push again. ` +
+        `Also check Import > Exceptions in Tally.`,
+    );
   }
   return text;
 }
