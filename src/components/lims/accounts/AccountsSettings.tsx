@@ -701,8 +701,8 @@ function TallyIntegrationSection() {
       <CardHeader className="py-3">
         <CardTitle className="text-base">TallyPrime</CardTitle>
         <p className="text-sm text-muted-foreground">
-          Map each payment mode to its Tally ledger. Receipts are posted as: Account = Cash/HDFC, Particulars = mode ledger
-          (exact LIMS amount, including credit card). No Lab Collection ledger is sent.
+          Map each payment mode to its Tally ledger. Queue creates one Receipt per mode to that ledger only
+          (exact LIMS amount). No HDFC / Lab Collection — other allocations are for the accountant.
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -720,7 +720,7 @@ function TallyIntegrationSection() {
                 <Input value={mdrLedger} onChange={(e) => setMdrLedger(e.target.value)} className="h-9" />
               </div>
               <div>
-                <Label className="text-xs">Bank ledger for GPay/Paytm/NEFT/Card (e.g. HDFC)</Label>
+                <Label className="text-xs">Default settlement bank ledger (Card Settlement only)</Label>
                 <Input value={settlementBank} onChange={(e) => setSettlementBank(e.target.value)} className="h-9" />
               </div>
             </div>

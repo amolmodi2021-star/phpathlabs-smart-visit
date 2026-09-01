@@ -129,20 +129,18 @@ export async function saveTallyModeMapRow(row: Partial<TallyModeMapRow> & { mode
 }
 
 /**
- * Receipt (Tally single-entry style):
- * Account (Dr) = bank/cash receiving money
- * Particulars (Cr) = payment-mode ledger (GPay / Cash Sales / etc.)
- * No Lab Collection — accountant handles income allocation.
+ * Receipt for one payment mode only:
+ * Account (Dr) = mapped mode ledger (Cash Sales / Online Payment / etc.)
+ * Particulars (Cr) = Suspense A/c (accountant allocates; no HDFC / Lab Collection).
  */
 function receiptLines(opts: {
-  accountLedger: string;
   modeLedger: string;
   amount: number;
 }): TallyVoucherLine[] {
   const amount = num(opts.amount);
   return [
-    { ledger: opts.accountLedger, is_debit: true, amount },
-    { ledger: opts.modeLedger, is_debit: false, amount },
+    { ledger: opts.modeLedger, is_debit: true, amount },
+    { ledger: "Suspense A/c", is_debit: false, amount },
   ];
 }
 
@@ -204,16 +202,9 @@ export async function queueDayCollectionToTally(row: DayModeAmounts): Promise<{ 
     }
 
     const modeLedger = map.tally_ledger.trim();
-    const bankLedger = (settings.default_settlement_bank_ledger || "").trim() || "HDFC";
-    // Cash stays in Cash account; digital/card modes debit the bank ledger (HDFC).
-    const accountLedger = mode === "cash" ? "Cash" : bankLedger;
-    if (!accountLedger) {
-      throw new Error("Set Default settlement bank ledger (HDFC) in Accounts → Settings → Tally");
-    }
-    const narration = `LIMS daily collection ${row.dayKey} — ${map.label} → ${accountLedger}`;
+    const narration = `LIMS daily collection ${row.dayKey} — ${map.label}`;
 
     const lines = receiptLines({
-      accountLedger,
       modeLedger,
       amount,
     });
