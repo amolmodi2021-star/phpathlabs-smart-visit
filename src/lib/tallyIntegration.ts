@@ -128,21 +128,19 @@ export async function saveTallyModeMapRow(row: Partial<TallyModeMapRow> & { mode
   if (error) throw error;
 }
 
-/**
- * Receipt for one payment mode only:
- * Account (Dr) = mapped mode ledger (Cash Sales / Online Payment / etc.)
- * Particulars (Cr) = Suspense A/c (accountant allocates; no HDFC / Lab Collection).
- */
+/** Receipt (single-entry style): Account = mode ledger (Dr), Particulars = income (Cr). */
 function receiptLines(opts: {
-  modeLedger: string;
+  moneyLedger: string;
+  incomeLedger: string;
   amount: number;
 }): TallyVoucherLine[] {
   const amount = num(opts.amount);
   return [
-    { ledger: opts.modeLedger, is_debit: true, amount },
-    { ledger: "Suspense A/c", is_debit: false, amount },
+    { ledger: opts.moneyLedger, is_debit: true, amount },
+    { ledger: opts.incomeLedger, is_debit: false, amount },
   ];
 }
+
 
 function settlementLines(opts: {
   bankLedger: string;
@@ -166,6 +164,7 @@ function settlementLines(opts: {
 
 export async function queueDayCollectionToTally(row: DayModeAmounts): Promise<{ queued: number; skipped: number }> {
   const [settings, modes] = await Promise.all([getTallySettings(), getTallyModeMap()]);
+  if (!settings.income_ledger.trim()) throw new Error("Set Income ledger in Accounts → Settings → Tally");
   const modeByKey = new Map(modes.map((m) => [m.mode_key, m]));
   const who = getCurrentUserName() || "staff";
   let queued = 0;
@@ -201,11 +200,10 @@ export async function queueDayCollectionToTally(row: DayModeAmounts): Promise<{ 
       throw new Error(`Set Tally ledger for ${map.label} in Accounts → Settings → Tally`);
     }
 
-    const modeLedger = map.tally_ledger.trim();
     const narration = `LIMS daily collection ${row.dayKey} — ${map.label}`;
-
     const lines = receiptLines({
-      modeLedger,
+      moneyLedger: map.tally_ledger.trim(),
+      incomeLedger: settings.income_ledger.trim(),
       amount,
     });
 

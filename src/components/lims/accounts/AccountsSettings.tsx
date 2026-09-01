@@ -652,6 +652,7 @@ function TallyIntegrationSection() {
   });
 
   const [companyName, setCompanyName] = useState("");
+  const [incomeLedger, setIncomeLedger] = useState("Lab Collection");
   const [mdrLedger, setMdrLedger] = useState("Bank Charges");
   const [settlementBank, setSettlementBank] = useState("");
   const [modeLedgers, setModeLedgers] = useState<Record<string, string>>({});
@@ -660,6 +661,7 @@ function TallyIntegrationSection() {
   useEffect(() => {
     if (!settings || modesLoading) return;
     setCompanyName(settings.company_name || "");
+    setIncomeLedger(settings.income_ledger || "Lab Collection");
     setMdrLedger(settings.mdr_expense_ledger || "Bank Charges");
     setSettlementBank(settings.default_settlement_bank_ledger || "");
     const map: Record<string, string> = {};
@@ -672,6 +674,7 @@ function TallyIntegrationSection() {
     mutationFn: async () => {
       await saveTallySettings({
         company_name: companyName.trim(),
+        income_ledger: incomeLedger.trim(),
         mdr_expense_ledger: mdrLedger.trim(),
         default_settlement_bank_ledger: settlementBank.trim(),
       });
@@ -701,8 +704,8 @@ function TallyIntegrationSection() {
       <CardHeader className="py-3">
         <CardTitle className="text-base">TallyPrime</CardTitle>
         <p className="text-sm text-muted-foreground">
-          Map each payment mode to its Tally ledger. Queue creates one Receipt per mode to that ledger only
-          (exact LIMS amount). No HDFC / Lab Collection — other allocations are for the accountant.
+          Map each payment mode to its Tally ledger. Queue creates a Receipt per mode: Account = mode ledger,
+          Particulars = income ledger. Credit card uses the exact LIMS amount.
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -716,11 +719,15 @@ function TallyIntegrationSection() {
                 <Input value={companyName} onChange={(e) => setCompanyName(e.target.value)} className="h-9" />
               </div>
               <div>
+                <Label className="text-xs">Income / Lab Collection ledger</Label>
+                <Input value={incomeLedger} onChange={(e) => setIncomeLedger(e.target.value)} className="h-9" />
+              </div>
+              <div>
                 <Label className="text-xs">MDR / Bank Charges ledger</Label>
                 <Input value={mdrLedger} onChange={(e) => setMdrLedger(e.target.value)} className="h-9" />
               </div>
               <div>
-                <Label className="text-xs">Default settlement bank ledger (Card Settlement only)</Label>
+                <Label className="text-xs">Default settlement bank ledger</Label>
                 <Input value={settlementBank} onChange={(e) => setSettlementBank(e.target.value)} className="h-9" />
               </div>
             </div>
