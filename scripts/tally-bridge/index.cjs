@@ -9,6 +9,8 @@ const { URL } = require("node:url");
 const { exec } = require("node:child_process");
 
 function appDir() {
+  // Prefer dedicated config dir (Electron userData) so portable EXE needs no sidecar files.
+  if (process.env.BRIDGE_CONFIG_DIR) return process.env.BRIDGE_CONFIG_DIR;
   // When packaged with pkg, use the folder containing the EXE.
   if (process.pkg) return path.dirname(process.execPath);
   return __dirname;
@@ -589,13 +591,21 @@ function startServer() {
     }
   });
 
-  server.listen(PORT, "127.0.0.1", () => {
-    const url = `http://127.0.0.1:${PORT}`;
-    console.log(`Tally bridge UI (no polling) ${url}`);
-    console.log(`Config: ${configPath()}`);
-    console.log(`LIMS API ${cfg0.desktop_api_url} -> Tally ${cfg0.tally_host}`);
-    openBrowser(url);
+  return new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(PORT, "127.0.0.1", () => {
+      const url = `http://127.0.0.1:${PORT}`;
+      console.log(`Tally bridge UI (no polling) ${url}`);
+      console.log(`Config: ${configPath()}`);
+      console.log(`LIMS API ${cfg0.desktop_api_url} -> Tally ${cfg0.tally_host}`);
+      if (!process.env.ELECTRON_RUN) openBrowser(url);
+      resolve({ port: PORT, url, server });
+    });
   });
 }
 
-startServer();
+module.exports = { startServer, loadConfig, configPath, appDir };
+
+if (require.main === module) {
+  startServer();
+}

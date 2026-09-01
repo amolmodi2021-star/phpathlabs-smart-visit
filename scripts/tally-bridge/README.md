@@ -1,16 +1,14 @@
-# TallyPrime bridge (Windows EXE, no polling)
+# PH PathLabs Tally Bridge (Electron)
 
-## Download / install
-1. Get the release zip `PHPathLabs-TallyBridge-Setup.zip`
-2. Extract and run **Install.bat**
-3. Desktop shortcut opens the bridge UI at http://127.0.0.1:8787
+Single portable Windows EXE — no sidecar files required.
 
-## Build (developers)
+Config is stored in `%APPDATA%/phpathlabs-tally-bridge/`.
+
+## Build
 ```bat
 cd scripts\tally-bridge
 npm install
-npm run build:exe
+npm run build:electron
 ```
 
-## Config
-`tally-bridge.config.json` next to the EXE (also editable in the UI Settings page).
+Output: `dist-electron/PHPathLabs-TallyBridge.exe`

@@ -46,3 +46,7 @@ src/test/histogram-x-mapping-preview.pdf
 scripts/tally-bridge/node_modules/
 scripts/tally-bridge/dist/
 scripts/tally-bridge/tally-bridge.config.json
+
+# Tally bridge Electron build
+scripts/tally-bridge/dist-electron/
+scripts/tally-bridge/dist/

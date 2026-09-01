@@ -1,21 +1,53 @@
 {
   "name": "phpathlabs-tally-bridge",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "private": true,
-  "description": "PH PathLabs TallyPrime bridge (button push, no polling)",
-  "bin": "index.cjs",
+  "description": "PH PathLabs TallyPrime bridge (Electron, button push, no polling)",
+  "main": "electron-main.cjs",
+  "author": "PH PathLabs",
   "scripts": {
     "start": "node index.cjs",
-    "build:exe": "pkg . --targets node24-win-x64 --output dist/PHPathLabs-TallyBridge.exe --compress GZip"
+    "start:electron": "electron .",
+    "build:exe": "pkg . --targets node24-win-x64 --output dist/PHPathLabs-TallyBridge-node.exe --compress GZip",
+    "build:electron": "electron-builder --win portable --x64"
   },
-  "pkg": {
-    "targets": [
-      "node24-win-x64"
+  "build": {
+    "appId": "com.phpathlabs.tallybridge",
+    "productName": "PH PathLabs Tally Bridge",
+    "copyright": "Copyright PH PathLabs",
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "electron-main.cjs",
+      "index.cjs",
+      "package.json"
     ],
-    "outputPath": "dist",
-    "assets": []
+    "asar": true,
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "PHPathLabs-TallyBridge.exe",
+      "signAndEditExecutable": false
+    },
+    "portable": {
+      "requestExecutionLevel": "user"
+    }
   },
   "devDependencies": {
-    "@yao-pkg/pkg": "^6.22.0"
+    "@yao-pkg/pkg": "^6.22.0",
+    "electron": "^37.10.3",
+    "electron-builder": "^26.0.12"
+  },
+  "allowScripts": {
+    "electron@37.10.3": true,
+    "esbuild@0.28.2": true,
+    "electron-winstaller@5.4.0": true
   }
 }
