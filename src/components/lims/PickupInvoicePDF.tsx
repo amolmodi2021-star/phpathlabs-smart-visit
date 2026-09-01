@@ -233,6 +233,21 @@ function ItemsTableHead() {
   );
 }
 
+function formatTestNames(raw: string | null) {
+  if (!raw) return null;
+  const parts = raw
+    .split(/\s*,\s*/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (parts.length === 0) return null;
+  return parts.map((name, i) => (
+    <span key={`${i}-${name}`}>
+      {i > 0 ? ", " : null}
+      <span style={{ whiteSpace: "nowrap" }}>{name}</span>
+    </span>
+  ));
+}
+
 function ItemDataRow({ item, index }: { item: InvoiceItemRow; index: number }) {
   return (
     <tr style={{ background: index % 2 ? "#fafafa" : "#fff", verticalAlign: "top" }}>
@@ -249,12 +264,12 @@ function ItemDataRow({ item, index }: { item: InvoiceItemRow; index: number }) {
           ...td,
           fontSize: 11,
           whiteSpace: "normal",
-          wordBreak: "break-word",
-          overflowWrap: "anywhere",
+          wordBreak: "normal",
+          overflowWrap: "normal",
           lineHeight: 1.4,
         }}
       >
-        {item.test_names || ""}
+        {formatTestNames(item.test_names)}
       </td>
       <td style={{ ...td, textAlign: "right", whiteSpace: "nowrap" }}>
         {Number(item.net_amount).toFixed(2)}
@@ -794,12 +809,12 @@ const PickupInvoicePDF = ({ open, onClose, invoice }: Props) => {
                           ...td,
                           fontSize: 11,
                           whiteSpace: "normal",
-                          wordBreak: "break-word",
-                          overflowWrap: "anywhere",
+                          wordBreak: "normal",
+                          overflowWrap: "normal",
                           lineHeight: 1.4,
                         }}
                       >
-                        {it.test_names || ""}
+                        {formatTestNames(it.test_names)}
                       </td>
                       <td style={{ ...td, textAlign: "right", whiteSpace: "nowrap" }}>
                         {Number(it.net_amount).toFixed(2)}
