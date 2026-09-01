@@ -151,7 +151,7 @@ const PickupInvoicePDF = ({ open, onClose, invoice }: Props) => {
                 background: "#ffffff",
                 color: "#111",
                 fontFamily: "Arial, Helvetica, sans-serif",
-                fontSize: 11,
+                fontSize: 13,
                 boxSizing: "border-box",
               }}
             >
@@ -170,7 +170,7 @@ const PickupInvoicePDF = ({ open, onClose, invoice }: Props) => {
                     />
                   )}
                   {(settings.invoice_address || settings.invoice_contact) && (
-                    <div style={{ marginTop: 6, fontSize: 10, color: "#374151", lineHeight: 1.4, whiteSpace: "nowrap", maxWidth: "100%" }}>
+                    <div style={{ marginTop: 6, fontSize: 12, color: "#374151", lineHeight: 1.4, whiteSpace: "nowrap", maxWidth: "100%" }}>
                       {[
                         (settings.invoice_address || "").replace(/\s+/g, " ").trim(),
                         (settings.invoice_contact || "").replace(/\s+/g, " ").trim(),
@@ -183,14 +183,14 @@ const PickupInvoicePDF = ({ open, onClose, invoice }: Props) => {
               {/* Meta + Bill To */}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 12 }}>
                 <div style={{ border: "1px solid #ddd", borderRadius: 4, padding: 8 }}>
-                  <div style={{ fontSize: 10, color: "#666", textTransform: "uppercase", marginBottom: 4 }}>Bill To</div>
-                  <div style={{ fontWeight: 700, fontSize: 13 }}>{pickup?.name}</div>
-                  {pickup?.address && <div style={{ fontSize: 10 }}>{pickup.address}</div>}
-                  {pickup?.contact_person && <div style={{ fontSize: 10 }}>Attn: {pickup.contact_person}</div>}
-                  {pickup?.phone && <div style={{ fontSize: 10 }}>Phone: {pickup.phone}</div>}
+                  <div style={{ fontSize: 11, color: "#666", textTransform: "uppercase", marginBottom: 4, letterSpacing: 0.4 }}>Bill To</div>
+                  <div style={{ fontWeight: 700, fontSize: 15 }}>{pickup?.name}</div>
+                  {pickup?.address && <div style={{ fontSize: 12, lineHeight: 1.4 }}>{pickup.address}</div>}
+                  {pickup?.contact_person && <div style={{ fontSize: 12 }}>Attn: {pickup.contact_person}</div>}
+                  {pickup?.phone && <div style={{ fontSize: 12 }}>Phone: {pickup.phone}</div>}
                 </div>
                 <div style={{ border: "1px solid #ddd", borderRadius: 4, padding: 8 }}>
-                  <table style={{ width: "100%", fontSize: 11 }}>
+                  <table style={{ width: "100%", fontSize: 13 }}>
                     <tbody>
                       <tr><td style={{ color: "#666" }}>Invoice No</td><td style={{ textAlign: "right", fontWeight: 700 }}>{invoice.invoice_number}</td></tr>
                       <tr><td style={{ color: "#666" }}>Invoice Date</td><td style={{ textAlign: "right" }}>{format(new Date(invoice.created_at), "dd-MM-yyyy")}</td></tr>
@@ -205,8 +205,8 @@ const PickupInvoicePDF = ({ open, onClose, invoice }: Props) => {
               {/* Bank details */}
               {(settings.bank_account_number || settings.bank_name) && (
                 <div style={{ marginTop: 12, border: "1px solid #ddd", borderRadius: 4, padding: 8, background: "#fafafa" }}>
-                  <div style={{ fontSize: 10, color: "#666", textTransform: "uppercase", marginBottom: 4 }}>Bank Details</div>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4, fontSize: 10 }}>
+                  <div style={{ fontSize: 11, color: "#666", textTransform: "uppercase", marginBottom: 4, letterSpacing: 0.4 }}>Bank Details</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, fontSize: 12, lineHeight: 1.45 }}>
                     {settings.bank_account_name && <div><b>A/c Name:</b> {settings.bank_account_name}</div>}
                     {settings.bank_account_number && <div><b>A/c No:</b> {settings.bank_account_number}</div>}
                     {settings.bank_name && <div><b>Bank:</b> {settings.bank_name}</div>}
@@ -219,7 +219,7 @@ const PickupInvoicePDF = ({ open, onClose, invoice }: Props) => {
               )}
 
               {/* Items table */}
-              <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 12, fontSize: 10, tableLayout: "fixed" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 12, fontSize: 12, tableLayout: "fixed" }}>
                 <colgroup>
                   <col style={{ width: "5%" }} />
                   <col style={{ width: "11%" }} />
@@ -245,7 +245,7 @@ const PickupInvoicePDF = ({ open, onClose, invoice }: Props) => {
                       <td style={td}>{it.registration_date ? format(new Date(it.registration_date), "dd-MM-yyyy") : ""}</td>
                       <td style={{ ...td, wordBreak: "break-word" }}>{it.registration_invoice}</td>
                       <td style={{ ...td, whiteSpace: "normal", wordBreak: "break-word", lineHeight: 1.35 }}>{it.patient_name}</td>
-                      <td style={{ ...td, fontSize: 9, whiteSpace: "normal", wordBreak: "break-word", overflowWrap: "anywhere", lineHeight: 1.4 }}>{it.test_names || ""}</td>
+                      <td style={{ ...td, fontSize: 11, whiteSpace: "normal", wordBreak: "break-word", overflowWrap: "anywhere", lineHeight: 1.4 }}>{it.test_names || ""}</td>
                       <td style={{ ...td, textAlign: "right", whiteSpace: "nowrap" }}>{Number(it.net_amount).toFixed(2)}</td>
                     </tr>
                   ))}
@@ -256,12 +256,12 @@ const PickupInvoicePDF = ({ open, onClose, invoice }: Props) => {
                 </tbody>
               </table>
 
-              <div style={{ marginTop: 6, fontSize: 10, fontStyle: "italic" }}>
+              <div style={{ marginTop: 8, fontSize: 12, fontStyle: "italic" }}>
                 Amount in words: <b>{amountInWords(Number(invoice.total_amount))}</b>
               </div>
 
               {/* Footer */}
-              <div style={{ marginTop: 18, fontSize: 9, color: "#444", borderTop: "1px solid #ddd", paddingTop: 8 }}>
+              <div style={{ marginTop: 18, fontSize: 11, color: "#444", borderTop: "1px solid #ddd", paddingTop: 8, lineHeight: 1.45 }}>
                 {settings.pickup_invoice_declaration && (
                   <div style={{ marginBottom: 4 }}>{settings.pickup_invoice_declaration}</div>
                 )}
@@ -283,14 +283,14 @@ const PickupInvoicePDF = ({ open, onClose, invoice }: Props) => {
                 background: "#ffffff",
                 color: "#111",
                 fontFamily: "Arial, Helvetica, sans-serif",
-                fontSize: 11,
+                fontSize: 13,
                 boxSizing: "border-box",
               }}
             >
-              <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 6, color: "#2E3192" }}>
+              <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8, color: "#2E3192" }}>
                 Ledger Report — {pickup?.name}
               </div>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                 <thead>
                   <tr style={{ background: "#2E3192", color: "#fff" }}>
                     <th style={th}>Date</th>
@@ -308,7 +308,7 @@ const PickupInvoicePDF = ({ open, onClose, invoice }: Props) => {
                     <tr key={i} style={{ background: i % 2 ? "#fafafa" : "#fff" }}>
                       <td style={td}>{r.date ? format(new Date(r.date), "dd-MM-yyyy") : ""}</td>
                       <td style={td}>{r.voucher_type}</td>
-                      <td style={{ ...td, fontSize: 9 }}>{r.voucher_no}</td>
+                      <td style={{ ...td, fontSize: 11, wordBreak: "break-word" }}>{r.voucher_no}</td>
                       <td style={{ ...td, textAlign: "right" }}>{r.debit ? r.debit.toFixed(2) : ""}</td>
                       <td style={{ ...td, textAlign: "right" }}>{r.credit ? r.credit.toFixed(2) : ""}</td>
                       <td style={{ ...td, textAlign: "right", fontWeight: 600 }}>{r.balance.toFixed(2)}</td>
@@ -324,7 +324,7 @@ const PickupInvoicePDF = ({ open, onClose, invoice }: Props) => {
   );
 };
 
-const th: React.CSSProperties = { padding: "6px 8px", textAlign: "left", border: "1px solid #2E3192", fontSize: 10, fontWeight: 600, verticalAlign: "middle" };
-const td: React.CSSProperties = { padding: "6px 8px", border: "1px solid #e5e7eb", verticalAlign: "top" };
+const th: React.CSSProperties = { padding: "8px 8px", textAlign: "left", border: "1px solid #2E3192", fontSize: 12, fontWeight: 700, verticalAlign: "middle" };
+const td: React.CSSProperties = { padding: "8px 8px", border: "1px solid #e5e7eb", verticalAlign: "top", fontSize: 12 };
 
 export default PickupInvoicePDF;
