@@ -8,6 +8,7 @@ import { format } from "date-fns";
 import jsPDF from "jspdf";
 import { toJpeg, getFontEmbedCSS } from "html-to-image";
 import { getInvoiceItems, getInvoiceLedger, amountInWords, type PickupInvoice } from "@/lib/pickupBilling";
+import { getCurrentUserName } from "@/lib/auth";
 
 /** A4 at 96dpi — preview width matches capture width. */
 const A4_WIDTH_MM = 210;
@@ -15,25 +16,32 @@ const A4_HEIGHT_MM = 297;
 const MM_TO_PX = 96 / 25.4;
 const A4_WIDTH_PX = Math.round(A4_WIDTH_MM * MM_TO_PX);
 const A4_HEIGHT_PX = Math.round(A4_HEIGHT_MM * MM_TO_PX);
-const PAGE_PADDING_V_MM = 20;
-const CONTENT_HEIGHT_PX = Math.round((A4_HEIGHT_MM - PAGE_PADDING_V_MM) * MM_TO_PX);
+const PAGE_PADDING_TOP_MM = 10;
+const PAGE_PADDING_BOTTOM_MM = 14;
+const PAGE_CHROME_FOOTER_MM = 10;
+const CONTENT_HEIGHT_PX = Math.round(
+  (A4_HEIGHT_MM - PAGE_PADDING_TOP_MM - PAGE_PADDING_BOTTOM_MM - PAGE_CHROME_FOOTER_MM) * MM_TO_PX,
+);
 
 const INVOICE_FONT =
   '"Noto Sans", "IBM Plex Sans", "Segoe UI", system-ui, sans-serif';
 const INVOICE_FONT_CSS =
   "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Noto+Sans:wght@400;500;600;700&display=swap";
 const BRAND = "#2E3192";
+const HEADER_BG = "#F0F1FA";
 
 const th: CSSProperties = {
-  padding: "8px 8px",
+  padding: "8px 6px",
   textAlign: "left",
-  border: `1px solid ${BRAND}`,
+  border: "1px solid #d4d6e8",
   fontSize: 12,
   fontWeight: 700,
   verticalAlign: "middle",
+  color: BRAND,
+  background: HEADER_BG,
 };
 const td: CSSProperties = {
-  padding: "8px 8px",
+  padding: "8px 6px",
   border: "1px solid #e5e7eb",
   verticalAlign: "top",
   fontSize: 12,
@@ -59,7 +67,7 @@ const paperStyle = (extra?: CSSProperties): CSSProperties => ({
   width: `${A4_WIDTH_MM}mm`,
   height: `${A4_HEIGHT_MM}mm`,
   margin: "0 auto",
-  padding: "10mm 12mm",
+  padding: `${PAGE_PADDING_TOP_MM}mm 12mm ${PAGE_PADDING_BOTTOM_MM}mm`,
   background: "#ffffff",
   color: "#111",
   fontFamily: INVOICE_FONT,
@@ -67,6 +75,8 @@ const paperStyle = (extra?: CSSProperties): CSSProperties => ({
   boxSizing: "border-box",
   overflow: "hidden",
   boxShadow: "0 1px 4px rgba(0,0,0,0.12)",
+  display: "flex",
+  flexDirection: "column",
   ...extra,
 });
 
@@ -198,12 +208,12 @@ function packRowIndices(
 function ItemsTableColgroup() {
   return (
     <colgroup>
-      <col style={{ width: "5%" }} />
-      <col style={{ width: "11%" }} />
+      <col style={{ width: "4%" }} />
       <col style={{ width: "14%" }} />
-      <col style={{ width: "18%" }} />
-      <col style={{ width: "37%" }} />
-      <col style={{ width: "15%" }} />
+      <col style={{ width: "14%" }} />
+      <col style={{ width: "22%" }} />
+      <col style={{ width: "34%" }} />
+      <col style={{ width: "12%" }} />
     </colgroup>
   );
 }
@@ -211,13 +221,13 @@ function ItemsTableColgroup() {
 function ItemsTableHead() {
   return (
     <thead>
-      <tr style={{ background: BRAND, color: "#fff" }}>
+      <tr style={{ background: HEADER_BG, color: BRAND }}>
         <th style={th}>#</th>
-        <th style={th}>Reg. Date</th>
+        <th style={{ ...th, whiteSpace: "nowrap" }}>Reg. Date</th>
         <th style={th}>Invoice No</th>
         <th style={th}>Patient Name</th>
         <th style={th}>Tests</th>
-        <th style={{ ...th, textAlign: "right" }}>Net Amount ({`\u20b9`})</th>
+        <th style={{ ...th, textAlign: "right", whiteSpace: "nowrap" }}>Amount ({`\u20b9`})</th>
       </tr>
     </thead>
   );
@@ -227,7 +237,7 @@ function ItemDataRow({ item, index }: { item: InvoiceItemRow; index: number }) {
   return (
     <tr style={{ background: index % 2 ? "#fafafa" : "#fff", verticalAlign: "top" }}>
       <td style={td}>{index + 1}</td>
-      <td style={td}>
+      <td style={{ ...td, whiteSpace: "nowrap" }}>
         {item.registration_date ? format(new Date(item.registration_date), "dd-MM-yyyy") : ""}
       </td>
       <td style={{ ...td, wordBreak: "break-word" }}>{item.registration_invoice}</td>
@@ -253,6 +263,42 @@ function ItemDataRow({ item, index }: { item: InvoiceItemRow; index: number }) {
   );
 }
 
+function PageChromeFooter({
+  page,
+  totalPages,
+  preparedBy,
+  preparedAt,
+}: {
+  page: number;
+  totalPages: number;
+  preparedBy: string;
+  preparedAt: string;
+}) {
+  return (
+    <div
+      style={{
+        marginTop: "auto",
+        paddingTop: 10,
+        borderTop: "1px solid #ddd",
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        gap: 12,
+        fontSize: 10,
+        color: "#555",
+        lineHeight: 1.35,
+      }}
+    >
+      <span style={{ flex: 1 }}>
+        Prepared by {preparedBy} · {preparedAt}
+      </span>
+      <span style={{ whiteSpace: "nowrap", fontWeight: 600 }}>
+        Page {page} of {totalPages}
+      </span>
+    </div>
+  );
+}
+
 const PickupInvoicePDF = ({ open, onClose, invoice }: Props) => {
   const [settings, setSettings] = useState<Record<string, string>>({});
   const [pickup, setPickup] = useState<PickupPoint | null>(null);
@@ -263,6 +309,8 @@ const PickupInvoicePDF = ({ open, onClose, invoice }: Props) => {
   const [invoiceItemPages, setInvoiceItemPages] = useState<number[][]>([[]]);
   const [ledgerPages, setLedgerPages] = useState<number[][]>([[]]);
   const [layoutReady, setLayoutReady] = useState(false);
+  const [preparedBy, setPreparedBy] = useState("—");
+  const [preparedAt, setPreparedAt] = useState("");
 
   const measureRef = useRef<HTMLDivElement>(null);
 
@@ -270,6 +318,8 @@ const PickupInvoicePDF = ({ open, onClose, invoice }: Props) => {
     if (!open || !invoice) return;
     setLoading(true);
     setLayoutReady(false);
+    setPreparedBy(getCurrentUserName() || "—");
+    setPreparedAt(format(new Date(), "dd-MM-yyyy hh:mm a"));
     (async () => {
       await ensureRupeeFontsReady();
       const [s, pp, it, lg] = await Promise.all([
@@ -451,6 +501,7 @@ const PickupInvoicePDF = ({ open, onClose, invoice }: Props) => {
 
   const totalInvoicePages = invoiceItemPages.length;
   const pageOffset = totalInvoicePages;
+  const totalDocumentPages = totalInvoicePages + ledgerPages.length;
 
   const renderHeader = () => (
     <div data-measure="header" style={{ position: "relative", borderBottom: `2px solid ${BRAND}`, paddingBottom: 8 }}>
@@ -473,6 +524,7 @@ const PickupInvoicePDF = ({ open, onClose, invoice }: Props) => {
           flexDirection: "column",
           alignItems: "center",
           textAlign: "center",
+          width: "100%",
           padding: "0 90px",
         }}
       >
@@ -490,8 +542,9 @@ const PickupInvoicePDF = ({ open, onClose, invoice }: Props) => {
               marginTop: 6,
               fontSize: 12,
               color: "#374151",
-              lineHeight: 1.4,
-              whiteSpace: "nowrap",
+              lineHeight: 1.45,
+              textAlign: "center",
+              width: "100%",
               maxWidth: "100%",
             }}
           >
@@ -624,7 +677,7 @@ const PickupInvoicePDF = ({ open, onClose, invoice }: Props) => {
       style={{
         marginBottom: 8,
         padding: "6px 10px",
-        background: "#F0F1FA",
+        background: HEADER_BG,
         border: `1px solid ${BRAND}`,
         borderRadius: 4,
         fontSize: 12,
@@ -637,7 +690,7 @@ const PickupInvoicePDF = ({ open, onClose, invoice }: Props) => {
   );
 
   const renderGrandTotal = () => (
-    <tr data-measure="grand-total" style={{ background: "#F0F1FA", fontWeight: 700 }}>
+    <tr data-measure="grand-total" style={{ background: HEADER_BG, fontWeight: 700 }}>
       <td style={td} colSpan={5}>
         Grand Total
       </td>
@@ -705,7 +758,7 @@ const PickupInvoicePDF = ({ open, onClose, invoice }: Props) => {
                 left: -10000,
                 top: 0,
                 width: `${A4_WIDTH_MM}mm`,
-                padding: "10mm 12mm",
+                padding: `${PAGE_PADDING_TOP_MM}mm 12mm ${PAGE_PADDING_BOTTOM_MM}mm`,
                 boxSizing: "border-box",
                 fontFamily: INVOICE_FONT,
                 fontSize: 13,
@@ -720,13 +773,13 @@ const PickupInvoicePDF = ({ open, onClose, invoice }: Props) => {
               <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 12, fontSize: 12, tableLayout: "fixed" }}>
                 <ItemsTableColgroup />
                 <thead data-measure="items-thead">
-                  <tr style={{ background: BRAND, color: "#fff" }}>
+                  <tr style={{ background: HEADER_BG, color: BRAND }}>
                     <th style={th}>#</th>
-                    <th style={th}>Reg. Date</th>
+                    <th style={{ ...th, whiteSpace: "nowrap" }}>Reg. Date</th>
                     <th style={th}>Invoice No</th>
                     <th style={th}>Patient Name</th>
                     <th style={th}>Tests</th>
-                    <th style={{ ...th, textAlign: "right" }}>Net Amount ({`\u20b9`})</th>
+                    <th style={{ ...th, textAlign: "right", whiteSpace: "nowrap" }}>Amount ({`\u20b9`})</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -737,7 +790,7 @@ const PickupInvoicePDF = ({ open, onClose, invoice }: Props) => {
                       style={{ background: i % 2 ? "#fafafa" : "#fff", verticalAlign: "top" }}
                     >
                       <td style={td}>{i + 1}</td>
-                      <td style={td}>
+                      <td style={{ ...td, whiteSpace: "nowrap" }}>
                         {it.registration_date ? format(new Date(it.registration_date), "dd-MM-yyyy") : ""}
                       </td>
                       <td style={{ ...td, wordBreak: "break-word" }}>{it.registration_invoice}</td>
@@ -774,7 +827,7 @@ const PickupInvoicePDF = ({ open, onClose, invoice }: Props) => {
                 style={{
                   marginBottom: 8,
                   padding: "6px 10px",
-                  background: "#F0F1FA",
+                  background: HEADER_BG,
                   border: `1px solid ${BRAND}`,
                   borderRadius: 4,
                   fontSize: 12,
@@ -786,7 +839,7 @@ const PickupInvoicePDF = ({ open, onClose, invoice }: Props) => {
               </div>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                 <thead data-measure="ledger-thead">
-                  <tr style={{ background: BRAND, color: "#fff" }}>
+                  <tr style={{ background: HEADER_BG, color: BRAND }}>
                     <th style={th}>Date</th>
                     <th style={th}>Voucher Type</th>
                     <th style={th}>Voucher No</th>
@@ -798,7 +851,9 @@ const PickupInvoicePDF = ({ open, onClose, invoice }: Props) => {
                 <tbody>
                   {ledger.map((r, i) => (
                     <tr key={i} data-measure="ledger-row" style={{ background: i % 2 ? "#fafafa" : "#fff" }}>
-                      <td style={td}>{r.date ? format(new Date(r.date), "dd-MM-yyyy") : ""}</td>
+                      <td style={{ ...td, whiteSpace: "nowrap" }}>
+                        {r.date ? format(new Date(r.date), "dd-MM-yyyy") : ""}
+                      </td>
                       <td style={td}>{r.voucher_type}</td>
                       <td style={{ ...td, fontSize: 11, wordBreak: "break-word" }}>{r.voucher_no}</td>
                       <td style={{ ...td, textAlign: "right" }}>{r.debit ? r.debit.toFixed(2) : ""}</td>
@@ -820,72 +875,81 @@ const PickupInvoicePDF = ({ open, onClose, invoice }: Props) => {
                 invoiceItemPages.map((pageIndices, pageIdx) => {
                   const isFirst = pageIdx === 0;
                   const isLast = pageIdx === invoiceItemPages.length - 1;
+                  const pageNo = pageIdx + 1;
                   return (
                     <div
                       key={`inv-page-${pageIdx}`}
-                      data-invoice-a4-page={pageIdx + 1}
+                      data-invoice-a4-page={pageNo}
                       style={paperStyle()}
                     >
-                      {isFirst && (
-                        <>
-                          {renderHeader()}
-                          {renderMeta()}
-                          {renderBank()}
-                        </>
-                      )}
-                      {!isFirst && renderContinued()}
-                      <table
-                        style={{
-                          width: "100%",
-                          borderCollapse: "collapse",
-                          marginTop: isFirst ? 12 : 0,
-                          fontSize: 12,
-                          tableLayout: "fixed",
-                        }}
-                      >
-                        <ItemsTableColgroup />
-                        <ItemsTableHead />
-                        <tbody>
-                          {pageIndices.map((itemIdx) => (
-                            <ItemDataRow key={items[itemIdx]?.id || itemIdx} item={items[itemIdx]} index={itemIdx} />
-                          ))}
-                          {isLast && (
-                            <tr style={{ background: "#F0F1FA", fontWeight: 700 }}>
-                              <td style={td} colSpan={5}>
-                                Grand Total
-                              </td>
-                              <td style={{ ...td, textAlign: "right" }}>
-                                {formatInr(Number(invoice.total_amount))}
-                              </td>
-                            </tr>
-                          )}
-                        </tbody>
-                      </table>
-                      {isLast && (
-                        <>
-                          <div style={{ marginTop: 8, fontSize: 12, fontStyle: "italic" }}>
-                            Amount in words: <b>{amountInWords(Number(invoice.total_amount))}</b>
-                          </div>
-                          <div
-                            style={{
-                              marginTop: 18,
-                              fontSize: 11,
-                              color: "#444",
-                              borderTop: "1px solid #ddd",
-                              paddingTop: 8,
-                              lineHeight: 1.45,
-                            }}
-                          >
-                            {settings.pickup_invoice_declaration && (
-                              <div style={{ marginBottom: 4 }}>{settings.pickup_invoice_declaration}</div>
+                      <div style={{ flex: 1, minHeight: 0 }}>
+                        {isFirst && (
+                          <>
+                            {renderHeader()}
+                            {renderMeta()}
+                            {renderBank()}
+                          </>
+                        )}
+                        {!isFirst && renderContinued()}
+                        <table
+                          style={{
+                            width: "100%",
+                            borderCollapse: "collapse",
+                            marginTop: isFirst ? 12 : 0,
+                            fontSize: 12,
+                            tableLayout: "fixed",
+                          }}
+                        >
+                          <ItemsTableColgroup />
+                          <ItemsTableHead />
+                          <tbody>
+                            {pageIndices.map((itemIdx) => (
+                              <ItemDataRow key={items[itemIdx]?.id || itemIdx} item={items[itemIdx]} index={itemIdx} />
+                            ))}
+                            {isLast && (
+                              <tr style={{ background: HEADER_BG, fontWeight: 700 }}>
+                                <td style={td} colSpan={5}>
+                                  Grand Total
+                                </td>
+                                <td style={{ ...td, textAlign: "right" }}>
+                                  {formatInr(Number(invoice.total_amount))}
+                                </td>
+                              </tr>
                             )}
-                            <div>
-                              Please pay within {settings.pickup_invoice_default_reminder_days || "15"} days of invoice
-                              date. For billing queries, contact {settings.invoice_contact || ""}.
+                          </tbody>
+                        </table>
+                        {isLast && (
+                          <>
+                            <div style={{ marginTop: 8, fontSize: 12, fontStyle: "italic" }}>
+                              Amount in words: <b>{amountInWords(Number(invoice.total_amount))}</b>
                             </div>
-                          </div>
-                        </>
-                      )}
+                            <div
+                              style={{
+                                marginTop: 18,
+                                fontSize: 11,
+                                color: "#444",
+                                borderTop: "1px solid #ddd",
+                                paddingTop: 8,
+                                lineHeight: 1.45,
+                              }}
+                            >
+                              {settings.pickup_invoice_declaration && (
+                                <div style={{ marginBottom: 4 }}>{settings.pickup_invoice_declaration}</div>
+                              )}
+                              <div>
+                                Please pay within {settings.pickup_invoice_default_reminder_days || "15"} days of invoice
+                                date. For billing queries, contact {settings.invoice_contact || ""}.
+                              </div>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                      <PageChromeFooter
+                        page={pageNo}
+                        totalPages={totalDocumentPages}
+                        preparedBy={preparedBy}
+                        preparedAt={preparedAt}
+                      />
                     </div>
                   );
                 })}
@@ -893,73 +957,84 @@ const PickupInvoicePDF = ({ open, onClose, invoice }: Props) => {
               {layoutReady &&
                 ledgerPages.map((pageIndices, pageIdx) => {
                   const isFirst = pageIdx === 0;
+                  const pageNo = pageOffset + pageIdx + 1;
                   return (
                     <div
                       key={`ledger-page-${pageIdx}`}
-                      data-invoice-a4-page={pageOffset + pageIdx + 1}
+                      data-invoice-a4-page={pageNo}
                       style={paperStyle()}
                     >
-                      {isFirst ? (
-                        <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8, color: BRAND }}>
-                          Ledger Report — {pickup?.name}
-                        </div>
-                      ) : (
-                        <div
-                          style={{
-                            marginBottom: 8,
-                            padding: "6px 10px",
-                            background: "#F0F1FA",
-                            border: `1px solid ${BRAND}`,
-                            borderRadius: 4,
-                            fontSize: 12,
-                            fontWeight: 600,
-                            color: BRAND,
-                          }}
-                        >
-                          Ledger Report — Continued
-                        </div>
-                      )}
-                      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-                        <thead>
-                          <tr style={{ background: BRAND, color: "#fff" }}>
-                            <th style={th}>Date</th>
-                            <th style={th}>Voucher Type</th>
-                            <th style={th}>Voucher No</th>
-                            <th style={{ ...th, textAlign: "right" }}>Debit</th>
-                            <th style={{ ...th, textAlign: "right" }}>Credit</th>
-                            <th style={{ ...th, textAlign: "right" }}>Balance</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {pageIndices.length === 0 && isFirst ? (
-                            <tr>
-                              <td style={td} colSpan={6}>
-                                No ledger entries
-                              </td>
+                      <div style={{ flex: 1, minHeight: 0 }}>
+                        {isFirst ? (
+                          <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8, color: BRAND }}>
+                            Ledger Report — {pickup?.name}
+                          </div>
+                        ) : (
+                          <div
+                            style={{
+                              marginBottom: 8,
+                              padding: "6px 10px",
+                              background: HEADER_BG,
+                              border: `1px solid ${BRAND}`,
+                              borderRadius: 4,
+                              fontSize: 12,
+                              fontWeight: 600,
+                              color: BRAND,
+                            }}
+                          >
+                            Ledger Report — Continued
+                          </div>
+                        )}
+                        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                          <thead>
+                            <tr style={{ background: HEADER_BG, color: BRAND }}>
+                              <th style={th}>Date</th>
+                              <th style={th}>Voucher Type</th>
+                              <th style={th}>Voucher No</th>
+                              <th style={{ ...th, textAlign: "right" }}>Debit</th>
+                              <th style={{ ...th, textAlign: "right" }}>Credit</th>
+                              <th style={{ ...th, textAlign: "right" }}>Balance</th>
                             </tr>
-                          ) : (
-                            pageIndices.map((rowIdx) => {
-                              const r = ledger[rowIdx];
-                              return (
-                                <tr key={rowIdx} style={{ background: rowIdx % 2 ? "#fafafa" : "#fff" }}>
-                                  <td style={td}>{r.date ? format(new Date(r.date), "dd-MM-yyyy") : ""}</td>
-                                  <td style={td}>{r.voucher_type}</td>
-                                  <td style={{ ...td, fontSize: 11, wordBreak: "break-word" }}>{r.voucher_no}</td>
-                                  <td style={{ ...td, textAlign: "right" }}>
-                                    {r.debit ? r.debit.toFixed(2) : ""}
-                                  </td>
-                                  <td style={{ ...td, textAlign: "right" }}>
-                                    {r.credit ? r.credit.toFixed(2) : ""}
-                                  </td>
-                                  <td style={{ ...td, textAlign: "right", fontWeight: 600 }}>
-                                    {r.balance.toFixed(2)}
-                                  </td>
-                                </tr>
-                              );
-                            })
-                          )}
-                        </tbody>
-                      </table>
+                          </thead>
+                          <tbody>
+                            {pageIndices.length === 0 && isFirst ? (
+                              <tr>
+                                <td style={td} colSpan={6}>
+                                  No ledger entries
+                                </td>
+                              </tr>
+                            ) : (
+                              pageIndices.map((rowIdx) => {
+                                const r = ledger[rowIdx];
+                                return (
+                                  <tr key={rowIdx} style={{ background: rowIdx % 2 ? "#fafafa" : "#fff" }}>
+                                    <td style={{ ...td, whiteSpace: "nowrap" }}>
+                                      {r.date ? format(new Date(r.date), "dd-MM-yyyy") : ""}
+                                    </td>
+                                    <td style={td}>{r.voucher_type}</td>
+                                    <td style={{ ...td, fontSize: 11, wordBreak: "break-word" }}>{r.voucher_no}</td>
+                                    <td style={{ ...td, textAlign: "right" }}>
+                                      {r.debit ? r.debit.toFixed(2) : ""}
+                                    </td>
+                                    <td style={{ ...td, textAlign: "right" }}>
+                                      {r.credit ? r.credit.toFixed(2) : ""}
+                                    </td>
+                                    <td style={{ ...td, textAlign: "right", fontWeight: 600 }}>
+                                      {r.balance.toFixed(2)}
+                                    </td>
+                                  </tr>
+                                );
+                              })
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                      <PageChromeFooter
+                        page={pageNo}
+                        totalPages={totalDocumentPages}
+                        preparedBy={preparedBy}
+                        preparedAt={preparedAt}
+                      />
                     </div>
                   );
                 })}
