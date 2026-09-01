@@ -155,32 +155,28 @@ const PickupInvoicePDF = ({ open, onClose, invoice }: Props) => {
                 boxSizing: "border-box",
               }}
             >
-              {/* Header: logo includes lab name; address only beside it */}
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderBottom: "2px solid #2E3192", paddingBottom: 8 }}>
-                <div style={{ display: "flex", gap: 12, alignItems: "flex-start", minWidth: 0, flex: 1, paddingRight: 12 }}>
+              {/* Header: centered logo; address single line above blue divider */}
+              <div style={{ position: "relative", borderBottom: "2px solid #2E3192", paddingBottom: 8 }}>
+                <div style={{ position: "absolute", top: 0, right: 0, fontSize: 26, fontWeight: 800, letterSpacing: 2, color: "#111827" }}>
+                  INVOICE
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", padding: "0 90px" }}>
                   {settings.invoice_logo_url && (
                     <img
                       src={settings.invoice_logo_url}
                       alt="Logo"
-                      style={{ height: 64, width: "auto", maxWidth: 160, objectFit: "contain", flexShrink: 0 }}
+                      style={{ height: 60, objectFit: "contain" }}
                       crossOrigin="anonymous"
                     />
                   )}
-                  <div style={{ paddingTop: 4, minWidth: 0 }}>
-                    {settings.invoice_address && (
-                      <div style={{ fontSize: 10, color: "#374151", whiteSpace: "pre-line", lineHeight: 1.45 }}>
-                        {settings.invoice_address}
-                      </div>
-                    )}
-                    {settings.invoice_contact && (
-                      <div style={{ fontSize: 10, color: "#374151", marginTop: 2, lineHeight: 1.45 }}>
-                        {settings.invoice_contact}
-                      </div>
-                    )}
-                  </div>
-                </div>
-                <div style={{ textAlign: "right", flexShrink: 0 }}>
-                  <div style={{ fontSize: 26, fontWeight: 800, letterSpacing: 2, color: "#111827" }}>INVOICE</div>
+                  {(settings.invoice_address || settings.invoice_contact) && (
+                    <div style={{ marginTop: 6, fontSize: 10, color: "#374151", lineHeight: 1.4, whiteSpace: "nowrap", maxWidth: "100%" }}>
+                      {[
+                        (settings.invoice_address || "").replace(/\s+/g, " ").trim(),
+                        (settings.invoice_contact || "").replace(/\s+/g, " ").trim(),
+                      ].filter(Boolean).join("  |  ")}
+                    </div>
+                  )}
                 </div>
               </div>
 
