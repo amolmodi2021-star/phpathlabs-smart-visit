@@ -19,7 +19,6 @@ export type TallySettings = {
   mdr_expense_ledger: string;
   default_settlement_bank_ledger: string;
   tally_host: string;
-  auto_bank_contra: boolean;
 };
 
 export type TallyVoucherLine = {
@@ -89,7 +88,6 @@ export async function getTallySettings(): Promise<TallySettings> {
       mdr_expense_ledger: "Bank Charges",
       default_settlement_bank_ledger: "",
       tally_host: "http://localhost:9000",
-      auto_bank_contra: true,
     }
   );
 }
@@ -162,21 +160,6 @@ function settlementLines(opts: {
 
 /** Queue one receipt voucher per payment mode with amount > 0 for the day. */
 
-/** Contra: Dr bank, Cr mode ledger (move digital collection into HDFC). */
-function contraToBankLines(input: {
-  modeLedger: string;
-  bankLedger: string;
-  amount: number;
-}): TallyVoucherLine[] {
-  const amt = num(input.amount);
-  return [
-    { ledger: input.bankLedger, is_debit: true, amount: amt },
-    { ledger: input.modeLedger, is_debit: false, amount: amt },
-  ];
-}
-
-const DIGITAL_CONTRA_MODES: TallyModeKey[] = ["gpay", "paytm", "neft"];
-
 export async function queueDayCollectionToTally(row: DayModeAmounts): Promise<{ queued: number; skipped: number }> {
   const [settings, modes] = await Promise.all([getTallySettings(), getTallyModeMap()]);
   if (!settings.income_ledger.trim()) throw new Error("Set Income ledger in Accounts → Settings → Tally");
@@ -197,7 +180,7 @@ export async function queueDayCollectionToTally(row: DayModeAmounts): Promise<{ 
       claimed_by: null,
       next_retry_at: null,
     } as any)
-    .in("kind", ["collection_receipt", "bank_contra"])
+    .eq("kind", "collection_receipt")
     .eq("day_key", row.dayKey)
     .in("status", ["pending", "claimed", "sent", "failed"]);
 
@@ -244,43 +227,6 @@ export async function queueDayCollectionToTally(row: DayModeAmounts): Promise<{ 
       throw error;
     }
     queued++;
-  }
-
-  // Optional: Contra digital modes (GPay/Paytm/NEFT) into settlement bank (HDFC).
-  const bankLedger = (settings.default_settlement_bank_ledger || "").trim();
-  if (settings.auto_bank_contra !== false && bankLedger) {
-    for (const mode of DIGITAL_CONTRA_MODES) {
-      const amount = amountForMode(row, mode);
-      if (amount <= 0) continue;
-      const map = modeByKey.get(mode);
-      if (!map?.is_active || !map.tally_ledger.trim()) continue;
-      const modeLedger = map.tally_ledger.trim();
-      if (modeLedger.toLowerCase() === bankLedger.toLowerCase()) continue; // already mapped to bank
-
-      const { error } = await supabase.from("accounts_tally_voucher_outbox" as any).insert({
-        kind: "bank_contra",
-        day_key: row.dayKey,
-        mode_key: mode,
-        voucher_type: "Contra",
-        voucher_date: row.dayKey,
-        narration: `LIMS contra ${row.dayKey}: ${map.label} → ${bankLedger}`,
-        amount,
-        lines: contraToBankLines({ modeLedger, bankLedger, amount }),
-        status: "pending",
-        created_by: who,
-      } as any);
-
-      if (error) {
-        if (String(error.message || "").toLowerCase().includes("duplicate") || error.code === "23505") {
-          skipped++;
-          continue;
-        }
-        throw error;
-      }
-      queued++;
-    }
-  } else if (settings.auto_bank_contra !== false && !bankLedger) {
-    // keep going; receipts still queued
   }
 
   if (queued === 0 && skipped > 0) {
