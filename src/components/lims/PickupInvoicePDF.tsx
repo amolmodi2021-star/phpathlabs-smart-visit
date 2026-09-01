@@ -518,16 +518,7 @@ const PickupInvoicePDF = ({ open, onClose, invoice }: Props) => {
       >
         INVOICE
       </div>
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          textAlign: "center",
-          width: "100%",
-          padding: "0 90px",
-        }}
-      >
+      <div style={{ display: "flex", justifyContent: "center", padding: "0 90px" }}>
         {settings.invoice_logo_url && (
           <img
             src={settings.invoice_logo_url}
@@ -536,22 +527,23 @@ const PickupInvoicePDF = ({ open, onClose, invoice }: Props) => {
             crossOrigin="anonymous"
           />
         )}
-        {addressLine && (
-          <div
-            style={{
-              marginTop: 6,
-              fontSize: 12,
-              color: "#374151",
-              lineHeight: 1.45,
-              textAlign: "center",
-              width: "100%",
-              maxWidth: "100%",
-            }}
-          >
-            {addressLine}
-          </div>
-        )}
       </div>
+      {addressLine && (
+        <div
+          style={{
+            marginTop: 6,
+            fontSize: 11,
+            color: "#374151",
+            lineHeight: 1.3,
+            textAlign: "center",
+            width: "100%",
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+          }}
+        >
+          {addressLine}
+        </div>
+      )}
     </div>
   );
 
