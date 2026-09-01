@@ -704,8 +704,8 @@ function TallyIntegrationSection() {
       <CardHeader className="py-3">
         <CardTitle className="text-base">TallyPrime</CardTitle>
         <p className="text-sm text-muted-foreground">
-          Map each payment mode to its Tally ledger. Queue creates a Receipt per mode: Account = mode ledger,
-          Particulars = income ledger. Credit card uses the exact LIMS amount.
+          Cash: Account = Cash, Particulars = Cash Sales. Other modes: Account = bank ledger
+          (Axis Bank Ltd.), Particulars = mode ledger. Exact LIMS amounts.
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -719,16 +719,21 @@ function TallyIntegrationSection() {
                 <Input value={companyName} onChange={(e) => setCompanyName(e.target.value)} className="h-9" />
               </div>
               <div>
-                <Label className="text-xs">Income / Lab Collection ledger</Label>
-                <Input value={incomeLedger} onChange={(e) => setIncomeLedger(e.target.value)} className="h-9" />
+                <Label className="text-xs">Bank ledger (Account for GPay / Paytm / NEFT / Card)</Label>
+                <Input
+                  value={settlementBank}
+                  onChange={(e) => setSettlementBank(e.target.value)}
+                  className="h-9"
+                  placeholder="Axis Bank Ltd."
+                />
               </div>
               <div>
                 <Label className="text-xs">MDR / Bank Charges ledger</Label>
                 <Input value={mdrLedger} onChange={(e) => setMdrLedger(e.target.value)} className="h-9" />
               </div>
               <div>
-                <Label className="text-xs">Default settlement bank ledger</Label>
-                <Input value={settlementBank} onChange={(e) => setSettlementBank(e.target.value)} className="h-9" />
+                <Label className="text-xs">Fallback income ledger (unused if bank set)</Label>
+                <Input value={incomeLedger} onChange={(e) => setIncomeLedger(e.target.value)} className="h-9" />
               </div>
             </div>
 

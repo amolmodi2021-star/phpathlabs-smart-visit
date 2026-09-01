@@ -128,16 +128,16 @@ export async function saveTallyModeMapRow(row: Partial<TallyModeMapRow> & { mode
   if (error) throw error;
 }
 
-/** Receipt (single-entry style): Account = mode ledger (Dr), Particulars = income (Cr). */
+/** Receipt: Account = money/bank ledger (Dr), Particulars = sales/mode ledger (Cr). */
 function receiptLines(opts: {
-  moneyLedger: string;
-  incomeLedger: string;
+  accountLedger: string;
+  particularsLedger: string;
   amount: number;
 }): TallyVoucherLine[] {
   const amount = num(opts.amount);
   return [
-    { ledger: opts.moneyLedger, is_debit: true, amount },
-    { ledger: opts.incomeLedger, is_debit: false, amount },
+    { ledger: opts.accountLedger, is_debit: true, amount },
+    { ledger: opts.particularsLedger, is_debit: false, amount },
   ];
 }
 
@@ -201,17 +201,22 @@ export async function queueDayCollectionToTally(row: DayModeAmounts): Promise<{ 
 
     const modeLedger = map.tally_ledger.trim();
     // Cash: Account = Cash, Particulars = Cash Sales (mapped).
-    // Other modes: Account = mapped mode ledger, Particulars = income ledger.
-    const moneyLedger = mode === "cash" ? "Cash" : modeLedger;
-    const incomeLedger =
-      mode === "cash" ? modeLedger : settings.income_ledger.trim();
-    if (!incomeLedger) {
-      throw new Error("Set Income ledger in Accounts -> Settings -> Tally");
+    // Other modes: Account = bank ledger (Axis Bank Ltd.), Particulars = mode ledger.
+    const bankLedger =
+      settings.default_settlement_bank_ledger.trim() || settings.income_ledger.trim();
+    const accountLedger = mode === "cash" ? "Cash" : bankLedger;
+    const particularsLedger = modeLedger;
+    if (!accountLedger) {
+      throw new Error(
+        mode === "cash"
+          ? "Cash account ledger missing"
+          : "Set bank ledger (Axis Bank Ltd.) in Accounts -> Settings -> Tally",
+      );
     }
     const narration = `LIMS daily collection ${row.dayKey} - ${map.label}`;
     const lines = receiptLines({
-      moneyLedger,
-      incomeLedger,
+      accountLedger,
+      particularsLedger,
       amount,
     });
 
