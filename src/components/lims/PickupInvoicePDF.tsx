@@ -18,7 +18,11 @@ const A4_WIDTH_PX = Math.round(A4_WIDTH_MM * MM_TO_PX);
 const A4_HEIGHT_PX = Math.round(A4_HEIGHT_MM * MM_TO_PX);
 const PAGE_PADDING_TOP_MM = 10;
 const PAGE_PADDING_BOTTOM_MM = 14;
-const PAGE_CHROME_FOOTER_MM = 10;
+const PAGE_CHROME_FOOTER_MM = 12;
+/** First invoice page table top margin (must be subtracted from pack budget). */
+const TABLE_FIRST_MARGIN_TOP_PX = 12;
+/** Leave slack so the next row never peeks as a clipped sliver under overflow:hidden. */
+const PACK_SAFETY_PX = 40;
 const CONTENT_HEIGHT_PX = Math.round(
   (A4_HEIGHT_MM - PAGE_PADDING_TOP_MM - PAGE_PADDING_BOTTOM_MM - PAGE_CHROME_FOOTER_MM) * MM_TO_PX,
 );
@@ -175,7 +179,7 @@ function packRowIndices(
 
   while (idx < rowHeights.length) {
     const isFirstPage = pages.length === 0;
-    const baseBudget = isFirstPage ? firstBudget : contBudget;
+    const baseBudget = Math.max(0, (isFirstPage ? firstBudget : contBudget) - PACK_SAFETY_PX);
     const page: number[] = [];
     let used = 0;
 
@@ -374,15 +378,27 @@ const PickupInvoicePDF = ({ open, onClose, invoice }: Props) => {
     const ledgerContinuedH = h(q('[data-measure="ledger-continued"]'));
 
     const itemRowEls = Array.from(root.querySelectorAll('[data-measure="item-row"]')) as HTMLElement[];
-    const itemRowHeights = itemRowEls.map((el) => el.offsetHeight);
+    // Use offsetTop deltas so collapsed table borders aren't under-counted (which packs an extra clipped row).
+    const itemRowHeights = itemRowEls.map((el, i) => {
+      if (i < itemRowEls.length - 1) {
+        return Math.max(1, itemRowEls[i + 1].offsetTop - el.offsetTop);
+      }
+      return Math.ceil(el.getBoundingClientRect().height);
+    });
 
     const ledgerRowEls = Array.from(root.querySelectorAll('[data-measure="ledger-row"]')) as HTMLElement[];
-    const ledgerRowHeights = ledgerRowEls.map((el) => el.offsetHeight);
+    const ledgerRowHeights = ledgerRowEls.map((el, i) => {
+      if (i < ledgerRowEls.length - 1) {
+        return Math.max(1, ledgerRowEls[i + 1].offsetTop - el.offsetTop);
+      }
+      return Math.ceil(el.getBoundingClientRect().height);
+    });
 
-    const firstInvoiceBudget =
-      CONTENT_HEIGHT_PX - headerH - metaH - bankH - theadH;
-    const contInvoiceBudget = CONTENT_HEIGHT_PX - continuedH - theadH;
-    const invoiceFooterReserve = grandTotalH + footerH;
+    const firstInvoiceBudget = Math.floor(
+      CONTENT_HEIGHT_PX - headerH - metaH - bankH - theadH - TABLE_FIRST_MARGIN_TOP_PX,
+    );
+    const contInvoiceBudget = Math.floor(CONTENT_HEIGHT_PX - continuedH - theadH);
+    const invoiceFooterReserve = Math.ceil(grandTotalH + footerH);
 
     const invPages = packRowIndices(
       itemRowHeights,
@@ -392,8 +408,8 @@ const PickupInvoicePDF = ({ open, onClose, invoice }: Props) => {
     );
     setInvoiceItemPages(invPages);
 
-    const firstLedgerBudget = CONTENT_HEIGHT_PX - ledgerTitleH - ledgerTheadH;
-    const contLedgerBudget = CONTENT_HEIGHT_PX - ledgerContinuedH - ledgerTheadH;
+    const firstLedgerBudget = Math.floor(CONTENT_HEIGHT_PX - ledgerTitleH - ledgerTheadH);
+    const contLedgerBudget = Math.floor(CONTENT_HEIGHT_PX - ledgerContinuedH - ledgerTheadH);
     const ledPages = packRowIndices(ledgerRowHeights, firstLedgerBudget, contLedgerBudget, 0);
     setLedgerPages(ledPages.length ? ledPages : [[]]);
     setLayoutReady(true);
@@ -889,7 +905,7 @@ const PickupInvoicePDF = ({ open, onClose, invoice }: Props) => {
                       data-invoice-a4-page={pageNo}
                       style={paperStyle()}
                     >
-                      <div style={{ flex: 1, minHeight: 0 }}>
+                      <div style={{ flex: "0 0 auto", overflow: "visible" }}>
                         {isFirst && (
                           <>
                             {renderHeader()}
@@ -902,7 +918,7 @@ const PickupInvoicePDF = ({ open, onClose, invoice }: Props) => {
                           style={{
                             width: "100%",
                             borderCollapse: "collapse",
-                            marginTop: isFirst ? 12 : 0,
+                            marginTop: isFirst ? TABLE_FIRST_MARGIN_TOP_PX : 0,
                             fontSize: 12,
                             tableLayout: "fixed",
                           }}
@@ -971,7 +987,7 @@ const PickupInvoicePDF = ({ open, onClose, invoice }: Props) => {
                       data-invoice-a4-page={pageNo}
                       style={paperStyle()}
                     >
-                      <div style={{ flex: 1, minHeight: 0 }}>
+                      <div style={{ flex: "0 0 auto", overflow: "visible" }}>
                         {isFirst ? (
                           <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8, color: BRAND }}>
                             Ledger Report — {pickup?.name}
