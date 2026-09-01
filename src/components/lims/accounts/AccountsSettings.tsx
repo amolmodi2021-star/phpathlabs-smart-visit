@@ -705,7 +705,7 @@ function TallyIntegrationSection() {
         <CardTitle className="text-base">TallyPrime</CardTitle>
         <p className="text-sm text-muted-foreground">
           Map LIMS payment modes to Tally ledger names. Credit Card uses a clearing ledger; bank credit is entered later
-          on Card Settlement (no fixed MDR %). Queue vouchers here; on the Tally PC use the bridge button to download & push (no polling).
+          on Card Settlement (no fixed MDR %). Queue vouchers here; on the Tally PC install the Tally Bridge EXE and click Download & Push (no polling). Download: https://github.com/amolmodi2021-star/phpathlabs-smart-visit/releases/latest
         </p>
       </CardHeader>
       <CardContent className="space-y-4">

@@ -1,0 +1,7 @@
+{
+  "desktop_api_url": "https://gqpqnfvihjjkmbcdzate.supabase.co/functions/v1/desktop-api",
+  "desktop_api_key": "PASTE_YOUR_DESKTOP_API_KEY_HERE",
+  "tally_host": "http://localhost:9000",
+  "tally_company": "Your Exact Company Name",
+  "bridge_port": 8787
+}

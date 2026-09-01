@@ -1,0 +1,21 @@
+{
+  "name": "phpathlabs-tally-bridge",
+  "version": "1.0.0",
+  "private": true,
+  "description": "PH PathLabs TallyPrime bridge (button push, no polling)",
+  "bin": "index.cjs",
+  "scripts": {
+    "start": "node index.cjs",
+    "build:exe": "pkg . --targets node24-win-x64 --output dist/PHPathLabs-TallyBridge.exe --compress GZip"
+  },
+  "pkg": {
+    "targets": [
+      "node24-win-x64"
+    ],
+    "outputPath": "dist",
+    "assets": []
+  },
+  "devDependencies": {
+    "@yao-pkg/pkg": "^6.22.0"
+  }
+}

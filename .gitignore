@@ -11,7 +11,6 @@ node_modules
 dist
 bun.lock
 bun.lockb
-.npmrc
 dist-ssr
 *.local
 
@@ -41,4 +40,9 @@ supabase/.env.cloud-phpl-secrets
 .env.cloud-phpl
 cloud-*-log.txt
 tmp-*.sql
+src/test/histogram-x-mapping-preview.pdf
 
+# Tally bridge packaged binaries / deps
+scripts/tally-bridge/node_modules/
+scripts/tally-bridge/dist/
+scripts/tally-bridge/tally-bridge.config.json
