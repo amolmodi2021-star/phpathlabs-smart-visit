@@ -3,5 +3,6 @@
   "desktop_api_key": "PASTE_YOUR_DESKTOP_API_KEY_HERE",
   "tally_host": "http://localhost:9000",
   "tally_company": "Your Exact Company Name",
-  "bridge_port": 8787
+  "bridge_port": 8787,
+  "edu_date_workaround": true
 }

@@ -25,6 +25,7 @@ function defaultConfig() {
     tally_host: "http://localhost:9000",
     tally_company: "",
     bridge_port: 8787,
+    edu_date_workaround: true,
   };
 }
 
@@ -71,8 +72,26 @@ function tallyDate(isoDate) {
   return String(isoDate || "").replace(/-/g, "");
 }
 
-function buildVoucherXml(job, company) {
+/** TallyPrime EDU allows only 1st, 2nd, or last day of month for vouchers. */
+function eduSafeVoucherDate(isoDate, enabled) {
+  const raw = String(isoDate || "").slice(0, 10);
+  if (!enabled || !/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  const [ys, ms, ds] = raw.split("-");
+  const y = Number(ys);
+  const m = Number(ms);
+  const d = Number(ds);
+  const last = new Date(y, m, 0).getDate();
+  if (d === 1 || d === 2 || d === last) return raw;
+  return `${ys}-${ms}-${String(last).padStart(2, "0")}`;
+}
+
+function buildVoucherXml(job, company, cfg = {}) {
   const lines = Array.isArray(job.lines) ? job.lines : [];
+  const voucherDateIso = eduSafeVoucherDate(job.voucher_date, !!cfg.edu_date_workaround);
+  const dateNote =
+    voucherDateIso !== String(job.voucher_date || "").slice(0, 10)
+      ? ` [EDU date ${voucherDateIso}; LIMS ${String(job.voucher_date || "").slice(0, 10)}]`
+      : "";
   const entries = lines
     .map((line) => {
       const amt = Number(line.amount || 0).toFixed(2);
@@ -104,8 +123,9 @@ function buildVoucherXml(job, company) {
       <REQUESTDATA>
         <TALLYMESSAGE xmlns:UDF="TallyUDF">
           <VOUCHER VCHTYPE="${xmlEscape(job.voucher_type || "Receipt")}" ACTION="Create" OBJVIEW="Accounting Voucher View">
-            <DATE>${tallyDate(job.voucher_date)}</DATE>
-            <NARRATION>${xmlEscape(job.narration)}</NARRATION>
+            <DATE>${tallyDate(voucherDateIso)}</DATE>
+            <EFFECTIVEDATE>${tallyDate(voucherDateIso)}</EFFECTIVEDATE>
+            <NARRATION>${xmlEscape((job.narration || "") + dateNote)}</NARRATION>
             <VOUCHERTYPENAME>${xmlEscape(job.voucher_type || "Receipt")}</VOUCHERTYPENAME>
             <PARTYLEDGERNAME>${xmlEscape((lines.find((l) => l.is_debit) || lines[0] || {}).ledger || "")}</PARTYLEDGERNAME>
             <PERSISTEDVIEW>Accounting Voucher View</PERSISTEDVIEW>
@@ -153,8 +173,9 @@ async function postToTally(cfg, xml) {
   if (errors > 0 || exceptions > 0 || (created + altered) < 1) {
     throw new Error(
       `Tally did not create voucher (CREATED=${created}, ALTERED=${altered}, ERRORS=${errors}). ` +
-        `Create missing ledgers in Tally (Cash, GPay, Paytm, NEFT, Credit Card Clearing, Lab Collection) then push again. ` +
-        `Also check Import > Exceptions in Tally.`,
+        `TallyPrime EDU only allows voucher dates on 1st, 2nd, or last day of month. ` +
+        `Enable EDU date workaround in Settings (or use licensed Tally). ` +
+        `Also set F2 Current Date to month-end or later, then push again.`,
     );
   }
   return text;
@@ -171,7 +192,7 @@ async function pushAll(cfg) {
   const results = [];
   for (const job of jobs) {
     try {
-      const xml = buildVoucherXml(job, cfg.tally_company);
+      const xml = buildVoucherXml(job, cfg.tally_company, cfg);
       const tallyResponse = await postToTally(cfg, xml);
       await api(cfg, "complete_tally_outbox", {
         id: job.id,
@@ -265,6 +286,12 @@ function pageHtml(cfg) {
       <input id="tallyCompany" value="${xmlEscape(cfg.tally_company)}" />
       <label>Bridge port</label>
       <input id="bridgePort" value="${xmlEscape(String(cfg.bridge_port))}" />
+      <label>TallyPrime EDU date workaround (use 1st/2nd/last day only)</label>
+      <select id="eduDate" style="width:100%;padding:10px 12px;border:1px solid #c9d4e0;border-radius:8px;">
+        <option value="true" ${cfg.edu_date_workaround !== false ? "selected" : ""}>Yes - recommended for EDU</option>
+        <option value="false" ${cfg.edu_date_workaround === false ? "selected" : ""}>No - licensed Tally (exact dates)</option>
+      </select>
+      <p class="meta">EDU rejects mid-month voucher dates (e.g. 11/12 Aug). Workaround posts on month-end and keeps LIMS date in narration.</p>
       <div class="row">
         <button class="primary" id="saveBtn" type="button">Save settings</button>
       </div>
@@ -315,6 +342,7 @@ function pageHtml(cfg) {
         tally_host: document.getElementById('tallyHost').value.trim(),
         tally_company: document.getElementById('tallyCompany').value.trim(),
         bridge_port: Number(document.getElementById('bridgePort').value || 8787),
+        edu_date_workaround: document.getElementById('eduDate').value === 'true',
       };
       const res = await fetch('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       const json = await res.json();
@@ -400,6 +428,7 @@ function startServer() {
           tally_host: String(body.tally_host || "").trim() || "http://localhost:9000",
           tally_company: String(body.tally_company || "").trim(),
           bridge_port: Number(body.bridge_port || 8787),
+          edu_date_workaround: body.edu_date_workaround !== false && body.edu_date_workaround !== 'false',
         });
         sendJson(res, 200, { ok: true, data: { ...saved, desktop_api_key: saved.desktop_api_key ? "********" : "" } });
         return;
