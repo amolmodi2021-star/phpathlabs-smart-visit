@@ -128,15 +128,15 @@ export async function saveTallyModeMapRow(row: Partial<TallyModeMapRow> & { mode
   if (error) throw error;
 }
 
+/** Mode ledger only (Dr). Balance with Suspense A/c so accountant can allocate the credit side. */
 function receiptLines(opts: {
   moneyLedger: string;
-  incomeLedger: string;
   amount: number;
 }): TallyVoucherLine[] {
   const amount = num(opts.amount);
   return [
     { ledger: opts.moneyLedger, is_debit: true, amount },
-    { ledger: opts.incomeLedger, is_debit: false, amount },
+    { ledger: "Suspense A/c", is_debit: false, amount },
   ];
 }
 
@@ -162,8 +162,6 @@ function settlementLines(opts: {
 
 export async function queueDayCollectionToTally(row: DayModeAmounts): Promise<{ queued: number; skipped: number }> {
   const [settings, modes] = await Promise.all([getTallySettings(), getTallyModeMap()]);
-  if (!settings.income_ledger.trim()) throw new Error("Set Income ledger in Accounts → Settings → Tally");
-
   const modeByKey = new Map(modes.map((m) => [m.mode_key, m]));
   const who = getCurrentUserName() || "staff";
   let queued = 0;
@@ -202,7 +200,6 @@ export async function queueDayCollectionToTally(row: DayModeAmounts): Promise<{ 
     const narration = `LIMS daily collection ${row.dayKey} — ${map.label}`;
     const lines = receiptLines({
       moneyLedger: map.tally_ledger.trim(),
-      incomeLedger: settings.income_ledger.trim(),
       amount,
     });
 

@@ -652,7 +652,6 @@ function TallyIntegrationSection() {
   });
 
   const [companyName, setCompanyName] = useState("");
-  const [incomeLedger, setIncomeLedger] = useState("Lab Collection");
   const [mdrLedger, setMdrLedger] = useState("Bank Charges");
   const [settlementBank, setSettlementBank] = useState("");
   const [modeLedgers, setModeLedgers] = useState<Record<string, string>>({});
@@ -661,7 +660,6 @@ function TallyIntegrationSection() {
   useEffect(() => {
     if (!settings || modesLoading) return;
     setCompanyName(settings.company_name || "");
-    setIncomeLedger(settings.income_ledger || "Lab Collection");
     setMdrLedger(settings.mdr_expense_ledger || "Bank Charges");
     setSettlementBank(settings.default_settlement_bank_ledger || "");
     const map: Record<string, string> = {};
@@ -674,7 +672,6 @@ function TallyIntegrationSection() {
     mutationFn: async () => {
       await saveTallySettings({
         company_name: companyName.trim(),
-        income_ledger: incomeLedger.trim(),
         mdr_expense_ledger: mdrLedger.trim(),
         default_settlement_bank_ledger: settlementBank.trim(),
       });
@@ -683,7 +680,7 @@ function TallyIntegrationSection() {
           mode_key: m.mode_key,
           label: m.label,
           tally_ledger: (modeLedgers[m.mode_key] ?? m.tally_ledger).trim(),
-          uses_clearing: m.uses_clearing,
+          uses_clearing: false,
           is_active: m.is_active,
           sort_order: m.sort_order,
         });
@@ -704,8 +701,7 @@ function TallyIntegrationSection() {
       <CardHeader className="py-3">
         <CardTitle className="text-base">TallyPrime</CardTitle>
         <p className="text-sm text-muted-foreground">
-          Map LIMS payment modes to Tally ledger names. Credit Card uses a clearing ledger; bank credit is entered later
-          on Card Settlement (no fixed MDR %). Queue vouchers here; on the Tally PC install the Tally Bridge EXE and click Download & Push (no polling). Download: https://github.com/amolmodi2021-star/phpathlabs-smart-visit/releases/latest
+          Map each LIMS payment mode to its Tally ledger. Queue posts that mode ledger only (full LIMS amount, including credit card). Other allocations are left for the accountant. Bridge: https://github.com/amolmodi2021-star/phpathlabs-smart-visit/releases/latest
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -717,10 +713,6 @@ function TallyIntegrationSection() {
               <div>
                 <Label className="text-xs">Tally company name</Label>
                 <Input value={companyName} onChange={(e) => setCompanyName(e.target.value)} className="h-9" />
-              </div>
-              <div>
-                <Label className="text-xs">Income / Lab Collection ledger</Label>
-                <Input value={incomeLedger} onChange={(e) => setIncomeLedger(e.target.value)} className="h-9" />
               </div>
               <div>
                 <Label className="text-xs">MDR / Bank Charges ledger</Label>
@@ -756,7 +748,7 @@ function TallyIntegrationSection() {
                         />
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground">
-                        {m.uses_clearing ? "Yes (settle later)" : "No"}
+                        "No"
                       </TableCell>
                     </TableRow>
                   ))}
