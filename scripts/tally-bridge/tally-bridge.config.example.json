@@ -4,5 +4,6 @@
   "tally_host": "http://localhost:9000",
   "tally_company": "Your Exact Company Name",
   "bridge_port": 8787,
-  "edu_date_workaround": true
+  "edu_date_workaround": true,
+  "auto_create_ledgers": true
 }

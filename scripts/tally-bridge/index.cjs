@@ -155,6 +155,128 @@ async function api(cfg, action, body = {}) {
   return json;
 }
 
+
+async function listTallyLedgers(cfg) {
+  const xml = `<?xml version="1.0" encoding="utf-8"?>
+<ENVELOPE>
+ <HEADER>
+  <VERSION>1</VERSION>
+  <TALLYREQUEST>Export</TALLYREQUEST>
+  <TYPE>Collection</TYPE>
+  <ID>Ledgers</ID>
+ </HEADER>
+ <BODY>
+  <DESC>
+   <STATICVARIABLES>
+    <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+    <SVCURRENTCOMPANY>${xmlEscape(cfg.tally_company || "")}</SVCURRENTCOMPANY>
+   </STATICVARIABLES>
+   <TDL>
+    <TDLMESSAGE>
+     <COLLECTION NAME="Ledgers" ISMODIFY="No">
+      <TYPE>Ledger</TYPE>
+      <FETCH>Name</FETCH>
+     </COLLECTION>
+    </TDLMESSAGE>
+   </TDL>
+  </DESC>
+ </BODY>
+</ENVELOPE>`;
+  const res = await fetch(cfg.tally_host, {
+    method: "POST",
+    headers: { "Content-Type": "application/xml" },
+    body: xml,
+  });
+  const text = await res.text();
+  const names = new Set();
+  for (const m of text.matchAll(/<LEDGER[^>]*NAME="([^"]+)"/gi)) names.add(m[1].trim());
+  for (const m of text.matchAll(/<NAME>([^<]+)<\/NAME>/gi)) names.add(m[1].trim());
+  return names;
+}
+
+function guessLedgerParent(ledgerName, cfg) {
+  const n = String(ledgerName || "").trim().toLowerCase();
+  const income = String(cfg.income_ledger || "Lab Collection").trim().toLowerCase();
+  const mdr = String(cfg.mdr_expense_ledger || "Bank Charges").trim().toLowerCase();
+  if (!n) return "Suspense A/c";
+  if (n === "cash" || n.includes("cash-in-hand")) return "Cash-in-Hand";
+  if (n === income || n.includes("lab collection") || n.includes("income")) return "Direct Incomes";
+  if (n === mdr || n.includes("bank charge") || n.includes("mdr")) return "Indirect Expenses";
+  if (n.includes("clearing") || n.includes("credit card")) return "Current Assets";
+  if (n.includes("bank") || n.includes("gpay") || n.includes("paytm") || n.includes("neft") || n.includes("upi") || n.includes("hdfc") || n.includes("sbi") || n.includes("icici")) {
+    return "Bank Accounts";
+  }
+  return "Current Assets";
+}
+
+async function createTallyLedger(cfg, ledgerName, parent) {
+  const xml = `<?xml version="1.0" encoding="utf-8"?>
+<ENVELOPE>
+ <HEADER><TALLYREQUEST>Import Data</TALLYREQUEST></HEADER>
+ <BODY>
+  <IMPORTDATA>
+   <REQUESTDESC>
+    <REPORTNAME>All Masters</REPORTNAME>
+    <STATICVARIABLES><SVCURRENTCOMPANY>${xmlEscape(cfg.tally_company || "")}</SVCURRENTCOMPANY></STATICVARIABLES>
+   </REQUESTDESC>
+   <REQUESTDATA>
+    <TALLYMESSAGE xmlns:UDF="TallyUDF">
+     <LEDGER NAME="${xmlEscape(ledgerName)}" ACTION="Create">
+      <NAME.LIST><NAME>${xmlEscape(ledgerName)}</NAME></NAME.LIST>
+      <PARENT>${xmlEscape(parent)}</PARENT>
+      <ISBILLWISEON>No</ISBILLWISEON>
+     </LEDGER>
+    </TALLYMESSAGE>
+   </REQUESTDATA>
+  </IMPORTDATA>
+ </BODY>
+</ENVELOPE>`;
+  const res = await fetch(cfg.tally_host, {
+    method: "POST",
+    headers: { "Content-Type": "application/xml" },
+    body: xml,
+  });
+  const text = await res.text();
+  const created = Number((text.match(/<CREATED>(\d+)<\/CREATED>/i) || [])[1] || 0);
+  const altered = Number((text.match(/<ALTERED>(\d+)<\/ALTERED>/i) || [])[1] || 0);
+  const errors = Number((text.match(/<ERRORS>(\d+)<\/ERRORS>/i) || [])[1] || 0);
+  if (errors > 0 && created + altered < 1) {
+    throw new Error(`Could not create ledger "${ledgerName}" under "${parent}"`);
+  }
+  return { created, altered, text };
+}
+
+async function ensureLedgersExist(cfg, jobs) {
+  if (cfg.auto_create_ledgers === false) return { created: [], skipped: true };
+  const needed = new Set();
+  for (const job of jobs || []) {
+    for (const line of job.lines || []) {
+      const name = String(line.ledger || "").trim();
+      if (name) needed.add(name);
+    }
+  }
+  if (!needed.size) return { created: [], existing: [] };
+
+  let existing;
+  try {
+    existing = await listTallyLedgers(cfg);
+  } catch (e) {
+    // If list fails, still attempt creates (Tally ignores/duplicates safely in many cases)
+    existing = new Set();
+  }
+
+  const created = [];
+  for (const name of needed) {
+    const hit = [...existing].some((x) => x.toLowerCase() === name.toLowerCase());
+    if (hit) continue;
+    const parent = guessLedgerParent(name, cfg);
+    await createTallyLedger(cfg, name, parent);
+    created.push({ name, parent });
+    existing.add(name);
+  }
+  return { created, existing: [...needed] };
+}
+
 async function postToTally(cfg, xml) {
   const res = await fetch(cfg.tally_host, {
     method: "POST",
@@ -190,6 +312,23 @@ async function pushAll(cfg) {
   const claimed = await api(cfg, "claim_tally_outbox", { limit: 50, claimed_by: "tally-bridge-exe" });
   const jobs = claimed.data || [];
   const results = [];
+  let ledgerEnsure = { created: [] };
+  try {
+    ledgerEnsure = await ensureLedgersExist(cfg, jobs);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return {
+      claimed: jobs.length,
+      ledger_ensure_error: msg,
+      results: jobs.map((job) => ({
+        id: job.id,
+        ok: false,
+        label: `${job.kind} ${job.day_key || ""} ${job.mode_key || ""}`.trim(),
+        amount: job.amount,
+        error: `Ledger auto-create failed: ${msg}`,
+      })),
+    };
+  }
   for (const job of jobs) {
     try {
       const xml = buildVoucherXml(job, cfg.tally_company, cfg);
@@ -221,7 +360,7 @@ async function pushAll(cfg) {
       });
     }
   }
-  return { claimed: jobs.length, results };
+  return { claimed: jobs.length, results, ledgers_created: ledgerEnsure.created || [] };
 }
 
 function pageHtml(cfg) {
@@ -292,6 +431,12 @@ function pageHtml(cfg) {
         <option value="false" ${cfg.edu_date_workaround === false ? "selected" : ""}>No - licensed Tally (exact dates)</option>
       </select>
       <p class="meta">EDU rejects mid-month voucher dates (e.g. 11/12 Aug). Workaround posts on month-end and keeps LIMS date in narration.</p>
+      <label>Auto-create missing ledgers in Tally</label>
+      <select id="autoLedgers" style="width:100%;padding:10px 12px;border:1px solid #c9d4e0;border-radius:8px;">
+        <option value="true" ${cfg.auto_create_ledgers !== false ? "selected" : ""}>Yes</option>
+        <option value="false" ${cfg.auto_create_ledgers === false ? "selected" : ""}>No</option>
+      </select>
+      <p class="meta">If a mapped ledger is missing, bridge creates it (Cash-in-Hand / Bank Accounts / Current Assets / Direct Incomes / Indirect Expenses).</p>
       <div class="row">
         <button class="primary" id="saveBtn" type="button">Save settings</button>
       </div>
@@ -327,7 +472,8 @@ function pageHtml(cfg) {
         const json = await res.json();
         if (!res.ok) throw new Error(json.error || 'push failed');
         const lines = (json.results || []).map(r => (r.ok ? '[OK] ' : '[FAIL] ') + r.label + ' Rs ' + Number(r.amount||0).toFixed(2) + (r.error ? (' - ' + r.error) : ''));
-        log((json.claimed ? ('Claimed ' + json.claimed + '\\n') : 'Nothing to claim\\n') + (lines.join('\\n') || 'Done.'));
+        const createdL = (json.ledgers_created || []).map(x => '[LEDGER] created ' + x.name + ' under ' + x.parent);
+        log((json.claimed ? ('Claimed ' + json.claimed + '\\n') : 'Nothing to claim\\n') + (createdL.length ? (createdL.join('\\n') + '\\n') : '') + (lines.join('\\n') || 'Done.'));
         await refresh();
       } catch (e) {
         log('Push error: ' + e.message);
@@ -343,6 +489,7 @@ function pageHtml(cfg) {
         tally_company: document.getElementById('tallyCompany').value.trim(),
         bridge_port: Number(document.getElementById('bridgePort').value || 8787),
         edu_date_workaround: document.getElementById('eduDate').value === 'true',
+        auto_create_ledgers: document.getElementById('autoLedgers').value === 'true',
       };
       const res = await fetch('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       const json = await res.json();
@@ -429,6 +576,7 @@ function startServer() {
           tally_company: String(body.tally_company || "").trim(),
           bridge_port: Number(body.bridge_port || 8787),
           edu_date_workaround: body.edu_date_workaround !== false && body.edu_date_workaround !== 'false',
+          auto_create_ledgers: body.auto_create_ledgers !== false && body.auto_create_ledgers !== 'false',
         });
         sendJson(res, 200, { ok: true, data: { ...saved, desktop_api_key: saved.desktop_api_key ? "********" : "" } });
         return;
