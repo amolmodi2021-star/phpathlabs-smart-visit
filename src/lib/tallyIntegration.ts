@@ -164,7 +164,6 @@ function settlementLines(opts: {
 
 export async function queueDayCollectionToTally(row: DayModeAmounts): Promise<{ queued: number; skipped: number }> {
   const [settings, modes] = await Promise.all([getTallySettings(), getTallyModeMap()]);
-  if (!settings.income_ledger.trim()) throw new Error("Set Income ledger in Accounts -> Settings -> Tally");
   const modeByKey = new Map(modes.map((m) => [m.mode_key, m]));
   const who = getCurrentUserName() || "staff";
   let queued = 0;
@@ -200,10 +199,19 @@ export async function queueDayCollectionToTally(row: DayModeAmounts): Promise<{ 
       throw new Error(`Set Tally ledger for ${map.label} in Accounts -> Settings -> Tally`);
     }
 
+    const modeLedger = map.tally_ledger.trim();
+    // Cash: Account = Cash, Particulars = Cash Sales (mapped).
+    // Other modes: Account = mapped mode ledger, Particulars = income ledger.
+    const moneyLedger = mode === "cash" ? "Cash" : modeLedger;
+    const incomeLedger =
+      mode === "cash" ? modeLedger : settings.income_ledger.trim();
+    if (!incomeLedger) {
+      throw new Error("Set Income ledger in Accounts -> Settings -> Tally");
+    }
     const narration = `LIMS daily collection ${row.dayKey} - ${map.label}`;
     const lines = receiptLines({
-      moneyLedger: map.tally_ledger.trim(),
-      incomeLedger: settings.income_ledger.trim(),
+      moneyLedger,
+      incomeLedger,
       amount,
     });
 
