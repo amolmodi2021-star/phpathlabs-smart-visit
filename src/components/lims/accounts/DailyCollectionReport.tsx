@@ -319,7 +319,6 @@ const DailyCollectionReport = () => {
       toast.success(`Queued ${res.queued} voucher(s) for Tally bridge`);
       qc.invalidateQueries({ queryKey: ["accounts_tally_day_status"] });
       qc.invalidateQueries({ queryKey: ["accounts_tally_voucher_outbox"] });
-      qc.invalidateQueries({ queryKey: ["tally_open_card_clearing"] });
     },
     onError: (e: Error) => toast.error(e.message || "Tally queue failed"),
   });

@@ -678,7 +678,7 @@ function TallyIntegrationSection() {
       await saveTallySettings({
         company_name: companyName.trim(),
         default_settlement_bank_ledger: bank,
-        // Keep unused legacy fields intact for card settlement / older jobs.
+        // Keep legacy DB columns for older rows / migrations.
         income_ledger: settings?.income_ledger || bank,
         mdr_expense_ledger: settings?.mdr_expense_ledger || "Bank Charges",
       });

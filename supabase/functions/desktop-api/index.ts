@@ -620,15 +620,6 @@ async function completeTallyOutbox(
     .maybeSingle();
   if (error) throw error;
 
-  if (existing.kind === "card_settlement" && existing.settlement_id) {
-    const settlementStatus =
-      finalStatus === "sent" ? "posted" : finalStatus === "failed" ? "failed" : "queued";
-    await supabase
-      .from("accounts_tally_card_settlements")
-      .update({ status: settlementStatus, updated_at: now })
-      .eq("id", existing.settlement_id);
-  }
-
   return data;
 }
 
