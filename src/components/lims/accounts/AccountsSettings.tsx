@@ -655,6 +655,7 @@ function TallyIntegrationSection() {
   const [incomeLedger, setIncomeLedger] = useState("Lab Collection");
   const [mdrLedger, setMdrLedger] = useState("Bank Charges");
   const [settlementBank, setSettlementBank] = useState("");
+  const [autoBankContra, setAutoBankContra] = useState(true);
   const [modeLedgers, setModeLedgers] = useState<Record<string, string>>({});
   const [hydrated, setHydrated] = useState(false);
 
@@ -664,6 +665,7 @@ function TallyIntegrationSection() {
     setIncomeLedger(settings.income_ledger || "Lab Collection");
     setMdrLedger(settings.mdr_expense_ledger || "Bank Charges");
     setSettlementBank(settings.default_settlement_bank_ledger || "");
+    setAutoBankContra(settings.auto_bank_contra !== false);
     const map: Record<string, string> = {};
     for (const m of modes) map[m.mode_key] = m.tally_ledger || "";
     setModeLedgers(map);
@@ -677,6 +679,7 @@ function TallyIntegrationSection() {
         income_ledger: incomeLedger.trim(),
         mdr_expense_ledger: mdrLedger.trim(),
         default_settlement_bank_ledger: settlementBank.trim(),
+        auto_bank_contra: autoBankContra,
       });
       for (const m of modes) {
         await saveTallyModeMapRow({
@@ -727,8 +730,21 @@ function TallyIntegrationSection() {
                 <Input value={mdrLedger} onChange={(e) => setMdrLedger(e.target.value)} className="h-9" />
               </div>
               <div>
-                <Label className="text-xs">Default settlement bank ledger</Label>
-                <Input value={settlementBank} onChange={(e) => setSettlementBank(e.target.value)} className="h-9" />
+                <Label className="text-xs">Default settlement bank ledger (HDFC)</Label>
+                <Input value={settlementBank} onChange={(e) => setSettlementBank(e.target.value)} className="h-9" placeholder="HDFC" />
+              </div>
+              <div className="md:col-span-2 flex items-start gap-2 rounded-md border px-3 py-2">
+                <input
+                  id="autoBankContra"
+                  type="checkbox"
+                  className="mt-1"
+                  checked={autoBankContra}
+                  onChange={(e) => setAutoBankContra(e.target.checked)}
+                />
+                <label htmlFor="autoBankContra" className="text-sm leading-snug">
+                  Auto Contra GPay / Paytm / NEFT into bank ledger after daily receipts.
+                  Keeps separate mode ledgers for reporting, then moves balances to HDFC.
+                </label>
               </div>
             </div>
 
