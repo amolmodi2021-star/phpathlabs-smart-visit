@@ -130,7 +130,7 @@ const PickupInvoicePDF = ({ open, onClose, invoice }: Props) => {
         <div className="flex items-center justify-between p-3 border-b sticky top-0 bg-background z-10">
           <div className="font-semibold">Invoice — {invoice.invoice_number}</div>
           <div className="flex gap-2">
-            <Button size="sm" onClick={download} disabled={downloading || loading}>
+            <Button size="sm" className="bg-[#2E3192] hover:bg-[#23266F] text-white" onClick={download} disabled={downloading || loading}>
               {downloading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Download className="h-4 w-4 mr-1" />}
               Download PDF
             </Button>
@@ -155,20 +155,32 @@ const PickupInvoicePDF = ({ open, onClose, invoice }: Props) => {
                 boxSizing: "border-box",
               }}
             >
-              {/* Header */}
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderBottom: "2px solid #0d9488", paddingBottom: 8 }}>
-                <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+              {/* Header: logo includes lab name; address only beside it */}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderBottom: "2px solid #2E3192", paddingBottom: 8 }}>
+                <div style={{ display: "flex", gap: 12, alignItems: "flex-start", minWidth: 0, flex: 1, paddingRight: 12 }}>
                   {settings.invoice_logo_url && (
-                    <img src={settings.invoice_logo_url} alt="Logo" style={{ height: 60, objectFit: "contain" }} crossOrigin="anonymous" />
+                    <img
+                      src={settings.invoice_logo_url}
+                      alt="Logo"
+                      style={{ height: 64, width: "auto", maxWidth: 160, objectFit: "contain", flexShrink: 0 }}
+                      crossOrigin="anonymous"
+                    />
                   )}
-                  <div>
-                    <div style={{ fontSize: 20, fontWeight: 700, color: "#0d9488" }}>{settings.invoice_lab_name || "PH PathLabs"}</div>
-                    {settings.invoice_address && <div style={{ fontSize: 10, color: "#444", whiteSpace: "pre-line" }}>{settings.invoice_address}</div>}
-                    {settings.invoice_contact && <div style={{ fontSize: 10, color: "#444" }}>{settings.invoice_contact}</div>}
+                  <div style={{ paddingTop: 4, minWidth: 0 }}>
+                    {settings.invoice_address && (
+                      <div style={{ fontSize: 10, color: "#374151", whiteSpace: "pre-line", lineHeight: 1.45 }}>
+                        {settings.invoice_address}
+                      </div>
+                    )}
+                    {settings.invoice_contact && (
+                      <div style={{ fontSize: 10, color: "#374151", marginTop: 2, lineHeight: 1.45 }}>
+                        {settings.invoice_contact}
+                      </div>
+                    )}
                   </div>
                 </div>
-                <div style={{ textAlign: "right" }}>
-                  <div style={{ fontSize: 26, fontWeight: 800, letterSpacing: 2 }}>INVOICE</div>
+                <div style={{ textAlign: "right", flexShrink: 0 }}>
+                  <div style={{ fontSize: 26, fontWeight: 800, letterSpacing: 2, color: "#111827" }}>INVOICE</div>
                 </div>
               </div>
 
@@ -211,9 +223,17 @@ const PickupInvoicePDF = ({ open, onClose, invoice }: Props) => {
               )}
 
               {/* Items table */}
-              <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 12, fontSize: 10 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 12, fontSize: 10, tableLayout: "fixed" }}>
+                <colgroup>
+                  <col style={{ width: "5%" }} />
+                  <col style={{ width: "11%" }} />
+                  <col style={{ width: "14%" }} />
+                  <col style={{ width: "18%" }} />
+                  <col style={{ width: "37%" }} />
+                  <col style={{ width: "15%" }} />
+                </colgroup>
                 <thead>
-                  <tr style={{ background: "#0d9488", color: "#fff" }}>
+                  <tr style={{ background: "#2E3192", color: "#fff" }}>
                     <th style={th}>#</th>
                     <th style={th}>Reg. Date</th>
                     <th style={th}>Invoice No</th>
@@ -224,16 +244,16 @@ const PickupInvoicePDF = ({ open, onClose, invoice }: Props) => {
                 </thead>
                 <tbody>
                   {items.map((it, i) => (
-                    <tr key={it.id} style={{ background: i % 2 ? "#fafafa" : "#fff" }}>
+                    <tr key={it.id} style={{ background: i % 2 ? "#fafafa" : "#fff", verticalAlign: "top" }}>
                       <td style={td}>{i + 1}</td>
                       <td style={td}>{it.registration_date ? format(new Date(it.registration_date), "dd-MM-yyyy") : ""}</td>
-                      <td style={td}>{it.registration_invoice}</td>
-                      <td style={td}>{it.patient_name}</td>
-                      <td style={{ ...td, fontSize: 9 }}>{it.test_names}</td>
-                      <td style={{ ...td, textAlign: "right" }}>{Number(it.net_amount).toFixed(2)}</td>
+                      <td style={{ ...td, wordBreak: "break-word" }}>{it.registration_invoice}</td>
+                      <td style={{ ...td, whiteSpace: "normal", wordBreak: "break-word", lineHeight: 1.35 }}>{it.patient_name}</td>
+                      <td style={{ ...td, fontSize: 9, whiteSpace: "normal", wordBreak: "break-word", overflowWrap: "anywhere", lineHeight: 1.4 }}>{it.test_names || ""}</td>
+                      <td style={{ ...td, textAlign: "right", whiteSpace: "nowrap" }}>{Number(it.net_amount).toFixed(2)}</td>
                     </tr>
                   ))}
-                  <tr style={{ background: "#f0fdfa", fontWeight: 700 }}>
+                  <tr style={{ background: "#F0F1FA", fontWeight: 700 }}>
                     <td style={td} colSpan={5}>Grand Total</td>
                     <td style={{ ...td, textAlign: "right" }}>₹{Number(invoice.total_amount).toFixed(2)}</td>
                   </tr>
@@ -271,12 +291,12 @@ const PickupInvoicePDF = ({ open, onClose, invoice }: Props) => {
                 boxSizing: "border-box",
               }}
             >
-              <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 6, color: "#0d9488" }}>
+              <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 6, color: "#2E3192" }}>
                 Ledger Report — {pickup?.name}
               </div>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10 }}>
                 <thead>
-                  <tr style={{ background: "#0d9488", color: "#fff" }}>
+                  <tr style={{ background: "#2E3192", color: "#fff" }}>
                     <th style={th}>Date</th>
                     <th style={th}>Voucher Type</th>
                     <th style={th}>Voucher No</th>
@@ -308,7 +328,7 @@ const PickupInvoicePDF = ({ open, onClose, invoice }: Props) => {
   );
 };
 
-const th: React.CSSProperties = { padding: "6px 8px", textAlign: "left", border: "1px solid #0d9488", fontSize: 10 };
-const td: React.CSSProperties = { padding: "5px 8px", border: "1px solid #e5e7eb" };
+const th: React.CSSProperties = { padding: "6px 8px", textAlign: "left", border: "1px solid #2E3192", fontSize: 10, fontWeight: 600, verticalAlign: "middle" };
+const td: React.CSSProperties = { padding: "6px 8px", border: "1px solid #e5e7eb", verticalAlign: "top" };
 
 export default PickupInvoicePDF;
