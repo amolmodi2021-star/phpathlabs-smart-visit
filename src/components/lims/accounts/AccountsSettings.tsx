@@ -705,7 +705,7 @@ function TallyIntegrationSection() {
         <CardTitle className="text-base">TallyPrime</CardTitle>
         <p className="text-sm text-muted-foreground">
           Map LIMS payment modes to Tally ledger names. Credit Card uses a clearing ledger; bank credit is entered later
-          on Card Settlement (no fixed MDR %). Export downloads an XML file to import in TallyPrime — no polling service.
+          on Card Settlement (no fixed MDR %). Queue vouchers here; on the Tally PC use the bridge button to download & push (no polling).
         </p>
       </CardHeader>
       <CardContent className="space-y-4">

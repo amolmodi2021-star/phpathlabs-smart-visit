@@ -535,6 +535,132 @@ async function claimOutbox(limit = 5, claimedBy = "whatsapp-console") {
   return claimed;
 }
 
+/** Claim pending Tally voucher jobs for the Windows Tally bridge. */
+async function claimTallyOutbox(limit = 50, claimedBy = "tally-bridge") {
+  const supabase = sb();
+  const lim = Math.min(Math.max(Number(limit) || 50, 1), 100);
+  const nowIso = new Date().toISOString();
+
+  // Reclaim stuck claimed rows older than 10 minutes
+  const stuckBefore = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+  await supabase
+    .from("accounts_tally_voucher_outbox")
+    .update({
+      status: "pending",
+      claimed_at: null,
+      claimed_by: null,
+      updated_at: nowIso,
+      last_error: "reclaimed_stuck_claim",
+    })
+    .eq("status", "claimed")
+    .lt("claimed_at", stuckBefore);
+
+  const { data: pending, error } = await supabase
+    .from("accounts_tally_voucher_outbox")
+    .select("*")
+    .in("status", ["pending", "failed"])
+    .order("created_at", { ascending: true })
+    .limit(lim);
+  if (error) throw error;
+
+  const claimed: any[] = [];
+  for (const row of pending || []) {
+    const { data, error: updErr } = await supabase
+      .from("accounts_tally_voucher_outbox")
+      .update({
+        status: "claimed",
+        claimed_at: nowIso,
+        claimed_by: claimedBy,
+        attempts: (row.attempts || 0) + 1,
+        next_retry_at: null,
+        updated_at: nowIso,
+      })
+      .eq("id", row.id)
+      .in("status", ["pending", "failed"])
+      .select("*")
+      .maybeSingle();
+    if (!updErr && data) claimed.push(data);
+  }
+  return claimed;
+}
+
+async function completeTallyOutbox(
+  id: string,
+  status: "sent" | "failed" | "pending",
+  lastError?: string | null,
+  tallyResponse?: string | null,
+) {
+  const supabase = sb();
+  const now = new Date().toISOString();
+  const { data: existing } = await supabase
+    .from("accounts_tally_voucher_outbox")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+  if (!existing) throw new Error("tally outbox row not found");
+
+  let finalStatus: string = status;
+  const nextRetry: string | null = null;
+
+  // Button-driven bridge: keep terminal failed so staff can retry via Push button.
+
+  const { data, error } = await supabase
+    .from("accounts_tally_voucher_outbox")
+    .update({
+      status: finalStatus,
+      last_error: lastError ?? null,
+      tally_response: tallyResponse ?? existing.tally_response ?? null,
+      claimed_at: finalStatus === "pending" ? null : existing.claimed_at,
+      claimed_by: finalStatus === "pending" ? null : existing.claimed_by,
+      next_retry_at: nextRetry,
+      updated_at: now,
+    })
+    .eq("id", id)
+    .select("*")
+    .maybeSingle();
+  if (error) throw error;
+
+  if (existing.kind === "card_settlement" && existing.settlement_id) {
+    const settlementStatus =
+      finalStatus === "sent" ? "posted" : finalStatus === "failed" ? "failed" : "queued";
+    await supabase
+      .from("accounts_tally_card_settlements")
+      .update({ status: settlementStatus, updated_at: now })
+      .eq("id", existing.settlement_id);
+  }
+
+  return data;
+}
+
+
+/** Count pending/failed Tally jobs without claiming (for bridge UI). */
+async function peekTallyOutbox() {
+  const supabase = sb();
+  const stuckBefore = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+  const nowIso = new Date().toISOString();
+  // Reclaim stuck claimed so they show as pending again
+  await supabase
+    .from("accounts_tally_voucher_outbox")
+    .update({
+      status: "pending",
+      claimed_at: null,
+      claimed_by: null,
+      updated_at: nowIso,
+      last_error: "reclaimed_stuck_claim",
+    })
+    .eq("status", "claimed")
+    .lt("claimed_at", stuckBefore);
+
+  const { data, error } = await supabase
+    .from("accounts_tally_voucher_outbox")
+    .select("id, kind, day_key, mode_key, amount, status, voucher_date, narration, last_error")
+    .in("status", ["pending", "failed"])
+    .order("created_at", { ascending: true })
+    .limit(100);
+  if (error) throw error;
+  return data || [];
+}
+
 function retryDelaySeconds(attempts: number): number {
   // First retry quickly (~8s); then 30s, 60s, 120s … capped at 15 min
   if (attempts <= 1) return 8;
@@ -658,6 +784,32 @@ Deno.serve(async (req) => {
       if (action === "claim_outbox" || action === "claim") {
         const jobs = await claimOutbox(body?.limit, body?.claimed_by || "whatsapp-console");
         return json({ ok: true, count: jobs.length, data: jobs, idle: jobs.length === 0 });
+      }
+
+      if (action === "peek_tally_outbox" || action === "peek_tally") {
+        const rows = await peekTallyOutbox();
+        return json({ ok: true, count: rows.length, data: rows });
+      }
+
+      if (action === "claim_tally_outbox" || action === "claim_tally") {
+        const jobs = await claimTallyOutbox(body?.limit, body?.claimed_by || "tally-bridge");
+        return json({ ok: true, count: jobs.length, data: jobs, idle: jobs.length === 0 });
+      }
+
+      if (action === "complete_tally_outbox" || action === "complete_tally") {
+        const id = String(body?.id || "");
+        const status = String(body?.status || "sent").toLowerCase();
+        if (!id) return json({ error: "id required" }, 400);
+        if (!["sent", "failed", "pending"].includes(status)) {
+          return json({ error: "status must be sent|failed|pending" }, 400);
+        }
+        const row = await completeTallyOutbox(
+          id,
+          status as "sent" | "failed" | "pending",
+          body?.error ?? body?.last_error,
+          body?.tally_response != null ? String(body.tally_response) : null,
+        );
+        return json({ ok: true, data: row });
       }
 
       if (action === "prune_outbox") {

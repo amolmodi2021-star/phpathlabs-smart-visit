@@ -316,12 +316,12 @@ const DailyCollectionReport = () => {
         paid: row.paid,
       }),
     onSuccess: (res) => {
-      toast.success(`Downloaded ${res.filename} (${res.queued} voucher(s)) — import into TallyPrime`);
+      toast.success(`Queued ${res.queued} voucher(s) for Tally bridge`);
       qc.invalidateQueries({ queryKey: ["accounts_tally_day_status"] });
       qc.invalidateQueries({ queryKey: ["accounts_tally_voucher_outbox"] });
       qc.invalidateQueries({ queryKey: ["tally_open_card_clearing"] });
     },
-    onError: (e: Error) => toast.error(e.message || "Tally export failed"),
+    onError: (e: Error) => toast.error(e.message || "Tally queue failed"),
   });
 
   const sameDay = effectiveFrom === effectiveTo;
@@ -531,7 +531,7 @@ const DailyCollectionReport = () => {
                                 onClick={() => pushMutation.mutate(r)}
                               >
                                 <Send className="h-3.5 w-3.5 mr-1" />
-                                Export Tally XML
+                                Queue for Tally
                               </Button>
                               <Button
                                 type="button"
@@ -555,7 +555,7 @@ const DailyCollectionReport = () => {
                                 onClick={() => pushMutation.mutate(r)}
                               >
                                 <Send className="h-3.5 w-3.5 mr-1" />
-                                Re-export Tally XML
+                                Re-queue for Tally
                               </Button>
                               <Button
                                 type="button"

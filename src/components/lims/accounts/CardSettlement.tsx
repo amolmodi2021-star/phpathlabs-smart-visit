@@ -76,7 +76,7 @@ export default function CardSettlement() {
         notes,
       }),
     onSuccess: () => {
-      toast.success("Settlement saved — export Tally XML when ready");
+      toast.success("Settlement saved - push to Tally when ready");
       setGross("");
       setBankReceived("");
       setReferenceNo("");
@@ -90,13 +90,12 @@ export default function CardSettlement() {
 
   const pushMutation = useMutation({
     mutationFn: (id: string) => pushCardSettlementToTally(id),
-    onSuccess: (res) => {
-      toast.success(`Downloaded ${res.filename} — import into TallyPrime`);
+    onSuccess: () => {
+      toast.success("Settlement queued for Tally bridge");
       qc.invalidateQueries({ queryKey: ["accounts_tally_card_settlements"] });
       qc.invalidateQueries({ queryKey: ["accounts_tally_voucher_outbox"] });
-      qc.invalidateQueries({ queryKey: ["tally_open_card_clearing"] });
     },
-    onError: (e: Error) => toast.error(e.message || "Export failed"),
+    onError: (e: Error) => toast.error(e.message || "Push failed"),
   });
 
   return (
@@ -105,8 +104,7 @@ export default function CardSettlement() {
         <CardHeader className="py-3">
           <CardTitle className="text-base">Card Settlement</CardTitle>
           <p className="text-sm text-muted-foreground">
-            Enter the amount actually credited to bank. MDR is calculated as gross − received (no fixed %). Save, then
-            export Tally XML and import it in TallyPrime (no background polling service).
+            Enter the amount actually credited to bank. MDR is calculated as gross minus received (no fixed %). Then queue it for the Tally bridge button on the Tally PC (no polling).
           </p>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -233,7 +231,7 @@ export default function CardSettlement() {
                             onClick={() => pushMutation.mutate(r.id)}
                           >
                             <Send className="h-3.5 w-3.5 mr-1" />
-                            Export Tally XML
+                            Push to Tally
                           </Button>
                         )}
                       </TableCell>

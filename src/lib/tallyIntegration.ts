@@ -54,18 +54,6 @@ export type CardSettlementRow = {
   created_at: string;
 };
 
-type OutboxJob = {
-  id?: string;
-  kind: string;
-  voucher_type: string;
-  voucher_date: string;
-  narration: string;
-  amount: number;
-  lines: TallyVoucherLine[];
-  day_key?: string | null;
-  mode_key?: string | null;
-};
-
 const num = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
 export const TALLY_MODE_KEYS: TallyModeKey[] = ["cash", "gpay", "paytm", "neft", "credit_card"];
@@ -99,7 +87,7 @@ export async function getTallySettings(): Promise<TallySettings> {
       income_ledger: "Lab Collection",
       mdr_expense_ledger: "Bank Charges",
       default_settlement_bank_ledger: "",
-      tally_host: "",
+      tally_host: "http://localhost:9000",
     }
   );
 }
@@ -170,84 +158,8 @@ function settlementLines(opts: {
   return lines;
 }
 
-function xmlEscape(s: string) {
-  return String(s || "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-function tallyDate(isoDate: string) {
-  return String(isoDate || "").replace(/-/g, "");
-}
-
-/** Build TallyPrime Import Data XML for one or more vouchers (no bridge/polling). */
-export function buildTallyImportXml(jobs: OutboxJob[], companyName = ""): string {
-  const companyBlock = companyName.trim()
-    ? `<STATICVARIABLES><SVCURRENTCOMPANY>${xmlEscape(companyName.trim())}</SVCURRENTCOMPANY></STATICVARIABLES>`
-    : "";
-
-  const messages = jobs
-    .map((job) => {
-      const lines = Array.isArray(job.lines) ? job.lines : [];
-      const entries = lines
-        .map((line) => {
-          const amt = Number(line.amount || 0).toFixed(2);
-          const deemed = line.is_debit ? "Yes" : "No";
-          const signed = line.is_debit ? `-${amt}` : amt;
-          return `<ALLLEDGERENTRIES.LIST>
-        <LEDGERNAME>${xmlEscape(line.ledger)}</LEDGERNAME>
-        <ISDEEMEDPOSITIVE>${deemed}</ISDEEMEDPOSITIVE>
-        <AMOUNT>${signed}</AMOUNT>
-      </ALLLEDGERENTRIES.LIST>`;
-        })
-        .join("\n");
-
-      return `<TALLYMESSAGE xmlns:UDF="TallyUDF">
-          <VOUCHER VCHTYPE="${xmlEscape(job.voucher_type || "Receipt")}" ACTION="Create" OBJVIEW="Accounting Voucher View">
-            <DATE>${tallyDate(job.voucher_date)}</DATE>
-            <NARRATION>${xmlEscape(job.narration)}</NARRATION>
-            <VOUCHERTYPENAME>${xmlEscape(job.voucher_type || "Receipt")}</VOUCHERTYPENAME>
-            ${entries}
-          </VOUCHER>
-        </TALLYMESSAGE>`;
-    })
-    .join("\n");
-
-  return `<?xml version="1.0" encoding="utf-8"?>
-<ENVELOPE>
-  <HEADER>
-    <TALLYREQUEST>Import Data</TALLYREQUEST>
-  </HEADER>
-  <BODY>
-    <IMPORTDATA>
-      <REQUESTDESC>
-        <REPORTNAME>Vouchers</REPORTNAME>
-        ${companyBlock}
-      </REQUESTDESC>
-      <REQUESTDATA>
-        ${messages}
-      </REQUESTDATA>
-    </IMPORTDATA>
-  </BODY>
-</ENVELOPE>`;
-}
-
-function downloadTextFile(filename: string, content: string, mime = "application/xml") {
-  const blob = new Blob([content], { type: mime });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-/** Create day vouchers, download Tally XML for import, mark exported. No polling service. */
-export async function queueDayCollectionToTally(
-  row: DayModeAmounts,
-): Promise<{ queued: number; skipped: number; filename: string }> {
+/** Queue one receipt voucher per payment mode with amount > 0 for the day. */
+export async function queueDayCollectionToTally(row: DayModeAmounts): Promise<{ queued: number; skipped: number }> {
   const [settings, modes] = await Promise.all([getTallySettings(), getTallyModeMap()]);
   if (!settings.income_ledger.trim()) throw new Error("Set Income ledger in Accounts → Settings → Tally");
 
@@ -255,9 +167,8 @@ export async function queueDayCollectionToTally(
   const who = getCurrentUserName() || "staff";
   let queued = 0;
   let skipped = 0;
-  const jobs: OutboxJob[] = [];
-  const outboxIds: string[] = [];
 
+  // Allow re-push after amount drift: cancel prior collection jobs for this day.
   await supabase
     .from("accounts_tally_voucher_outbox" as any)
     .update({
@@ -294,22 +205,18 @@ export async function queueDayCollectionToTally(
       amount,
     });
 
-    const { data, error } = await supabase
-      .from("accounts_tally_voucher_outbox" as any)
-      .insert({
-        kind: "collection_receipt",
-        day_key: row.dayKey,
-        mode_key: mode,
-        voucher_type: "Receipt",
-        voucher_date: row.dayKey,
-        narration,
-        amount,
-        lines,
-        status: "pending",
-        created_by: who,
-      } as any)
-      .select("id")
-      .single();
+    const { error } = await supabase.from("accounts_tally_voucher_outbox" as any).insert({
+      kind: "collection_receipt",
+      day_key: row.dayKey,
+      mode_key: mode,
+      voucher_type: "Receipt",
+      voucher_date: row.dayKey,
+      narration,
+      amount,
+      lines,
+      status: "pending",
+      created_by: who,
+    } as any);
 
     if (error) {
       if (String(error.message || "").toLowerCase().includes("duplicate") || error.code === "23505") {
@@ -318,45 +225,15 @@ export async function queueDayCollectionToTally(
       }
       throw error;
     }
-
-    jobs.push({
-      id: (data as any).id,
-      kind: "collection_receipt",
-      voucher_type: "Receipt",
-      voucher_date: row.dayKey,
-      narration,
-      amount,
-      lines,
-      day_key: row.dayKey,
-      mode_key: mode,
-    });
-    outboxIds.push((data as any).id);
     queued++;
   }
 
-  if (queued === 0) {
-    throw new Error("Nothing to export (zero amounts or already handled)");
+  if (queued === 0 && skipped > 0) {
+    throw new Error("Nothing new to queue (already pushed or zero amounts)");
   }
 
-  const filename = `Tally_Collection_${row.dayKey}.xml`;
-  const xml = buildTallyImportXml(jobs, settings.company_name);
-  downloadTextFile(filename, xml);
-
+  // Snapshot as Entered once vouchers are queued (bridge will post asynchronously).
   const now = new Date().toISOString();
-  if (outboxIds.length) {
-    await supabase
-      .from("accounts_tally_voucher_outbox" as any)
-      .update({
-        status: "sent",
-        last_error: null,
-        tally_response: "exported_xml_download",
-        updated_at: now,
-        claimed_at: null,
-        claimed_by: null,
-      } as any)
-      .in("id", outboxIds);
-  }
-
   const { data: existing } = await supabase
     .from("accounts_tally_day_status" as any)
     .select("entered_at, entered_by, verify_count")
@@ -382,7 +259,7 @@ export async function queueDayCollectionToTally(
     { onConflict: "day_key" },
   );
 
-  return { queued, skipped, filename };
+  return { queued, skipped };
 }
 
 export async function listCardSettlements(): Promise<CardSettlementRow[]> {
@@ -396,6 +273,7 @@ export async function listCardSettlements(): Promise<CardSettlementRow[]> {
   return (data || []) as CardSettlementRow[];
 }
 
+/** Gross card collection pushed to Tally minus settlements posted/queued. */
 export async function getOpenCardClearingBalance(): Promise<{
   pushedGross: number;
   settledGross: number;
@@ -442,7 +320,7 @@ export async function saveCardSettlement(input: {
 
   const open = await getOpenCardClearingBalance();
   if (gross > open.openGross + 0.005) {
-    throw new Error(`Gross exceeds open clearing (\u20b9${open.openGross.toFixed(2)})`);
+    throw new Error(`Gross exceeds open clearing (₹${open.openGross.toFixed(2)})`);
   }
 
   const mdr = num(gross - bankReceived);
@@ -467,8 +345,7 @@ export async function saveCardSettlement(input: {
   return data as CardSettlementRow;
 }
 
-/** Export settlement journal XML for Tally import. No polling service. */
-export async function pushCardSettlementToTally(settlementId: string): Promise<{ filename: string }> {
+export async function pushCardSettlementToTally(settlementId: string): Promise<void> {
   const [settings, modes] = await Promise.all([getTallySettings(), getTallyModeMap()]);
   const clearing = modes.find((m) => m.mode_key === "credit_card");
   if (!clearing?.tally_ledger.trim()) throw new Error("Set Credit Card clearing ledger in Tally settings");
@@ -482,7 +359,7 @@ export async function pushCardSettlementToTally(settlementId: string): Promise<{
   if (error) throw error;
   const s = row as CardSettlementRow;
   if (s.status === "queued" || s.status === "posted") {
-    throw new Error("Settlement already exported");
+    throw new Error("Settlement already pushed");
   }
 
   const who = getCurrentUserName() || "staff";
@@ -512,39 +389,22 @@ export async function pushCardSettlementToTally(settlementId: string): Promise<{
       narration,
       amount: Number(s.gross),
       lines,
-      status: "sent",
-      tally_response: "exported_xml_download",
+      status: "pending",
       created_by: who,
     } as any)
     .select("id")
     .single();
   if (oErr) throw oErr;
 
-  const job: OutboxJob = {
-    id: (outbox as any).id,
-    kind: "card_settlement",
-    voucher_type: "Journal",
-    voucher_date: s.settlement_date,
-    narration,
-    amount: Number(s.gross),
-    lines,
-    day_key: s.day_key,
-    mode_key: "credit_card",
-  };
-  const filename = `Tally_CardSettlement_${s.settlement_date}_${s.id.slice(0, 8)}.xml`;
-  downloadTextFile(filename, buildTallyImportXml([job], settings.company_name));
-
   const { error: uErr } = await supabase
     .from("accounts_tally_card_settlements" as any)
     .update({
-      status: "posted",
+      status: "queued",
       outbox_id: (outbox as any).id,
       updated_at: new Date().toISOString(),
     } as any)
     .eq("id", settlementId);
   if (uErr) throw uErr;
-
-  return { filename };
 }
 
 export async function listRecentTallyOutbox(limit = 50) {
