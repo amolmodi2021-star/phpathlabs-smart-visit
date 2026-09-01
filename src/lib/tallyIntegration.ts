@@ -129,6 +129,36 @@ export async function saveTallyModeMapRow(row: Partial<TallyModeMapRow> & { mode
 }
 
 /** Receipt: Account = money/bank ledger (Dr), Particulars = sales/mode ledger (Cr). */
+export function buildCollectionReceiptLines(opts: {
+  mode: TallyModeKey;
+  modeLedger: string;
+  bankLedger: string;
+  amount: number;
+}): TallyVoucherLine[] {
+  const amount = num(opts.amount);
+  const modeLedger = opts.modeLedger.trim();
+  const bankLedger = opts.bankLedger.trim();
+  if (!modeLedger) throw new Error("Mode ledger is required");
+  // Cash: Dr Cash / Cr Cash Sales (mapped). Others: Dr Axis bank / Cr mapped mode ledger.
+  const accountLedger = opts.mode === "cash" ? "Cash" : bankLedger;
+  const particularsLedger = modeLedger;
+  if (!accountLedger) throw new Error("Bank ledger is required for non-cash receipts");
+  if (accountLedger.toLowerCase() === particularsLedger.toLowerCase()) {
+    throw new Error(`Account and Particulars cannot be the same ledger (${accountLedger})`);
+  }
+  // Hard guard against the flipped mapping that broke bulk push.
+  if (opts.mode === "cash" && accountLedger !== "Cash") {
+    throw new Error("Cash receipts must debit Cash");
+  }
+  if (opts.mode !== "cash" && accountLedger.toLowerCase() === modeLedger.toLowerCase()) {
+    throw new Error("Non-cash receipts must debit the bank ledger, not the mode ledger");
+  }
+  return [
+    { ledger: accountLedger, is_debit: true, amount },
+    { ledger: particularsLedger, is_debit: false, amount },
+  ];
+}
+
 function receiptLines(opts: {
   accountLedger: string;
   particularsLedger: string;
@@ -204,19 +234,14 @@ export async function queueDayCollectionToTally(row: DayModeAmounts): Promise<{ 
     // Other modes: Account = bank ledger (Axis Bank Ltd.), Particulars = mode ledger.
     const bankLedger =
       settings.default_settlement_bank_ledger.trim() || settings.income_ledger.trim();
-    const accountLedger = mode === "cash" ? "Cash" : bankLedger;
-    const particularsLedger = modeLedger;
-    if (!accountLedger) {
-      throw new Error(
-        mode === "cash"
-          ? "Cash account ledger missing"
-          : "Set bank ledger (Axis Bank Ltd.) in Accounts -> Settings -> Tally",
-      );
+    if (mode !== "cash" && !bankLedger) {
+      throw new Error("Set bank ledger (Axis Bank Ltd.) in Accounts -> Settings -> Tally");
     }
     const narration = `LIMS daily collection ${row.dayKey} - ${map.label}`;
-    const lines = receiptLines({
-      accountLedger,
-      particularsLedger,
+    const lines = buildCollectionReceiptLines({
+      mode,
+      modeLedger,
+      bankLedger,
       amount,
     });
 

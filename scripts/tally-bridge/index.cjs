@@ -87,6 +87,11 @@ function eduSafeVoucherDate(isoDate, enabled) {
   return `${ys}-${ms}-${String(last).padStart(2, "0")}`;
 }
 
+function isDebitLine(line) {
+  // Strict: only true boolean/string/1 counts as debit (avoids truthy junk flipping sides).
+  return line?.is_debit === true || line?.is_debit === "true" || line?.is_debit === 1;
+}
+
 function buildVoucherXml(job, company, cfg = {}) {
   const lines = Array.isArray(job.lines) ? job.lines : [];
   const voucherDateIso = eduSafeVoucherDate(job.voucher_date, !!cfg.edu_date_workaround);
@@ -97,8 +102,8 @@ function buildVoucherXml(job, company, cfg = {}) {
   const entries = lines
     .map((line) => {
       const amt = Number(line.amount || 0).toFixed(2);
-      const deemed = line.is_debit ? "Yes" : "No";
-      const signed = line.is_debit ? `-${amt}` : amt;
+      const deemed = isDebitLine(line) ? "Yes" : "No";
+      const signed = isDebitLine(line) ? `-${amt}` : amt;
       return `<ALLLEDGERENTRIES.LIST>
         <LEDGERNAME>${xmlEscape(line.ledger)}</LEDGERNAME>
         <ISDEEMEDPOSITIVE>${deemed}</ISDEEMEDPOSITIVE>
@@ -129,7 +134,7 @@ function buildVoucherXml(job, company, cfg = {}) {
             <EFFECTIVEDATE>${tallyDate(voucherDateIso)}</EFFECTIVEDATE>
             <NARRATION>${xmlEscape((job.narration || "") + dateNote)}</NARRATION>
             <VOUCHERTYPENAME>${xmlEscape(job.voucher_type || "Receipt")}</VOUCHERTYPENAME>
-            <PARTYLEDGERNAME>${xmlEscape((lines.find((l) => l.is_debit) || lines[0] || {}).ledger || "")}</PARTYLEDGERNAME>
+            <PARTYLEDGERNAME>${xmlEscape((lines.find((l) => isDebitLine(l)) || lines[0] || {}).ledger || "")}</PARTYLEDGERNAME>
             <PERSISTEDVIEW>Accounting Voucher View</PERSISTEDVIEW>
             ${entries}
           </VOUCHER>
