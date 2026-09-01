@@ -28,6 +28,72 @@ async function fetchAll(buildQuery: (from: number, to: number) => any): Promise<
   return out;
 }
 
+async function fetchAbnormalParameterCatalog() {
+  const supabase = sb();
+  const rows = await fetchAll((f, t) =>
+    supabase
+      .from("report_test_parameters")
+      .select("parameter_name")
+      .eq("is_active", true)
+      .order("parameter_name", { ascending: true })
+      .range(f, t),
+  );
+  const seen = new Set<string>();
+  const data: Array<{ id: string; name: string; code: string }> = [];
+  for (const r of rows) {
+    const name = String(r.parameter_name || "").trim();
+    if (!name) continue;
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    data.push({
+      id: name,
+      name,
+      code: "",
+    });
+  }
+  return data;
+}
+
+async function fetchAbnormalResults(opts: {
+  names: string[];
+  fromDate: string;
+  afterInvoice: string;
+}) {
+  const supabase = sb();
+  const names = [...new Set(opts.names.map((n) => n.trim()).filter(Boolean))];
+  const afterInvoice = opts.afterInvoice || "2608100018";
+  const fromDate = opts.fromDate || null;
+
+  const rows = await fetchAll((f, t) =>
+    supabase
+      .rpc("desktop_abnormal_results", {
+        p_names: names,
+        p_from: fromDate,
+        p_after_invoice: afterInvoice,
+      })
+      .range(f, t),
+  );
+
+  const data = (rows as any[])
+    .map((row) => ({
+      umr_number: String(row.umr_number || "").trim(),
+      mobile_number: String(row.mobile_number || "").trim(),
+      parameter_name: String(row.parameter_name || "").trim(),
+      result_value: String(row.result_value || "").trim(),
+      reference_range: String(row.reference_range || "").trim(),
+      result_date: String(row.result_date || ""),
+    }))
+    .filter((r) => r.umr_number && r.parameter_name);
+
+  return {
+    after_invoice: afterInvoice,
+    from_date: fromDate,
+    count: { results: data.length, parameters: names.length },
+    data,
+  };
+}
+
 function requireApiKey(req: Request): Response | null {
   // Local demo fallback when edge container wasn't recreated with secrets.
   const expected =
@@ -252,7 +318,7 @@ async function listStorageFolderObjects(
  * Storage objects. Only sweep true Storage orphans after a grace period so
  * in-flight uploads are never removed before the outbox row can claim them.
  *
- * Call from the Console/Reception 30‑minute prune timer (or explicit prune_outbox).
+ * Call from the Console/Reception 60‑minute prune timer (or explicit prune_outbox).
  * Do NOT run on every idle claim — that caused massive PostgREST egress via
  * repeated cloudinary_accounts lookups.
  */
@@ -432,7 +498,7 @@ async function claimOutbox(limit = 5, claimedBy = "whatsapp-console") {
   if (error) throw error;
   const rows = pending || [];
 
-  // Idle claim must NOT prune — Reception already runs prune on a 30‑minute timer.
+  // Idle claim must NOT prune — Reception already runs prune on a 60‑minute timer.
   // Pruning here caused ~145k cloudinary_accounts PostgREST calls (Database Egress).
   if (!rows.length) return [];
 
@@ -467,6 +533,109 @@ async function claimOutbox(limit = 5, claimedBy = "whatsapp-console") {
     if (!updErr && data) claimed.push(data);
   }
   return claimed;
+}
+
+/** Claim pending Tally voucher jobs for the Windows Tally bridge. */
+async function claimTallyOutbox(limit = 5, claimedBy = "tally-bridge") {
+  const supabase = sb();
+  const lim = Math.min(Math.max(Number(limit) || 5, 1), 25);
+  const nowIso = new Date().toISOString();
+
+  // Reclaim stuck claimed rows older than 10 minutes
+  const stuckBefore = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+  await supabase
+    .from("accounts_tally_voucher_outbox")
+    .update({
+      status: "pending",
+      claimed_at: null,
+      claimed_by: null,
+      updated_at: nowIso,
+      last_error: "reclaimed_stuck_claim",
+    })
+    .eq("status", "claimed")
+    .lt("claimed_at", stuckBefore);
+
+  const { data: pending, error } = await supabase
+    .from("accounts_tally_voucher_outbox")
+    .select("*")
+    .eq("status", "pending")
+    .or(`next_retry_at.is.null,next_retry_at.lte."${nowIso}"`)
+    .order("created_at", { ascending: true })
+    .limit(lim);
+  if (error) throw error;
+
+  const claimed: any[] = [];
+  for (const row of pending || []) {
+    const { data, error: updErr } = await supabase
+      .from("accounts_tally_voucher_outbox")
+      .update({
+        status: "claimed",
+        claimed_at: nowIso,
+        claimed_by: claimedBy,
+        attempts: (row.attempts || 0) + 1,
+        next_retry_at: null,
+        updated_at: nowIso,
+      })
+      .eq("id", row.id)
+      .eq("status", "pending")
+      .select("*")
+      .maybeSingle();
+    if (!updErr && data) claimed.push(data);
+  }
+  return claimed;
+}
+
+async function completeTallyOutbox(
+  id: string,
+  status: "sent" | "failed" | "pending",
+  lastError?: string | null,
+  tallyResponse?: string | null,
+) {
+  const supabase = sb();
+  const now = new Date().toISOString();
+  const { data: existing } = await supabase
+    .from("accounts_tally_voucher_outbox")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+  if (!existing) throw new Error("tally outbox row not found");
+
+  const attempts = Number(existing.attempts || 0);
+  const maxAttempts = Number(existing.max_attempts || 3);
+  let finalStatus: string = status;
+  let nextRetry: string | null = null;
+
+  if (status === "failed" && attempts < maxAttempts) {
+    finalStatus = "pending";
+    nextRetry = new Date(Date.now() + Math.min(30 * Math.pow(2, attempts), 900) * 1000).toISOString();
+  }
+
+  const { data, error } = await supabase
+    .from("accounts_tally_voucher_outbox")
+    .update({
+      status: finalStatus,
+      last_error: lastError ?? null,
+      tally_response: tallyResponse ?? existing.tally_response ?? null,
+      claimed_at: finalStatus === "pending" ? null : existing.claimed_at,
+      claimed_by: finalStatus === "pending" ? null : existing.claimed_by,
+      next_retry_at: nextRetry,
+      updated_at: now,
+    })
+    .eq("id", id)
+    .select("*")
+    .maybeSingle();
+  if (error) throw error;
+
+  if (existing.kind === "card_settlement" && existing.settlement_id) {
+    const settlementStatus =
+      finalStatus === "sent" ? "posted" : finalStatus === "failed" ? "failed" : "queued";
+    await supabase
+      .from("accounts_tally_card_settlements")
+      .update({ status: settlementStatus, updated_at: now })
+      .eq("id", existing.settlement_id);
+  }
+
+  return data;
 }
 
 function retryDelaySeconds(attempts: number): number {
@@ -594,6 +763,11 @@ Deno.serve(async (req) => {
         return json({ ok: true, count: jobs.length, data: jobs, idle: jobs.length === 0 });
       }
 
+      if (action === "claim_tally_outbox" || action === "claim_tally") {
+        const jobs = await claimTallyOutbox(body?.limit, body?.claimed_by || "tally-bridge");
+        return json({ ok: true, count: jobs.length, data: jobs, idle: jobs.length === 0 });
+      }
+
       if (action === "prune_outbox") {
         const result = await pruneInvoiceOutbox24h();
         return json({ ok: true, ...result });
@@ -618,6 +792,22 @@ Deno.serve(async (req) => {
           status as "sent" | "failed" | "pending",
           body?.error ?? body?.last_error,
           { ack, via: body?.via != null ? String(body.via) : null },
+        );
+        return json({ ok: true, data: row });
+      }
+
+      if (action === "complete_tally_outbox" || action === "complete_tally") {
+        const id = String(body?.id || "");
+        const status = String(body?.status || "sent").toLowerCase();
+        if (!id) return json({ error: "id required" }, 400);
+        if (!["sent", "failed", "pending"].includes(status)) {
+          return json({ error: "status must be sent|failed|pending" }, 400);
+        }
+        const row = await completeTallyOutbox(
+          id,
+          status as "sent" | "failed" | "pending",
+          body?.error ?? body?.last_error,
+          body?.tally_response != null ? String(body.tally_response) : null,
         );
         return json({ ok: true, data: row });
       }
@@ -672,6 +862,22 @@ Deno.serve(async (req) => {
           if (!error) cleared += 1;
         }
         return json({ ok: true, cleared });
+      }
+
+      if (action === "abnormal_results" || action === "abnormal" || action === "sync_abnormal") {
+        const names = Array.isArray(body?.parameter_names)
+          ? (body.parameter_names as unknown[]).map((n) => String(n || "").trim()).filter(Boolean)
+          : String(body?.parameter_names || "")
+              .split(",")
+              .map((n) => n.trim())
+              .filter(Boolean);
+        if (!names.length) {
+          return json({ error: "parameter_names required (select parameters in Abnormal tab)" }, 400);
+        }
+        const fromDate = String(body?.from_date || "").trim();
+        const afterInvoice = String(body?.after_invoice || "2608100018").trim() || "2608100018";
+        const result = await fetchAbnormalResults({ names, fromDate, afterInvoice });
+        return json({ ok: true, ...result });
       }
 
       return json({ error: `Unknown action: ${action}` }, 400);
@@ -734,6 +940,44 @@ Deno.serve(async (req) => {
         count: { outbox: active.length, failed: failed.length, sent: (sentRows || []).length, total: data.length },
         data,
         mode: "realtime_queue",
+      });
+    }
+
+    if (type === "abnormal_parameters" || type === "abnormal_params") {
+      const data = await fetchAbnormalParameterCatalog();
+      return json({ ok: true, count: { parameters: data.length }, data });
+    }
+
+    if (type === "abnormal_results") {
+      const names = (url.searchParams.get("parameter_names") || "")
+        .split(",")
+        .map((n) => n.trim())
+        .filter(Boolean);
+      if (!names.length) {
+        return json({ error: "parameter_names required (select parameters in Abnormal tab)" }, 400);
+      }
+      const fromDate = (url.searchParams.get("from_date") || "").trim();
+      const afterInvoice =
+        (url.searchParams.get("after_invoice") || "2608100018").trim() || "2608100018";
+      const result = await fetchAbnormalResults({ names, fromDate, afterInvoice });
+      return json({ ok: true, ...result });
+    }
+
+    // Today's birthdays: Registered Patients + legacy completed home-visit master.
+    if (type === "today_birthdays" || type === "birthdays") {
+      const { data, error } = await supabase.rpc("desktop_today_birthdays");
+      if (error) return json({ error: error.message }, 500);
+      const rows = Array.isArray(data) ? data : [];
+      return json({
+        ok: true,
+        count: { birthdays: rows.length },
+        data: rows.map((r: any) => ({
+          title: String(r.title || "").trim(),
+          patient_name: String(r.patient_name || "").trim(),
+          dob: r.dob || null,
+          mobile_number: String(r.mobile_number || "").trim(),
+          source: String(r.source || "").trim() || "registered",
+        })),
       });
     }
 

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,12 @@ import { toast } from "sonner";
 import { Plus, Pencil } from "lucide-react";
 import { getCurrentUserName } from "@/lib/auth";
 import CloudinaryAccountsPanel from "@/components/lims/CloudinaryAccountsPanel";
+import {
+  getTallyModeMap,
+  getTallySettings,
+  saveTallyModeMapRow,
+  saveTallySettings,
+} from "@/lib/tallyIntegration";
 
 type Company = { id: string; name: string; tds_percent: number; is_active: boolean };
 type Bank = { id: string; name: string; is_active: boolean };
@@ -634,9 +640,151 @@ function EmailPoBrandingSection() {
   );
 }
 
+function TallyIntegrationSection() {
+  const qc = useQueryClient();
+  const { data: settings, isLoading: settingsLoading } = useQuery({
+    queryKey: ["accounts_tally_settings"],
+    queryFn: getTallySettings,
+  });
+  const { data: modes = [], isLoading: modesLoading } = useQuery({
+    queryKey: ["accounts_tally_mode_map"],
+    queryFn: getTallyModeMap,
+  });
+
+  const [companyName, setCompanyName] = useState("");
+  const [incomeLedger, setIncomeLedger] = useState("Lab Collection");
+  const [mdrLedger, setMdrLedger] = useState("Bank Charges");
+  const [settlementBank, setSettlementBank] = useState("");
+  const [tallyHost, setTallyHost] = useState("http://localhost:9000");
+  const [modeLedgers, setModeLedgers] = useState<Record<string, string>>({});
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => {
+    if (!settings || modesLoading) return;
+    setCompanyName(settings.company_name || "");
+    setIncomeLedger(settings.income_ledger || "Lab Collection");
+    setMdrLedger(settings.mdr_expense_ledger || "Bank Charges");
+    setSettlementBank(settings.default_settlement_bank_ledger || "");
+    setTallyHost(settings.tally_host || "http://localhost:9000");
+    const map: Record<string, string> = {};
+    for (const m of modes) map[m.mode_key] = m.tally_ledger || "";
+    setModeLedgers(map);
+    setHydrated(true);
+  }, [settings, modes, modesLoading]);
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      await saveTallySettings({
+        company_name: companyName.trim(),
+        income_ledger: incomeLedger.trim(),
+        mdr_expense_ledger: mdrLedger.trim(),
+        default_settlement_bank_ledger: settlementBank.trim(),
+        tally_host: tallyHost.trim() || "http://localhost:9000",
+      });
+      for (const m of modes) {
+        await saveTallyModeMapRow({
+          mode_key: m.mode_key,
+          label: m.label,
+          tally_ledger: (modeLedgers[m.mode_key] ?? m.tally_ledger).trim(),
+          uses_clearing: m.uses_clearing,
+          is_active: m.is_active,
+          sort_order: m.sort_order,
+        });
+      }
+    },
+    onSuccess: () => {
+      toast.success("Tally settings saved");
+      qc.invalidateQueries({ queryKey: ["accounts_tally_settings"] });
+      qc.invalidateQueries({ queryKey: ["accounts_tally_mode_map"] });
+    },
+    onError: (e: Error) => toast.error(e.message || "Save failed"),
+  });
+
+  const loading = settingsLoading || modesLoading || !hydrated;
+
+  return (
+    <Card>
+      <CardHeader className="py-3">
+        <CardTitle className="text-base">TallyPrime</CardTitle>
+        <p className="text-sm text-muted-foreground">
+          Map LIMS payment modes to Tally ledger names. Credit Card uses a clearing ledger; bank credit is entered later
+          on Card Settlement (no fixed MDR %).
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {loading ? (
+          <p className="text-sm text-muted-foreground">Loading…</p>
+        ) : (
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs">Tally company name</Label>
+                <Input value={companyName} onChange={(e) => setCompanyName(e.target.value)} className="h-9" />
+              </div>
+              <div>
+                <Label className="text-xs">Tally XML host (bridge PC)</Label>
+                <Input value={tallyHost} onChange={(e) => setTallyHost(e.target.value)} className="h-9" />
+              </div>
+              <div>
+                <Label className="text-xs">Income / Lab Collection ledger</Label>
+                <Input value={incomeLedger} onChange={(e) => setIncomeLedger(e.target.value)} className="h-9" />
+              </div>
+              <div>
+                <Label className="text-xs">MDR / Bank Charges ledger</Label>
+                <Input value={mdrLedger} onChange={(e) => setMdrLedger(e.target.value)} className="h-9" />
+              </div>
+              <div className="md:col-span-2">
+                <Label className="text-xs">Default settlement bank ledger</Label>
+                <Input value={settlementBank} onChange={(e) => setSettlementBank(e.target.value)} className="h-9" />
+              </div>
+            </div>
+
+            <div className="border-t pt-3 space-y-2">
+              <p className="text-xs font-medium text-muted-foreground">Payment mode → Tally ledger</p>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Mode</TableHead>
+                    <TableHead>Tally ledger</TableHead>
+                    <TableHead>Clearing?</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {modes.map((m) => (
+                    <TableRow key={m.mode_key}>
+                      <TableCell>{m.label}</TableCell>
+                      <TableCell>
+                        <Input
+                          className="h-8"
+                          value={modeLedgers[m.mode_key] ?? m.tally_ledger}
+                          onChange={(e) =>
+                            setModeLedgers((prev) => ({ ...prev, [m.mode_key]: e.target.value }))
+                          }
+                        />
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {m.uses_clearing ? "Yes (settle later)" : "No"}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+
+            <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
+              {saveMutation.isPending ? "Saving…" : "Save Tally settings"}
+            </Button>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function AccountsSettings() {
   return (
     <div className="space-y-4 max-h-[calc(100vh-8rem)] overflow-y-auto pr-1 pb-4">
+      <TallyIntegrationSection />
       <CompaniesSection />
       <NamedListSection title="Banks" table="accounts_banks" queryKey="accounts_banks" />
       <PaymentModesSection />

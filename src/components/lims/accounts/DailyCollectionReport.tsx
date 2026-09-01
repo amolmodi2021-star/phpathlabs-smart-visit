@@ -9,11 +9,12 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Download, ChevronLeft, ChevronRight, Filter } from "lucide-react";
+import { Loader2, Download, ChevronLeft, ChevronRight, Filter, Send } from "lucide-react";
 import { toast } from "sonner";
 import { isHiddenDailyReportType, paymentRowPaid } from "@/lib/dailyReportMetrics";
 import { getCurrentUserName } from "@/lib/auth";
 import { cn } from "@/lib/utils";
+import { queueDayCollectionToTally } from "@/lib/tallyIntegration";
 
 type DayRow = {
   dayKey: string;
@@ -303,6 +304,26 @@ const DailyCollectionReport = () => {
     onError: (e: any) => toast.error(e?.message || "Failed to update Tally status"),
   });
 
+  const pushMutation = useMutation({
+    mutationFn: (row: DayRow) =>
+      queueDayCollectionToTally({
+        dayKey: row.dayKey,
+        cash: row.cash,
+        gpay: row.gpay,
+        paytm: row.paytm,
+        neft: row.neft,
+        creditCard: row.creditCard,
+        paid: row.paid,
+      }),
+    onSuccess: (res) => {
+      toast.success(`Queued ${res.queued} voucher(s) for Tally bridge`);
+      qc.invalidateQueries({ queryKey: ["accounts_tally_day_status"] });
+      qc.invalidateQueries({ queryKey: ["accounts_tally_voucher_outbox"] });
+      qc.invalidateQueries({ queryKey: ["tally_open_card_clearing"] });
+    },
+    onError: (e: Error) => toast.error(e.message || "Push to Tally failed"),
+  });
+
   const sameDay = effectiveFrom === effectiveTo;
   const canGoNext = sameDay && format(addDays(parseISO(effectiveFrom), 1), "yyyy-MM-dd") <= latestAllowed;
 
@@ -501,27 +522,52 @@ const DailyCollectionReport = () => {
                             {tallyStatusLabel(r, st)}
                           </Badge>
                           {ui === "unentered" && (
-                            <Button
-                              type="button"
-                              size="sm"
-                              className="h-7"
-                              disabled={markMutation.isPending}
-                              onClick={() => markMutation.mutate({ row: r, mode: "enter" })}
-                            >
-                              Mark Entered
-                            </Button>
+                            <>
+                              <Button
+                                type="button"
+                                size="sm"
+                                className="h-7"
+                                disabled={pushMutation.isPending}
+                                onClick={() => pushMutation.mutate(r)}
+                              >
+                                <Send className="h-3.5 w-3.5 mr-1" />
+                                Push to Tally
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="h-7"
+                                disabled={markMutation.isPending}
+                                onClick={() => markMutation.mutate({ row: r, mode: "enter" })}
+                              >
+                                Mark Entered
+                              </Button>
+                            </>
                           )}
                           {ui === "reverify" && (
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="destructive"
-                              className="h-7"
-                              disabled={markMutation.isPending}
-                              onClick={() => markMutation.mutate({ row: r, mode: "reverify" })}
-                            >
-                              Reverify
-                            </Button>
+                            <>
+                              <Button
+                                type="button"
+                                size="sm"
+                                className="h-7"
+                                disabled={pushMutation.isPending}
+                                onClick={() => pushMutation.mutate(r)}
+                              >
+                                <Send className="h-3.5 w-3.5 mr-1" />
+                                Re-push to Tally
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="destructive"
+                                className="h-7"
+                                disabled={markMutation.isPending}
+                                onClick={() => markMutation.mutate({ row: r, mode: "reverify" })}
+                              >
+                                Reverify
+                              </Button>
+                            </>
                           )}
                         </div>
                       </TableCell>

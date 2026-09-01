@@ -112,6 +112,7 @@ const ALL_TABS = [
   { route: "/accounts", label: "Accounts",
     sections: [
       { key: "daily_collection", label: "Daily Collection" },
+      { key: "card_settlement", label: "Card Settlement" },
       { key: "purchase", label: "Purchase" },
       { key: "po", label: "PO Generator" },
       { key: "settings", label: "Settings" },

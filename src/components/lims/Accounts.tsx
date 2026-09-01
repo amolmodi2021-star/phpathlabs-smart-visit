@@ -2,12 +2,14 @@ import { useMemo, useState } from "react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getAllowedSections } from "@/lib/auth";
 import DailyCollectionReport from "@/components/lims/accounts/DailyCollectionReport";
+import CardSettlement from "@/components/lims/accounts/CardSettlement";
 import PurchaseInvoices from "@/components/lims/accounts/PurchaseInvoices";
 import PurchaseOrders from "@/components/lims/accounts/PurchaseOrders";
 import AccountsSettings from "@/components/lims/accounts/AccountsSettings";
 
 const ALL_ACCOUNT_TABS = [
   { key: "daily_collection", label: "Daily Collection" },
+  { key: "card_settlement", label: "Card Settlement" },
   { key: "purchase", label: "Purchase" },
   { key: "po", label: "PO Generator" },
   { key: "settings", label: "Settings" },
@@ -59,6 +61,7 @@ const Accounts = () => {
       </div>
 
       {safeTab === "daily_collection" && <DailyCollectionReport />}
+      {safeTab === "card_settlement" && <CardSettlement />}
       {safeTab === "purchase" && <PurchaseInvoices />}
       {safeTab === "po" && <PurchaseOrders />}
       {safeTab === "settings" && <AccountsSettings />}
