@@ -655,7 +655,6 @@ function TallyIntegrationSection() {
   const [incomeLedger, setIncomeLedger] = useState("Lab Collection");
   const [mdrLedger, setMdrLedger] = useState("Bank Charges");
   const [settlementBank, setSettlementBank] = useState("");
-  const [tallyHost, setTallyHost] = useState("http://localhost:9000");
   const [modeLedgers, setModeLedgers] = useState<Record<string, string>>({});
   const [hydrated, setHydrated] = useState(false);
 
@@ -665,7 +664,6 @@ function TallyIntegrationSection() {
     setIncomeLedger(settings.income_ledger || "Lab Collection");
     setMdrLedger(settings.mdr_expense_ledger || "Bank Charges");
     setSettlementBank(settings.default_settlement_bank_ledger || "");
-    setTallyHost(settings.tally_host || "http://localhost:9000");
     const map: Record<string, string> = {};
     for (const m of modes) map[m.mode_key] = m.tally_ledger || "";
     setModeLedgers(map);
@@ -679,7 +677,6 @@ function TallyIntegrationSection() {
         income_ledger: incomeLedger.trim(),
         mdr_expense_ledger: mdrLedger.trim(),
         default_settlement_bank_ledger: settlementBank.trim(),
-        tally_host: tallyHost.trim() || "http://localhost:9000",
       });
       for (const m of modes) {
         await saveTallyModeMapRow({
@@ -708,7 +705,7 @@ function TallyIntegrationSection() {
         <CardTitle className="text-base">TallyPrime</CardTitle>
         <p className="text-sm text-muted-foreground">
           Map LIMS payment modes to Tally ledger names. Credit Card uses a clearing ledger; bank credit is entered later
-          on Card Settlement (no fixed MDR %).
+          on Card Settlement (no fixed MDR %). Export downloads an XML file to import in TallyPrime — no polling service.
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -722,10 +719,6 @@ function TallyIntegrationSection() {
                 <Input value={companyName} onChange={(e) => setCompanyName(e.target.value)} className="h-9" />
               </div>
               <div>
-                <Label className="text-xs">Tally XML host (bridge PC)</Label>
-                <Input value={tallyHost} onChange={(e) => setTallyHost(e.target.value)} className="h-9" />
-              </div>
-              <div>
                 <Label className="text-xs">Income / Lab Collection ledger</Label>
                 <Input value={incomeLedger} onChange={(e) => setIncomeLedger(e.target.value)} className="h-9" />
               </div>
@@ -733,7 +726,7 @@ function TallyIntegrationSection() {
                 <Label className="text-xs">MDR / Bank Charges ledger</Label>
                 <Input value={mdrLedger} onChange={(e) => setMdrLedger(e.target.value)} className="h-9" />
               </div>
-              <div className="md:col-span-2">
+              <div>
                 <Label className="text-xs">Default settlement bank ledger</Label>
                 <Input value={settlementBank} onChange={(e) => setSettlementBank(e.target.value)} className="h-9" />
               </div>
