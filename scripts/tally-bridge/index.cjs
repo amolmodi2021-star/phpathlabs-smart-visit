@@ -200,6 +200,7 @@ function guessLedgerParent(ledgerName, cfg) {
   const mdr = String(cfg.mdr_expense_ledger || "Bank Charges").trim().toLowerCase();
   if (!n) return "Suspense A/c";
   if (n === "cash" || n.includes("cash-in-hand")) return "Cash-in-Hand";
+  if (n === "suspense a/c" || n.includes("suspense")) return "Current Assets";
   if (n === income || n.includes("lab collection") || n.includes("income")) return "Direct Incomes";
   if (n === mdr || n.includes("bank charge") || n.includes("mdr")) return "Indirect Expenses";
   if (n.includes("clearing") || n.includes("credit card")) return "Current Assets";
