@@ -652,18 +652,14 @@ function TallyIntegrationSection() {
   });
 
   const [companyName, setCompanyName] = useState("");
-  const [incomeLedger, setIncomeLedger] = useState("Lab Collection");
-  const [mdrLedger, setMdrLedger] = useState("Bank Charges");
-  const [settlementBank, setSettlementBank] = useState("");
+  const [bankLedger, setBankLedger] = useState("");
   const [modeLedgers, setModeLedgers] = useState<Record<string, string>>({});
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
     if (!settings || modesLoading) return;
     setCompanyName(settings.company_name || "");
-    setIncomeLedger(settings.income_ledger || "Lab Collection");
-    setMdrLedger(settings.mdr_expense_ledger || "Bank Charges");
-    setSettlementBank(settings.default_settlement_bank_ledger || "");
+    setBankLedger(settings.default_settlement_bank_ledger || "");
     const map: Record<string, string> = {};
     for (const m of modes) map[m.mode_key] = m.tally_ledger || "";
     setModeLedgers(map);
@@ -672,11 +668,19 @@ function TallyIntegrationSection() {
 
   const saveMutation = useMutation({
     mutationFn: async () => {
+      const bank = bankLedger.trim();
+      if (!companyName.trim()) throw new Error("Enter Tally company name");
+      if (!bank) throw new Error("Enter bank ledger (e.g. Axis Bank Ltd.)");
+      for (const m of modes) {
+        const ledger = (modeLedgers[m.mode_key] ?? m.tally_ledger).trim();
+        if (!ledger) throw new Error(`Enter Tally ledger for ${m.label}`);
+      }
       await saveTallySettings({
         company_name: companyName.trim(),
-        income_ledger: incomeLedger.trim(),
-        mdr_expense_ledger: mdrLedger.trim(),
-        default_settlement_bank_ledger: settlementBank.trim(),
+        default_settlement_bank_ledger: bank,
+        // Keep unused legacy fields intact for card settlement / older jobs.
+        income_ledger: settings?.income_ledger || bank,
+        mdr_expense_ledger: settings?.mdr_expense_ledger || "Bank Charges",
       });
       for (const m of modes) {
         await saveTallyModeMapRow({
@@ -698,14 +702,15 @@ function TallyIntegrationSection() {
   });
 
   const loading = settingsLoading || modesLoading || !hydrated;
+  const modeHint = (key: string) =>
+    key === "cash" ? "Particulars (Account is always Cash)" : "Particulars (Account is bank above)";
 
   return (
     <Card>
       <CardHeader className="py-3">
         <CardTitle className="text-base">TallyPrime</CardTitle>
         <p className="text-sm text-muted-foreground">
-          Cash: Account = Cash, Particulars = Cash Sales. Other modes: Account = bank ledger
-          (Axis Bank Ltd.), Particulars = mode ledger. Exact LIMS amounts.
+          Set the company, bank account, and one ledger name per payment mode.
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -715,42 +720,43 @@ function TallyIntegrationSection() {
           <>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div>
-                <Label className="text-xs">Tally company name</Label>
-                <Input value={companyName} onChange={(e) => setCompanyName(e.target.value)} className="h-9" />
+                <Label className="text-xs">Tally company</Label>
+                <Input
+                  value={companyName}
+                  onChange={(e) => setCompanyName(e.target.value)}
+                  className="h-9"
+                  placeholder="P. H. PATHLABS PRIVATE LIMITED"
+                />
               </div>
               <div>
-                <Label className="text-xs">Bank ledger (Account for GPay / Paytm / NEFT / Card)</Label>
+                <Label className="text-xs">Bank account (GPay / Paytm / NEFT / Card)</Label>
                 <Input
-                  value={settlementBank}
-                  onChange={(e) => setSettlementBank(e.target.value)}
+                  value={bankLedger}
+                  onChange={(e) => setBankLedger(e.target.value)}
                   className="h-9"
                   placeholder="Axis Bank Ltd."
                 />
               </div>
-              <div>
-                <Label className="text-xs">MDR / Bank Charges ledger</Label>
-                <Input value={mdrLedger} onChange={(e) => setMdrLedger(e.target.value)} className="h-9" />
-              </div>
-              <div>
-                <Label className="text-xs">Fallback income ledger (unused if bank set)</Label>
-                <Input value={incomeLedger} onChange={(e) => setIncomeLedger(e.target.value)} className="h-9" />
-              </div>
             </div>
 
-            <div className="border-t pt-3 space-y-2">
-              <p className="text-xs font-medium text-muted-foreground">Payment mode → Tally ledger</p>
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-muted-foreground">Payment mode ledgers</p>
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Mode</TableHead>
+                    <TableHead className="w-[140px]">Mode</TableHead>
                     <TableHead>Tally ledger</TableHead>
-                    <TableHead>Clearing?</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {modes.map((m) => (
                     <TableRow key={m.mode_key}>
-                      <TableCell>{m.label}</TableCell>
+                      <TableCell className="align-top">
+                        <div className="font-medium text-sm">{m.label}</div>
+                        <div className="text-[11px] text-muted-foreground leading-snug mt-0.5">
+                          {modeHint(m.mode_key)}
+                        </div>
+                      </TableCell>
                       <TableCell>
                         <Input
                           className="h-8"
@@ -758,10 +764,8 @@ function TallyIntegrationSection() {
                           onChange={(e) =>
                             setModeLedgers((prev) => ({ ...prev, [m.mode_key]: e.target.value }))
                           }
+                          placeholder={m.mode_key === "cash" ? "Cash Sales" : m.label}
                         />
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
-                        "No"
                       </TableCell>
                     </TableRow>
                   ))}
@@ -770,7 +774,7 @@ function TallyIntegrationSection() {
             </div>
 
             <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
-              {saveMutation.isPending ? "Saving…" : "Save Tally settings"}
+              {saveMutation.isPending ? "Saving…" : "Save"}
             </Button>
           </>
         )}
