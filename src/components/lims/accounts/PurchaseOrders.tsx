@@ -56,8 +56,13 @@ import {
 
 type PoStatus = "open" | "partial" | "closed" | "cancelled";
 
-type Company = { id: string; name: string };
-type Vendor = { id: string; name: string };
+type Company = {
+  id: string;
+  name: string;
+  address?: string;
+  contact_person?: string;
+  contact_number?: string;
+};
 
 type PoItemRow = {
   id: string;
@@ -85,7 +90,12 @@ type PurchaseOrder = {
   logo_url: string | null;
   email_to: string | null;
   email_sent_at: string | null;
-  accounts_companies?: { name: string } | null;
+  accounts_companies?: {
+    name: string;
+    address?: string | null;
+    contact_person?: string | null;
+    contact_number?: string | null;
+  } | null;
   accounts_po_items?: PoItemRow[];
 };
 
@@ -202,35 +212,19 @@ async function generatePoNumber(poDate: string): Promise<string> {
   return `${prefix}${String(Math.floor(1000 + Math.random() * 9000))}`;
 }
 
-async function resolveVendorId(vendorName: string): Promise<{ id: string | null; name: string }> {
-  const trimmed = vendorName.trim();
-  if (!trimmed) throw new Error("Vendor name is required");
-
-  const { data: existing } = await supabase
-    .from("accounts_vendors")
-    .select("id, name")
-    .ilike("name", trimmed)
-    .maybeSingle();
-
-  if (existing?.id) return { id: existing.id, name: existing.name };
-
-  const { data: created, error } = await supabase
-    .from("accounts_vendors")
-    .insert({ name: trimmed })
-    .select("id, name")
-    .single();
-
-  if (error) {
-    const { data: retry } = await supabase
-      .from("accounts_vendors")
-      .select("id, name")
-      .ilike("name", trimmed)
-      .maybeSingle();
-    if (retry?.id) return { id: retry.id, name: retry.name };
-    throw error;
-  }
-  return { id: created.id, name: created.name };
-}
+type PdfPo = {
+  po_number: string;
+  po_date: string;
+  company_name: string;
+  company_address: string;
+  contact_person: string;
+  contact_number: string;
+  notes: string | null;
+  brand_primary: string;
+  brand_accent: string;
+  logo_url: string | null;
+  items: PoItemRow[];
+};
 
 async function loadImageAsDataUrl(url: string): Promise<string | null> {
   try {
@@ -247,18 +241,6 @@ async function loadImageAsDataUrl(url: string): Promise<string | null> {
     return null;
   }
 }
-
-type PdfPo = {
-  po_number: string;
-  po_date: string;
-  vendor_name: string;
-  company_name: string;
-  notes: string | null;
-  brand_primary: string;
-  brand_accent: string;
-  logo_url: string | null;
-  items: PoItemRow[];
-};
 
 async function buildPoPdf(po: PdfPo): Promise<{ blob: Blob; base64: string }> {
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
@@ -294,14 +276,26 @@ async function buildPoPdf(po: PdfPo): Promise<{ blob: Blob; base64: string }> {
   doc.setTextColor(ar, ag, ab);
   doc.setFontSize(11);
   doc.text(po.company_name || "—", margin, y);
-  y += 7;
+  y += 6;
   doc.setTextColor(60, 60, 60);
   doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  if (po.company_address) {
+    const addrLines = doc.splitTextToSize(po.company_address, pageW - margin * 2);
+    doc.text(addrLines, margin, y);
+    y += addrLines.length * 4.2 + 1;
+  }
+  if (po.contact_person || po.contact_number) {
+    const contactBits = [
+      po.contact_person ? `Contact: ${po.contact_person}` : "",
+      po.contact_number ? `Mobile: ${po.contact_number}` : "",
+    ].filter(Boolean);
+    doc.text(contactBits.join("  ·  "), margin, y);
+    y += 5;
+  }
   doc.setFontSize(10);
   doc.text(`PO #: ${po.po_number}`, margin, y);
   doc.text(`Date: ${format(parseISO(po.po_date), "dd-MM-yyyy")}`, pageW / 2, y);
-  y += 6;
-  doc.text(`Vendor: ${po.vendor_name}`, margin, y);
   y += 8;
 
   const cols = [
@@ -390,7 +384,6 @@ const PurchaseOrders = () => {
   const [emailTo, setEmailTo] = useState("");
 
   const [companyId, setCompanyId] = useState("");
-  const [vendorName, setVendorName] = useState("");
   const [poDate, setPoDate] = useState(today);
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState<DraftLine[]>([newDraftLine()]);
@@ -414,24 +407,11 @@ const PurchaseOrders = () => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("accounts_companies")
-        .select("id, name")
+        .select("id, name, address, contact_person, contact_number")
         .eq("is_active", true)
         .order("name");
       if (error) throw error;
       return (data || []) as Company[];
-    },
-  });
-
-  const { data: vendors = [] } = useQuery({
-    queryKey: ["accounts_vendors"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("accounts_vendors")
-        .select("id, name")
-        .eq("is_active", true)
-        .order("name");
-      if (error) throw error;
-      return (data || []) as Vendor[];
     },
   });
 
@@ -440,7 +420,7 @@ const PurchaseOrders = () => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("accounts_purchase_orders")
-        .select("*, accounts_companies(name), accounts_po_items(*)")
+        .select("*, accounts_companies(name, address, contact_person, contact_number), accounts_po_items(*)")
         .order("po_date", { ascending: false })
         .order("created_at", { ascending: false });
       if (error) throw error;
@@ -479,7 +459,6 @@ const PurchaseOrders = () => {
 
   const resetGenerateForm = () => {
     setCompanyId("");
-    setVendorName("");
     setPoDate(today);
     setNotes("");
     setLines([newDraftLine()]);
@@ -496,12 +475,13 @@ const PurchaseOrders = () => {
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (!companyId) throw new Error("Select a company");
+      const company = companies.find((c) => c.id === companyId);
+      if (!company) throw new Error("Select a company");
       const validLines = lines.filter(
         (ln) => ln.item_name.trim() && num(ln.qty) > 0,
       );
       if (!validLines.length) throw new Error("Add at least one line item");
 
-      const vendor = await resolveVendorId(vendorName);
       const po_number = await generatePoNumber(poDate);
       const brand_primary = settings?.po_brand_primary || "#0f766e";
       const brand_accent = settings?.po_brand_accent || "#134e4a";
@@ -512,8 +492,8 @@ const PurchaseOrders = () => {
         .insert({
           po_number,
           company_id: companyId,
-          vendor_id: vendor.id,
-          vendor_name: vendor.name,
+          vendor_id: null,
+          vendor_name: company.name,
           po_date: poDate,
           status: "open",
           notes: notes.trim() || null,
@@ -523,7 +503,7 @@ const PurchaseOrders = () => {
           email_to: emailTo.trim() || null,
           created_by: getCurrentUserName(),
         })
-        .select("*, accounts_companies(name), accounts_po_items(*)")
+        .select("*, accounts_companies(name, address, contact_person, contact_number), accounts_po_items(*)")
         .single();
 
       if (poErr) throw poErr;
@@ -544,7 +524,7 @@ const PurchaseOrders = () => {
 
       const { data: fullPo, error: reloadErr } = await supabase
         .from("accounts_purchase_orders")
-        .select("*, accounts_companies(name), accounts_po_items(*)")
+        .select("*, accounts_companies(name, address, contact_person, contact_number), accounts_po_items(*)")
         .eq("id", po.id)
         .single();
       if (reloadErr) throw reloadErr;
@@ -553,7 +533,6 @@ const PurchaseOrders = () => {
     onSuccess: (po) => {
       toast.success(`PO ${po.po_number} saved`);
       qc.invalidateQueries({ queryKey: ["accounts_purchase_orders"] });
-      qc.invalidateQueries({ queryKey: ["accounts_vendors"] });
       setGenerateOpen(false);
       setSavedPoForActions(po);
       resetGenerateForm();
@@ -607,7 +586,7 @@ const PurchaseOrders = () => {
 
       const { data: fullPo, error: reloadErr } = await supabase
         .from("accounts_purchase_orders")
-        .select("*, accounts_companies(name), accounts_po_items(*)")
+        .select("*, accounts_companies(name, address, contact_person, contact_number), accounts_po_items(*)")
         .eq("id", selectedPo.id)
         .single();
       if (reloadErr) throw reloadErr;
@@ -622,6 +601,13 @@ const PurchaseOrders = () => {
     onError: (e: Error) => toast.error(e.message || "Receive failed"),
   });
 
+  const companyPdfFields = (po: PurchaseOrder) => ({
+    company_name: po.accounts_companies?.name || "—",
+    company_address: (po.accounts_companies?.address || "").trim(),
+    contact_person: (po.accounts_companies?.contact_person || "").trim(),
+    contact_number: (po.accounts_companies?.contact_number || "").trim(),
+  });
+
   const downloadPdf = async (po: PurchaseOrder) => {
     try {
       const items = (po.accounts_po_items || []).sort(
@@ -630,8 +616,7 @@ const PurchaseOrders = () => {
       const { blob } = await buildPoPdf({
         po_number: po.po_number,
         po_date: po.po_date,
-        vendor_name: po.vendor_name,
-        company_name: po.accounts_companies?.name || "—",
+        ...companyPdfFields(po),
         notes: po.notes,
         brand_primary: po.brand_primary || settings?.po_brand_primary || "#0f766e",
         brand_accent: po.brand_accent || settings?.po_brand_accent || "#134e4a",
@@ -665,8 +650,7 @@ const PurchaseOrders = () => {
       const { base64 } = await buildPoPdf({
         po_number: po.po_number,
         po_date: po.po_date,
-        vendor_name: po.vendor_name,
-        company_name: po.accounts_companies?.name || "—",
+        ...companyPdfFields(po),
         notes: po.notes,
         brand_primary: po.brand_primary || settings?.po_brand_primary || "#0f766e",
         brand_accent: po.brand_accent || settings?.po_brand_accent || "#134e4a",
@@ -674,7 +658,8 @@ const PurchaseOrders = () => {
         items,
       });
 
-      const html = `<p>Dear ${po.vendor_name},</p><p>Please find attached purchase order <strong>${po.po_number}</strong> dated ${format(parseISO(po.po_date), "dd-MM-yyyy")}.</p><p>Grand total: ${money(totals.grand)}</p><p>Regards,<br/>${settings?.email_from_name || "PH PathLabs Accounts"}</p>`;
+      const companyName = po.accounts_companies?.name || "Sir/Madam";
+      const html = `<p>Dear ${companyName},</p><p>Please find attached purchase order <strong>${po.po_number}</strong> dated ${format(parseISO(po.po_date), "dd-MM-yyyy")}.</p><p>Grand total: ${money(totals.grand)}</p><p>Regards,<br/>${settings?.email_from_name || "PH PathLabs Accounts"}</p>`;
 
       const { data, error } = await supabase.functions.invoke("send-accounts-email", {
         body: {
@@ -751,7 +736,6 @@ const PurchaseOrders = () => {
                     <TableHead>PO #</TableHead>
                     <TableHead>Date</TableHead>
                     <TableHead>Company</TableHead>
-                    <TableHead>Vendor</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right">Total</TableHead>
                     <TableHead>Flags</TableHead>
@@ -766,8 +750,7 @@ const PurchaseOrders = () => {
                       <TableRow key={po.id}>
                         <TableCell className="font-medium tabular-nums">{po.po_number}</TableCell>
                         <TableCell>{format(parseISO(po.po_date), "dd-MM-yyyy")}</TableCell>
-                        <TableCell>{po.accounts_companies?.name || "—"}</TableCell>
-                        <TableCell>{po.vendor_name}</TableCell>
+                        <TableCell>{po.accounts_companies?.name || po.vendor_name || "—"}</TableCell>
                         <TableCell>
                           <Badge variant={statusVariant(po.status)}>{po.status}</Badge>
                         </TableCell>
@@ -831,30 +814,16 @@ const PurchaseOrders = () => {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Vendor</Label>
-              <Input
-                list="po-vendor-list"
-                value={vendorName}
-                onChange={(e) => setVendorName(e.target.value)}
-                placeholder="Select or type new vendor"
-              />
-              <datalist id="po-vendor-list">
-                {vendors.map((v) => (
-                  <option key={v.id} value={v.name} />
-                ))}
-              </datalist>
-            </div>
-            <div className="space-y-2">
               <Label>PO date</Label>
               <Input type="date" value={poDate} onChange={(e) => setPoDate(e.target.value)} />
             </div>
-            <div className="space-y-2">
+            <div className="space-y-2 sm:col-span-2">
               <Label>Email to (optional)</Label>
               <Input
                 type="email"
                 value={emailTo}
                 onChange={(e) => setEmailTo(e.target.value)}
-                placeholder="vendor@example.com"
+                placeholder="company@example.com"
               />
             </div>
           </div>
@@ -1001,7 +970,7 @@ const PurchaseOrders = () => {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>PO saved — {savedPoForActions?.po_number}</DialogTitle>
-            <DialogDescription>Download PDF or email the vendor.</DialogDescription>
+            <DialogDescription>Download PDF or email the company.</DialogDescription>
           </DialogHeader>
           <div className="flex flex-wrap gap-2">
             <Button
@@ -1027,8 +996,8 @@ const PurchaseOrders = () => {
                   {selectedPo.po_number}
                 </DialogTitle>
                 <DialogDescription>
-                  {selectedPo.vendor_name} · {format(parseISO(selectedPo.po_date), "dd-MM-yyyy")}{" "}
-                  · {selectedPo.accounts_companies?.name}
+                  {selectedPo.accounts_companies?.name || selectedPo.vendor_name || "—"} ·{" "}
+                  {format(parseISO(selectedPo.po_date), "dd-MM-yyyy")}
                 </DialogDescription>
               </DialogHeader>
 
@@ -1164,7 +1133,7 @@ const PurchaseOrders = () => {
                     type="email"
                     value={emailTo}
                     onChange={(e) => setEmailTo(e.target.value)}
-                    placeholder="vendor@example.com"
+                    placeholder="company@example.com"
                   />
                 </div>
                 <Button variant="outline" onClick={() => downloadPdf(selectedPo)}>

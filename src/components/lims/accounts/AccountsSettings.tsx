@@ -10,6 +10,7 @@ import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { Plus, Pencil } from "lucide-react";
 import { getCurrentUserName } from "@/lib/auth";
@@ -21,9 +22,27 @@ import {
   saveTallySettings,
 } from "@/lib/tallyIntegration";
 
-type Company = { id: string; name: string; tds_percent: number; is_active: boolean };
+type Company = {
+  id: string;
+  name: string;
+  tds_percent: number;
+  address: string;
+  contact_person: string;
+  contact_number: string;
+  is_active: boolean;
+};
 type Bank = { id: string; name: string; is_active: boolean };
 type PaymentMode = { id: string; name: string; requires_bank: boolean; is_active: boolean; sort_order: number };
+
+/** Collapse extra spaces (same idea as registration address cleanup). */
+function trimAddress(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+/** Keep last 10 digits — same as New Registration mobile formatting. */
+function formatMobile10(value: string): string {
+  return value.replace(/\D/g, "").slice(-10);
+}
 
 type ModuleSettings = {
   id: number;
@@ -68,6 +87,9 @@ function CompaniesSection() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Company | null>(null);
   const [name, setName] = useState("");
+  const [address, setAddress] = useState("");
+  const [contactPerson, setContactPerson] = useState("");
+  const [contactNumber, setContactNumber] = useState("");
   const [tdsPercent, setTdsPercent] = useState("0");
 
   const { data: rows = [], isLoading } = useQuery({
@@ -75,7 +97,7 @@ function CompaniesSection() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("accounts_companies")
-        .select("id, name, tds_percent, is_active")
+        .select("id, name, tds_percent, address, contact_person, contact_number, is_active")
         .order("name");
       if (error) throw error;
       return (data || []) as Company[];
@@ -85,6 +107,9 @@ function CompaniesSection() {
   const openAdd = () => {
     setEditing(null);
     setName("");
+    setAddress("");
+    setContactPerson("");
+    setContactNumber("");
     setTdsPercent("0");
     setDialogOpen(true);
   };
@@ -92,6 +117,9 @@ function CompaniesSection() {
   const openEdit = (row: Company) => {
     setEditing(row);
     setName(row.name);
+    setAddress(row.address || "");
+    setContactPerson(row.contact_person || "");
+    setContactNumber(formatMobile10(row.contact_number || ""));
     setTdsPercent(String(row.tds_percent));
     setDialogOpen(true);
   };
@@ -102,7 +130,20 @@ function CompaniesSection() {
       if (!trimmed) throw new Error("Company name is required");
       const tds = Number(tdsPercent);
       if (!Number.isFinite(tds) || tds < 0 || tds > 100) throw new Error("TDS % must be between 0 and 100");
-      const payload = { name: trimmed, tds_percent: tds, is_active: true };
+      const cleanAddress = trimAddress(address);
+      const cleanPerson = contactPerson.replace(/\s+/g, " ").trim();
+      const cleanMobile = formatMobile10(contactNumber);
+      if (contactNumber.trim() && cleanMobile.length !== 10) {
+        throw new Error("Contact number must be a valid 10-digit mobile");
+      }
+      const payload = {
+        name: trimmed,
+        tds_percent: tds,
+        address: cleanAddress,
+        contact_person: cleanPerson,
+        contact_number: cleanMobile,
+        is_active: true,
+      };
       if (editing) {
         const { error } = await supabase.from("accounts_companies").update(payload).eq("id", editing.id);
         if (error) throw error;
@@ -138,11 +179,13 @@ function CompaniesSection() {
         <Button size="sm" className="h-8" onClick={openAdd}><Plus className="h-3.5 w-3.5 mr-1" /> Add</Button>
       </CardHeader>
       <CardContent>
-        <div className="rounded-md border">
+        <div className="rounded-md border overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead className="h-9">Name</TableHead>
+                <TableHead className="h-9">Contact</TableHead>
+                <TableHead className="h-9">Mobile</TableHead>
                 <TableHead className="h-9">TDS %</TableHead>
                 <TableHead className="h-9">Status</TableHead>
                 <TableHead className="h-9 text-right">Actions</TableHead>
@@ -150,14 +193,23 @@ function CompaniesSection() {
             </TableHeader>
             <TableBody>
               {isLoading && (
-                <TableRow><TableCell colSpan={4} className="text-center text-xs text-muted-foreground py-4">Loading…</TableCell></TableRow>
+                <TableRow><TableCell colSpan={6} className="text-center text-xs text-muted-foreground py-4">Loading…</TableCell></TableRow>
               )}
               {!isLoading && rows.length === 0 && (
-                <TableRow><TableCell colSpan={4} className="text-center text-xs text-muted-foreground py-4">No companies yet.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={6} className="text-center text-xs text-muted-foreground py-4">No companies yet.</TableCell></TableRow>
               )}
               {rows.map((row) => (
                 <TableRow key={row.id} className={!row.is_active ? "opacity-60" : undefined}>
-                  <TableCell className="py-2 text-sm font-medium">{row.name}</TableCell>
+                  <TableCell className="py-2 text-sm font-medium">
+                    <div>{row.name}</div>
+                    {row.address ? (
+                      <div className="text-xs text-muted-foreground font-normal mt-0.5 max-w-[240px] truncate" title={row.address}>
+                        {row.address}
+                      </div>
+                    ) : null}
+                  </TableCell>
+                  <TableCell className="py-2 text-sm">{row.contact_person || "—"}</TableCell>
+                  <TableCell className="py-2 text-sm tabular-nums">{row.contact_number || "—"}</TableCell>
                   <TableCell className="py-2 text-sm tabular-nums">{Number(row.tds_percent)}%</TableCell>
                   <TableCell className="py-2"><StatusCell active={row.is_active} /></TableCell>
                   <TableCell className="py-2 text-right">
@@ -185,8 +237,43 @@ function CompaniesSection() {
           <DialogHeader><DialogTitle>{editing ? "Edit Company" : "Add Company"}</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div>
-              <Label className="text-xs">Name</Label>
+              <Label className="text-xs">Company Name</Label>
               <Input value={name} onChange={(e) => setName(e.target.value)} className="h-9" />
+            </div>
+            <div>
+              <Label className="text-xs">Company Address</Label>
+              <Textarea
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                onBlur={() => setAddress((v) => trimAddress(v))}
+                rows={2}
+                className="text-sm"
+              />
+            </div>
+            <div>
+              <Label className="text-xs">Concerned Person Name</Label>
+              <Input
+                value={contactPerson}
+                onChange={(e) => setContactPerson(e.target.value)}
+                onBlur={() => setContactPerson((v) => v.replace(/\s+/g, " ").trim())}
+                className="h-9"
+              />
+            </div>
+            <div>
+              <Label className="text-xs">Contact Number</Label>
+              <Input
+                value={contactNumber}
+                onChange={(e) => setContactNumber(formatMobile10(e.target.value))}
+                placeholder="Paste number (any format)"
+                inputMode="tel"
+                className="h-9"
+              />
+              {contactNumber ? (
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  Formatted: {contactNumber || "Need 10 digits"}
+                  {contactNumber.length === 10 ? " ✓" : ""}
+                </p>
+              ) : null}
             </div>
             <div>
               <Label className="text-xs">TDS %</Label>
@@ -209,7 +296,7 @@ function NamedListSection({
   queryKey,
 }: {
   title: string;
-  table: "accounts_banks" | "accounts_vendors";
+  table: "accounts_banks";
   queryKey: string;
 }) {
   const qc = useQueryClient();
@@ -790,7 +877,6 @@ export default function AccountsSettings() {
       <CompaniesSection />
       <NamedListSection title="Banks" table="accounts_banks" queryKey="accounts_banks" />
       <PaymentModesSection />
-      <NamedListSection title="Vendors" table="accounts_vendors" queryKey="accounts_vendors" />
       <CloudinaryAccountsPanel
         purpose="bills"
         title="Cloudinary (Bills)"
