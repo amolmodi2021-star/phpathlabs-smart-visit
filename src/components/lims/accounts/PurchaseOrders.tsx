@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { format, parseISO } from "date-fns";
 import jsPDF from "jspdf";
@@ -13,6 +13,8 @@ import {
   Eye,
   Truck,
   Receipt,
+  Search,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -108,12 +110,26 @@ type ModuleSettings = {
   email_from_name: string | null;
 };
 
-type DraftLine = {
-  key: string;
+type CatalogItem = {
+  id: string;
+  item_code: string;
   item_name: string;
+  alias_name: string;
+  company_name: string;
+  gst_rate: number;
+  price: number;
+  is_active: boolean;
+};
+
+type SelectedCatalogLine = {
+  catalog_id: string;
+  item_code: string;
+  item_name: string;
+  alias_name: string;
+  company_name: string;
+  unit_price: number;
+  gst_percent: number;
   qty: string;
-  unit_price: string;
-  gst_percent: string;
 };
 
 type LinkedInvoice = {
@@ -186,14 +202,6 @@ const hexToRgb = (hex: string): [number, number, number] => {
     parseInt(h.slice(4, 6), 16),
   ];
 };
-
-const newDraftLine = (): DraftLine => ({
-  key: crypto.randomUUID(),
-  item_name: "",
-  qty: "1",
-  unit_price: "0",
-  gst_percent: "0",
-});
 
 async function generatePoNumber(poDate: string): Promise<string> {
   const datePart = format(parseISO(poDate), "yyyyMMdd");
@@ -378,18 +386,31 @@ async function buildPoPdf(po: PdfPo): Promise<{ blob: Blob; base64: string }> {
 const PurchaseOrders = () => {
   const qc = useQueryClient();
   const today = format(new Date(), "yyyy-MM-dd");
+  const searchRef = useRef<HTMLInputElement>(null);
 
   const [generateOpen, setGenerateOpen] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
   const [selectedPo, setSelectedPo] = useState<PurchaseOrder | null>(null);
-  const [savedPoForActions, setSavedPoForActions] = useState<PurchaseOrder | null>(null);
+  const [reviewPos, setReviewPos] = useState<PurchaseOrder[]>([]);
   const [emailTo, setEmailTo] = useState("");
 
-  const [companyId, setCompanyId] = useState("");
   const [poDate, setPoDate] = useState(today);
   const [notes, setNotes] = useState("");
-  const [lines, setLines] = useState<DraftLine[]>([newDraftLine()]);
+  const [itemSearch, setItemSearch] = useState("");
+  const [debouncedItemSearch, setDebouncedItemSearch] = useState("");
+  const [itemHighlightIndex, setItemHighlightIndex] = useState(0);
+  const [selectedLines, setSelectedLines] = useState<SelectedCatalogLine[]>([]);
   const [receiveDraft, setReceiveDraft] = useState<ReceiveDraft>({});
+
+  useEffect(() => {
+    const term = itemSearch.trim();
+    if (!term) {
+      setDebouncedItemSearch("");
+      return;
+    }
+    const t = window.setTimeout(() => setDebouncedItemSearch(term), 600);
+    return () => window.clearTimeout(t);
+  }, [itemSearch]);
 
   const { data: settings } = useQuery({
     queryKey: ["accounts_module_settings"],
@@ -414,6 +435,19 @@ const PurchaseOrders = () => {
         .order("name");
       if (error) throw error;
       return (data || []) as Company[];
+    },
+  });
+
+  const { data: catalogItems = [] } = useQuery({
+    queryKey: ["accounts_po_catalog_items", "active_for_po"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("accounts_po_catalog_items" as any)
+        .select("id, item_code, item_name, alias_name, company_name, gst_rate, price, is_active")
+        .eq("is_active", true)
+        .order("item_name");
+      if (error) throw error;
+      return (data || []) as CatalogItem[];
     },
   });
 
@@ -444,27 +478,94 @@ const PurchaseOrders = () => {
     },
   });
 
-  const draftTotals = useMemo(() => {
-    let subtotal = 0;
-    let gstTotal = 0;
-    for (const ln of lines) {
-      const qty = num(ln.qty);
-      const price = num(ln.unit_price);
-      const gst = num(ln.gst_percent);
-      if (!ln.item_name.trim() || qty <= 0) continue;
-      const base = qty * price;
-      subtotal += base;
-      gstTotal += base * (gst / 100);
+  const companyByLower = useMemo(() => {
+    const map = new Map<string, Company>();
+    for (const c of companies) map.set(c.name.trim().toLowerCase(), c);
+    return map;
+  }, [companies]);
+
+  const selectedIds = useMemo(() => new Set(selectedLines.map((l) => l.catalog_id)), [selectedLines]);
+
+  const availableCatalogItems = useMemo(() => {
+    const q = debouncedItemSearch.trim().toLowerCase();
+    if (!q) return [] as CatalogItem[];
+    const scored = catalogItems
+      .filter((it) => !selectedIds.has(it.id))
+      .map((it) => {
+        const name = (it.item_name || "").toLowerCase();
+        const alias = (it.alias_name || "").toLowerCase();
+        const code = (it.item_code || "").toLowerCase();
+        const company = (it.company_name || "").toLowerCase();
+        let score = -1;
+        if (alias === q || name === q || code === q) score = 3;
+        else if (alias.startsWith(q) || name.startsWith(q)) score = 2;
+        else if (
+          alias.includes(q) ||
+          name.includes(q) ||
+          code.includes(q) ||
+          company.includes(q)
+        ) {
+          score = 1;
+        }
+        return { it, score };
+      })
+      .filter((x) => x.score > 0)
+      .sort((a, b) => b.score - a.score || a.it.item_name.localeCompare(b.it.item_name))
+      .map((x) => x.it);
+    return scored;
+  }, [catalogItems, debouncedItemSearch, selectedIds]);
+
+  const groupedPreview = useMemo(() => {
+    const map = new Map<string, SelectedCatalogLine[]>();
+    for (const ln of selectedLines) {
+      const key = ln.company_name.trim() || "Unknown company";
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(ln);
     }
-    return { subtotal, gstTotal, grand: subtotal + gstTotal };
-  }, [lines]);
+    return Array.from(map.entries()).map(([company, lines]) => ({ company, lines }));
+  }, [selectedLines]);
 
   const resetGenerateForm = () => {
-    setCompanyId("");
     setPoDate(today);
     setNotes("");
-    setLines([newDraftLine()]);
+    setItemSearch("");
+    setDebouncedItemSearch("");
+    setItemHighlightIndex(0);
+    setSelectedLines([]);
     setEmailTo("");
+  };
+
+  const addCatalogItem = (item: CatalogItem) => {
+    setSelectedLines((prev) => {
+      if (prev.some((p) => p.catalog_id === item.id)) return prev;
+      return [
+        ...prev,
+        {
+          catalog_id: item.id,
+          item_code: item.item_code,
+          item_name: item.item_name,
+          alias_name: item.alias_name || "",
+          company_name: item.company_name,
+          unit_price: Number(item.price) || 0,
+          gst_percent: Number(item.gst_rate) || 0,
+          qty: "1",
+        },
+      ];
+    });
+    setItemSearch("");
+    setDebouncedItemSearch("");
+    setItemHighlightIndex(0);
+    window.setTimeout(() => searchRef.current?.focus(), 50);
+  };
+
+  const removeSelectedLine = (catalogId: string) => {
+    setSelectedLines((prev) => prev.filter((l) => l.catalog_id !== catalogId));
+  };
+
+  const updateSelectedQty = (catalogId: string, qty: string) => {
+    setSelectedLines((prev) =>
+      prev.map((l) => (l.catalog_id === catalogId ? { ...l, qty } : l)),
+    );
   };
 
   const openDetail = (po: PurchaseOrder) => {
@@ -474,77 +575,106 @@ const PurchaseOrders = () => {
     setDetailOpen(true);
   };
 
-  const saveMutation = useMutation({
+  const generateMutation = useMutation({
     mutationFn: async () => {
-      if (!companyId) throw new Error("Select a company");
-      const company = companies.find((c) => c.id === companyId);
-      if (!company) throw new Error("Select a company");
-      const validLines = lines.filter(
-        (ln) => ln.item_name.trim() && num(ln.qty) > 0,
-      );
-      if (!validLines.length) throw new Error("Add at least one line item");
+      const valid = selectedLines.filter((ln) => num(ln.qty) > 0);
+      if (!valid.length) throw new Error("Select at least one item with quantity");
 
-      const poEmail = (emailTo.trim() || company.email || "").trim();
-      if (!poEmail) {
-        throw new Error("This company has no email. Add it in Accounts → Settings → Companies.");
+      const missingCompany: string[] = [];
+      const missingEmail: string[] = [];
+      const groups = new Map<string, { company: Company; lines: SelectedCatalogLine[] }>();
+
+      for (const ln of valid) {
+        const company = companyByLower.get(ln.company_name.trim().toLowerCase());
+        if (!company) {
+          missingCompany.push(`${ln.item_name} (${ln.company_name || "no company"})`);
+          continue;
+        }
+        if (!(company.email || "").trim()) {
+          missingEmail.push(company.name);
+        }
+        const g = groups.get(company.id);
+        if (g) g.lines.push(ln);
+        else groups.set(company.id, { company, lines: [ln] });
       }
 
-      const po_number = await generatePoNumber(poDate);
+      if (missingCompany.length) {
+        throw new Error(
+          `No matching Settings company for: ${missingCompany.slice(0, 3).join("; ")}` +
+            (missingCompany.length > 3 ? ` (+${missingCompany.length - 3} more)` : ""),
+        );
+      }
+      const uniqMissingEmail = [...new Set(missingEmail)];
+      if (uniqMissingEmail.length) {
+        throw new Error(
+          `Add email in Settings for: ${uniqMissingEmail.join(", ")}`,
+        );
+      }
+
       const brand_primary = settings?.po_brand_primary || "#0f766e";
       const brand_accent = settings?.po_brand_accent || "#134e4a";
       const logo_url = settings?.po_logo_url || null;
+      const created: PurchaseOrder[] = [];
 
-      const { data: po, error: poErr } = await supabase
-        .from("accounts_purchase_orders")
-        .insert({
-          po_number,
-          company_id: companyId,
-          vendor_id: null,
-          vendor_name: company.name,
-          po_date: poDate,
-          status: "open",
-          notes: notes.trim() || null,
-          brand_primary,
-          brand_accent,
-          logo_url,
-          email_to: poEmail,
-          created_by: getCurrentUserName(),
-        })
-        .select("*, accounts_companies(name, address, contact_person, contact_number, email), accounts_po_items(*)")
-        .single();
+      for (const { company, lines } of groups.values()) {
+        const po_number = await generatePoNumber(poDate);
+        const poEmail = (company.email || "").trim();
+        const { data: po, error: poErr } = await supabase
+          .from("accounts_purchase_orders")
+          .insert({
+            po_number,
+            company_id: company.id,
+            vendor_id: null,
+            vendor_name: company.name,
+            po_date: poDate,
+            status: "open",
+            notes: notes.trim() || null,
+            brand_primary,
+            brand_accent,
+            logo_url,
+            email_to: poEmail,
+            created_by: getCurrentUserName(),
+          })
+          .select("*, accounts_companies(name, address, contact_person, contact_number, email), accounts_po_items(*)")
+          .single();
+        if (poErr) throw poErr;
 
-      if (poErr) throw poErr;
+        const itemRows = lines.map((ln, idx) => ({
+          po_id: po.id,
+          item_name: ln.item_name,
+          qty_ordered: num(ln.qty),
+          qty_received: 0,
+          qty_billed: 0,
+          unit_price: ln.unit_price,
+          gst_percent: ln.gst_percent,
+          sort_order: idx,
+        }));
+        const { error: itemsErr } = await supabase.from("accounts_po_items").insert(itemRows);
+        if (itemsErr) throw itemsErr;
 
-      const itemRows = validLines.map((ln, idx) => ({
-        po_id: po.id,
-        item_name: ln.item_name.trim(),
-        qty_ordered: num(ln.qty),
-        qty_received: 0,
-        qty_billed: 0,
-        unit_price: num(ln.unit_price),
-        gst_percent: num(ln.gst_percent),
-        sort_order: idx,
-      }));
+        const { data: fullPo, error: reloadErr } = await supabase
+          .from("accounts_purchase_orders")
+          .select("*, accounts_companies(name, address, contact_person, contact_number, email), accounts_po_items(*)")
+          .eq("id", po.id)
+          .single();
+        if (reloadErr) throw reloadErr;
+        created.push(fullPo as PurchaseOrder);
+      }
 
-      const { error: itemsErr } = await supabase.from("accounts_po_items").insert(itemRows);
-      if (itemsErr) throw itemsErr;
-
-      const { data: fullPo, error: reloadErr } = await supabase
-        .from("accounts_purchase_orders")
-        .select("*, accounts_companies(name, address, contact_person, contact_number, email), accounts_po_items(*)")
-        .eq("id", po.id)
-        .single();
-      if (reloadErr) throw reloadErr;
-      return fullPo as PurchaseOrder;
+      return created;
     },
-    onSuccess: (po) => {
-      toast.success(`PO ${po.po_number} saved`);
+    onSuccess: (pos) => {
+      toast.success(
+        pos.length === 1
+          ? `PO ${pos[0].po_number} created`
+          : `${pos.length} purchase orders created (one per company)`,
+      );
       qc.invalidateQueries({ queryKey: ["accounts_purchase_orders"] });
       setGenerateOpen(false);
-      setSavedPoForActions(po);
+      setReviewPos(pos);
       resetGenerateForm();
     },
-    onError: (e: Error) => toast.error(e.message || "Failed to save PO"),
+    onError: (e: Error) => toast.error(e.message || "Failed to generate PO"),
   });
 
   const receiveMutation = useMutation({
@@ -706,6 +836,7 @@ const PurchaseOrders = () => {
     }
   };
 
+
   return (
     <div className="space-y-4">
       <Card>
@@ -713,7 +844,7 @@ const PurchaseOrders = () => {
           <div>
             <CardTitle className="text-lg">Purchase Orders</CardTitle>
             <CardDescription>
-              Create POs, receive goods, and track billing against received quantities.
+              Search and select catalog items; one PO is created per company. Receive goods and track billing here.
             </CardDescription>
           </div>
           <Button
@@ -800,209 +931,211 @@ const PurchaseOrders = () => {
           <DialogHeader>
             <DialogTitle>Generate Purchase Order</DialogTitle>
             <DialogDescription>
-              PO number is assigned automatically. Branding comes from Accounts module settings.
+              Search items by name or alias (like test search). Selecting items from different companies creates one PO per company.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label>Company</Label>
-              <Select
-                value={companyId}
-                onValueChange={(id) => {
-                  setCompanyId(id);
-                  const c = companies.find((x) => x.id === id);
-                  setEmailTo((c?.email || "").trim());
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select company" />
-                </SelectTrigger>
-                <SelectContent>
-                  {companies.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+          <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-2">
               <Label>PO date</Label>
               <Input type="date" value={poDate} onChange={(e) => setPoDate(e.target.value)} />
             </div>
             <div className="space-y-2 sm:col-span-2">
-              <Label>Email to (from company)</Label>
+              <Label>Notes (optional)</Label>
+              <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} />
+            </div>
+          </div>
+
+          <div>
+            <Label>Select items *</Label>
+            <div className="relative">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
-                type="email"
-                value={emailTo}
-                onChange={(e) => setEmailTo(e.target.value)}
-                placeholder="Select company to fill email"
+                ref={searchRef}
+                value={itemSearch}
+                onChange={(e) => {
+                  setItemSearch(e.target.value);
+                  setItemHighlightIndex(0);
+                }}
+                placeholder="Search item / alias / code… (↑↓ Enter)"
+                className="pl-8"
+                onKeyDown={(e) => {
+                  const visible = debouncedItemSearch ? availableCatalogItems.slice(0, 20) : [];
+                  if (visible.length === 0) return;
+                  if (e.key === "ArrowDown") {
+                    e.preventDefault();
+                    setItemHighlightIndex((prev) => Math.min(prev + 1, visible.length - 1));
+                  } else if (e.key === "ArrowUp") {
+                    e.preventDefault();
+                    setItemHighlightIndex((prev) => Math.max(prev - 1, 0));
+                  } else if (e.key === "Enter") {
+                    e.preventDefault();
+                    const idx =
+                      itemHighlightIndex >= 0 && itemHighlightIndex < visible.length
+                        ? itemHighlightIndex
+                        : 0;
+                    addCatalogItem(visible[idx]);
+                  }
+                }}
               />
-              <p className="text-xs text-muted-foreground">
-                Filled from company settings. Required to email the PO.
-              </p>
             </div>
+            {debouncedItemSearch && availableCatalogItems.length > 0 && (
+              <div className="border rounded-md mt-1 max-h-48 overflow-y-auto">
+                {availableCatalogItems.slice(0, 20).map((it, i) => (
+                  <button
+                    key={it.id}
+                    type="button"
+                    className={`w-full text-left px-3 py-2 text-sm transition-colors ${
+                      i === itemHighlightIndex ? "bg-accent" : "hover:bg-accent"
+                    }`}
+                    onClick={() => addCatalogItem(it)}
+                    onMouseEnter={() => setItemHighlightIndex(i)}
+                  >
+                    <div className="font-medium">
+                      {it.item_name}
+                      {it.alias_name ? (
+                        <span className="text-muted-foreground font-normal"> ({it.alias_name})</span>
+                      ) : null}
+                    </div>
+                    <div className="text-xs text-muted-foreground flex flex-wrap gap-x-3">
+                      <span>{it.company_name || "No company"}</span>
+                      <span>₹{Number(it.price).toLocaleString("en-IN")}</span>
+                      <span>GST {Number(it.gst_rate)}%</span>
+                      <span className="font-mono">{it.item_code}</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+            {debouncedItemSearch && availableCatalogItems.length === 0 && (
+              <p className="text-xs text-muted-foreground mt-1">No matching items.</p>
+            )}
           </div>
 
-          <div className="space-y-2">
-            <Label>Notes</Label>
-            <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} />
-          </div>
-
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label>Line items</Label>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setLines((prev) => [...prev, newDraftLine()])}
-              >
-                <Plus className="h-3.5 w-3.5 mr-1" /> Add row
-              </Button>
+          {selectedLines.length > 0 && (
+            <div className="space-y-2">
+              <Label>Selected ({selectedLines.length}) · {groupedPreview.length} compan{groupedPreview.length === 1 ? "y" : "ies"}</Label>
+              <div className="space-y-1">
+                {selectedLines.map((ln) => (
+                  <div
+                    key={ln.catalog_id}
+                    className="flex flex-wrap items-center gap-2 rounded-lg border px-3 py-1.5"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-medium truncate">
+                        {ln.item_name}
+                        {ln.alias_name ? (
+                          <span className="text-muted-foreground font-normal"> ({ln.alias_name})</span>
+                        ) : null}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {ln.company_name} · ₹{ln.unit_price.toLocaleString("en-IN")} · GST {ln.gst_percent}%
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <Label className="text-xs text-muted-foreground">Qty</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="any"
+                        className="w-20 h-7 text-xs"
+                        value={ln.qty}
+                        onChange={(e) => updateSelectedQty(ln.catalog_id, e.target.value)}
+                      />
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7"
+                        onClick={() => removeSelectedLine(ln.catalog_id)}
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="rounded-md border bg-muted/30 px-3 py-2 text-xs space-y-1">
+                {groupedPreview.map((g) => (
+                  <div key={g.company}>
+                    <span className="font-medium">{g.company}</span>
+                    {" — "}
+                    {g.lines.length} item{g.lines.length === 1 ? "" : "s"}
+                  </div>
+                ))}
+              </div>
             </div>
-            <div className="rounded-md border overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Item</TableHead>
-                    <TableHead className="w-[90px]">Qty</TableHead>
-                    <TableHead className="w-[110px]">Unit price</TableHead>
-                    <TableHead className="w-[90px]">GST %</TableHead>
-                    <TableHead className="text-right w-[120px]">Line net</TableHead>
-                    <TableHead className="w-[40px]" />
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {lines.map((ln) => {
-                    const net = lineNet(num(ln.qty), num(ln.unit_price), num(ln.gst_percent));
-                    return (
-                      <TableRow key={ln.key}>
-                        <TableCell>
-                          <Input
-                            value={ln.item_name}
-                            onChange={(e) =>
-                              setLines((prev) =>
-                                prev.map((r) =>
-                                  r.key === ln.key ? { ...r, item_name: e.target.value } : r,
-                                ),
-                              )
-                            }
-                            placeholder="Item name"
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Input
-                            type="number"
-                            min="0"
-                            step="any"
-                            value={ln.qty}
-                            onChange={(e) =>
-                              setLines((prev) =>
-                                prev.map((r) =>
-                                  r.key === ln.key ? { ...r, qty: e.target.value } : r,
-                                ),
-                              )
-                            }
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Input
-                            type="number"
-                            min="0"
-                            step="any"
-                            value={ln.unit_price}
-                            onChange={(e) =>
-                              setLines((prev) =>
-                                prev.map((r) =>
-                                  r.key === ln.key ? { ...r, unit_price: e.target.value } : r,
-                                ),
-                              )
-                            }
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Input
-                            type="number"
-                            min="0"
-                            step="any"
-                            value={ln.gst_percent}
-                            onChange={(e) =>
-                              setLines((prev) =>
-                                prev.map((r) =>
-                                  r.key === ln.key ? { ...r, gst_percent: e.target.value } : r,
-                                ),
-                              )
-                            }
-                          />
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums">{money(net)}</TableCell>
-                        <TableCell>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8"
-                            disabled={lines.length <= 1}
-                            onClick={() =>
-                              setLines((prev) => prev.filter((r) => r.key !== ln.key))
-                            }
-                          >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
-            <div className="flex justify-end gap-6 text-sm">
-              <span>
-                Subtotal: <strong>{money(draftTotals.subtotal)}</strong>
-              </span>
-              <span>
-                GST: <strong>{money(draftTotals.gstTotal)}</strong>
-              </span>
-              <span>
-                Grand: <strong>{money(draftTotals.grand)}</strong>
-              </span>
-            </div>
-          </div>
+          )}
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setGenerateOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
-              {saveMutation.isPending && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />}
-              Save PO
+            <Button
+              onClick={() => generateMutation.mutate()}
+              disabled={generateMutation.isPending || selectedLines.length === 0}
+            >
+              {generateMutation.isPending && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />}
+              Generate PO
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!savedPoForActions} onOpenChange={(o) => !o && setSavedPoForActions(null)}>
-        <DialogContent>
+      <Dialog open={reviewPos.length > 0} onOpenChange={(o) => !o && setReviewPos([])}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>PO saved — {savedPoForActions?.po_number}</DialogTitle>
-            <DialogDescription>Download PDF or email the company.</DialogDescription>
+            <DialogTitle>
+              {reviewPos.length === 1 ? "PO created" : `${reviewPos.length} POs created`}
+            </DialogTitle>
+            <DialogDescription>
+              Review PDF and email each company PO.
+            </DialogDescription>
           </DialogHeader>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant="outline"
-              onClick={() => savedPoForActions && downloadPdf(savedPoForActions)}
-            >
-              <Download className="h-4 w-4 mr-1.5" /> Download PDF
-            </Button>
-            <Button onClick={() => savedPoForActions && emailPo(savedPoForActions)}>
-              <Mail className="h-4 w-4 mr-1.5" /> Email PO
-            </Button>
+          <div className="space-y-3">
+            {reviewPos.map((po) => {
+              const totals = poTotals(po.accounts_po_items || []);
+              return (
+                <div key={po.id} className="rounded-md border p-3 space-y-2">
+                  <div className="text-sm font-medium">
+                    {po.po_number}{" "}
+                    <span className="text-muted-foreground font-normal">
+                      · {po.accounts_companies?.name || po.vendor_name}
+                    </span>
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {(po.accounts_po_items || []).length} items · {money(totals.grand)} ·{" "}
+                    {po.email_to || "no email"}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button size="sm" variant="outline" onClick={() => downloadPdf(po)}>
+                      <Download className="h-3.5 w-3.5 mr-1" /> PDF
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        setEmailTo(po.email_to || po.accounts_companies?.email || "");
+                        void emailPo(po);
+                      }}
+                    >
+                      <Mail className="h-3.5 w-3.5 mr-1" /> Email
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        setReviewPos([]);
+                        openDetail(po);
+                      }}
+                    >
+                      <Eye className="h-3.5 w-3.5 mr-1" /> Open
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </DialogContent>
       </Dialog>
-
       <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           {selectedPo && (

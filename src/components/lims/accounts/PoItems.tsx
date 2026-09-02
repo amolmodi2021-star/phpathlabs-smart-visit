@@ -22,6 +22,7 @@ export type PoCatalogItem = {
   item_code: string;
   item_name: string;
   company_name: string;
+  alias_name: string;
   gst_rate: number;
   price: number;
   is_active: boolean;
@@ -38,6 +39,7 @@ const EXCEL_HEADERS = {
   code: "Item Code",
   name: "Item Name",
   company: "Company Name",
+  alias: "Alias Name",
   gst: "GST Rate",
   price: "Price",
   active: "Active",
@@ -86,6 +88,7 @@ function toExcelRows(rows: PoCatalogItem[]) {
     [EXCEL_HEADERS.code]: r.item_code,
     [EXCEL_HEADERS.name]: r.item_name,
     [EXCEL_HEADERS.company]: r.company_name,
+    [EXCEL_HEADERS.alias]: r.alias_name || "",
     [EXCEL_HEADERS.gst]: Number(r.gst_rate),
     [EXCEL_HEADERS.price]: Number(r.price),
     [EXCEL_HEADERS.active]: r.is_active ? "Yes" : "No",
@@ -101,6 +104,7 @@ const PoItems = () => {
   const [editing, setEditing] = useState<PoCatalogItem | null>(null);
   const [itemName, setItemName] = useState("");
   const [companyName, setCompanyName] = useState("");
+  const [aliasName, setAliasName] = useState("");
   const [gstRate, setGstRate] = useState("0");
   const [price, setPrice] = useState("0");
 
@@ -109,7 +113,7 @@ const PoItems = () => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("accounts_po_catalog_items" as any)
-        .select("id, item_code, item_name, company_name, gst_rate, price, is_active, created_at, updated_at")
+        .select("id, item_code, item_name, company_name, alias_name, gst_rate, price, is_active, created_at, updated_at")
         .order("item_code");
       if (error) throw error;
       return (data || []) as PoCatalogItem[];
@@ -149,7 +153,8 @@ const PoItems = () => {
       return (
         r.item_code.toLowerCase().includes(q) ||
         r.item_name.toLowerCase().includes(q) ||
-        (r.company_name || "").toLowerCase().includes(q)
+        (r.company_name || "").toLowerCase().includes(q) ||
+        (r.alias_name || "").toLowerCase().includes(q)
       );
     });
   }, [rows, search, showInactive]);
@@ -158,6 +163,7 @@ const PoItems = () => {
     setEditing(null);
     setItemName("");
     setCompanyName("");
+    setAliasName("");
     setGstRate("0");
     setPrice("0");
     setDialogOpen(true);
@@ -190,6 +196,7 @@ const PoItems = () => {
           .update({
             item_name: name,
             company_name: company,
+            alias_name: aliasName.trim(),
             gst_rate: gst,
             price: amt,
           } as any)
@@ -201,6 +208,7 @@ const PoItems = () => {
       const { error } = await supabase.from("accounts_po_catalog_items" as any).insert({
         item_name: name,
         company_name: company,
+        alias_name: aliasName.trim(),
         gst_rate: gst,
         price: amt,
         is_active: true,
@@ -239,6 +247,7 @@ const PoItems = () => {
         item_code: string;
         item_name: string;
         company_name: string;
+        alias_name: string;
         gst_rate: number;
         price: number;
         is_active: boolean;
@@ -246,6 +255,7 @@ const PoItems = () => {
       const toInsert: Array<{
         item_name: string;
         company_name: string;
+        alias_name: string;
         gst_rate: number;
         price: number;
         is_active: boolean;
@@ -259,6 +269,7 @@ const PoItems = () => {
         const code = String(cell(row, EXCEL_HEADERS.code, "Code", "item_code") || "").trim().toUpperCase();
         const name = String(cell(row, EXCEL_HEADERS.name, "Name", "item_name") || "").trim();
         const companyRaw = String(cell(row, EXCEL_HEADERS.company, "Company", "company_name") || "").trim();
+        const alias = String(cell(row, EXCEL_HEADERS.alias, "Alias", "alias_name") || "").trim();
         const gst = num(cell(row, EXCEL_HEADERS.gst, "GST", "GST %", "gst_rate"));
         const amt = num(cell(row, EXCEL_HEADERS.price, "Unit Price", "price"));
         const active = parseActive(cell(row, EXCEL_HEADERS.active, "Status", "is_active"), true);
@@ -289,6 +300,7 @@ const PoItems = () => {
             item_code: code,
             item_name: name,
             company_name: company,
+            alias_name: alias,
             gst_rate: gst,
             price: amt,
             is_active: active,
@@ -297,6 +309,7 @@ const PoItems = () => {
           toInsert.push({
             item_name: name,
             company_name: company,
+            alias_name: alias,
             gst_rate: gst,
             price: amt,
             is_active: active,
@@ -435,6 +448,7 @@ const PoItems = () => {
                 <TableRow>
                   <TableHead className="h-9">Item Code</TableHead>
                   <TableHead className="h-9">Item Name</TableHead>
+                  <TableHead className="h-9">Alias</TableHead>
                   <TableHead className="h-9">Company</TableHead>
                   <TableHead className="h-9 text-right">GST %</TableHead>
                   <TableHead className="h-9 text-right">Price</TableHead>
@@ -445,14 +459,14 @@ const PoItems = () => {
               <TableBody>
                 {isLoading && (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center text-xs text-muted-foreground py-6">
+                    <TableCell colSpan={8} className="text-center text-xs text-muted-foreground py-6">
                       Loading…
                     </TableCell>
                   </TableRow>
                 )}
                 {!isLoading && filtered.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center text-xs text-muted-foreground py-6">
+                    <TableCell colSpan={8} className="text-center text-xs text-muted-foreground py-6">
                       No PO items yet. Add one or import from Excel.
                     </TableCell>
                   </TableRow>
@@ -461,6 +475,7 @@ const PoItems = () => {
                   <TableRow key={row.id} className={!row.is_active ? "opacity-60" : undefined}>
                     <TableCell className="py-2 font-mono text-sm">{row.item_code}</TableCell>
                     <TableCell className="py-2 text-sm font-medium">{row.item_name}</TableCell>
+                    <TableCell className="py-2 text-sm text-muted-foreground">{row.alias_name || "—"}</TableCell>
                     <TableCell className="py-2 text-sm">{row.company_name || "—"}</TableCell>
                     <TableCell className="py-2 text-sm text-right tabular-nums">{Number(row.gst_rate)}</TableCell>
                     <TableCell className="py-2 text-sm text-right tabular-nums">
