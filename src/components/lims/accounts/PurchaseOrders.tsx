@@ -62,6 +62,7 @@ type Company = {
   address?: string;
   contact_person?: string;
   contact_number?: string;
+  email?: string;
 };
 
 type PoItemRow = {
@@ -95,6 +96,7 @@ type PurchaseOrder = {
     address?: string | null;
     contact_person?: string | null;
     contact_number?: string | null;
+    email?: string | null;
   } | null;
   accounts_po_items?: PoItemRow[];
 };
@@ -407,7 +409,7 @@ const PurchaseOrders = () => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("accounts_companies")
-        .select("id, name, address, contact_person, contact_number")
+        .select("id, name, address, contact_person, contact_number, email")
         .eq("is_active", true)
         .order("name");
       if (error) throw error;
@@ -420,7 +422,7 @@ const PurchaseOrders = () => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("accounts_purchase_orders")
-        .select("*, accounts_companies(name, address, contact_person, contact_number), accounts_po_items(*)")
+        .select("*, accounts_companies(name, address, contact_person, contact_number, email), accounts_po_items(*)")
         .order("po_date", { ascending: false })
         .order("created_at", { ascending: false });
       if (error) throw error;
@@ -468,7 +470,7 @@ const PurchaseOrders = () => {
   const openDetail = (po: PurchaseOrder) => {
     setSelectedPo(po);
     setReceiveDraft({});
-    setEmailTo(po.email_to || "");
+    setEmailTo(po.email_to || po.accounts_companies?.email || "");
     setDetailOpen(true);
   };
 
@@ -481,6 +483,11 @@ const PurchaseOrders = () => {
         (ln) => ln.item_name.trim() && num(ln.qty) > 0,
       );
       if (!validLines.length) throw new Error("Add at least one line item");
+
+      const poEmail = (emailTo.trim() || company.email || "").trim();
+      if (!poEmail) {
+        throw new Error("This company has no email. Add it in Accounts → Settings → Companies.");
+      }
 
       const po_number = await generatePoNumber(poDate);
       const brand_primary = settings?.po_brand_primary || "#0f766e";
@@ -500,10 +507,10 @@ const PurchaseOrders = () => {
           brand_primary,
           brand_accent,
           logo_url,
-          email_to: emailTo.trim() || null,
+          email_to: poEmail,
           created_by: getCurrentUserName(),
         })
-        .select("*, accounts_companies(name, address, contact_person, contact_number), accounts_po_items(*)")
+        .select("*, accounts_companies(name, address, contact_person, contact_number, email), accounts_po_items(*)")
         .single();
 
       if (poErr) throw poErr;
@@ -524,7 +531,7 @@ const PurchaseOrders = () => {
 
       const { data: fullPo, error: reloadErr } = await supabase
         .from("accounts_purchase_orders")
-        .select("*, accounts_companies(name, address, contact_person, contact_number), accounts_po_items(*)")
+        .select("*, accounts_companies(name, address, contact_person, contact_number, email), accounts_po_items(*)")
         .eq("id", po.id)
         .single();
       if (reloadErr) throw reloadErr;
@@ -586,7 +593,7 @@ const PurchaseOrders = () => {
 
       const { data: fullPo, error: reloadErr } = await supabase
         .from("accounts_purchase_orders")
-        .select("*, accounts_companies(name, address, contact_person, contact_number), accounts_po_items(*)")
+        .select("*, accounts_companies(name, address, contact_person, contact_number, email), accounts_po_items(*)")
         .eq("id", selectedPo.id)
         .single();
       if (reloadErr) throw reloadErr;
@@ -636,9 +643,9 @@ const PurchaseOrders = () => {
   };
 
   const emailPo = async (po: PurchaseOrder) => {
-    const to = (emailTo || po.email_to || "").trim();
+    const to = (emailTo || po.email_to || po.accounts_companies?.email || "").trim();
     if (!to) {
-      toast.error("Enter recipient email");
+      toast.error("Add email on this company in Accounts → Settings, then try again");
       return;
     }
 
@@ -800,7 +807,14 @@ const PurchaseOrders = () => {
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label>Company</Label>
-              <Select value={companyId} onValueChange={setCompanyId}>
+              <Select
+                value={companyId}
+                onValueChange={(id) => {
+                  setCompanyId(id);
+                  const c = companies.find((x) => x.id === id);
+                  setEmailTo((c?.email || "").trim());
+                }}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Select company" />
                 </SelectTrigger>
@@ -818,13 +832,16 @@ const PurchaseOrders = () => {
               <Input type="date" value={poDate} onChange={(e) => setPoDate(e.target.value)} />
             </div>
             <div className="space-y-2 sm:col-span-2">
-              <Label>Email to (optional)</Label>
+              <Label>Email to (from company)</Label>
               <Input
                 type="email"
                 value={emailTo}
                 onChange={(e) => setEmailTo(e.target.value)}
-                placeholder="company@example.com"
+                placeholder="Select company to fill email"
               />
+              <p className="text-xs text-muted-foreground">
+                Filled from company settings. Required to email the PO.
+              </p>
             </div>
           </div>
 
@@ -1133,7 +1150,7 @@ const PurchaseOrders = () => {
                     type="email"
                     value={emailTo}
                     onChange={(e) => setEmailTo(e.target.value)}
-                    placeholder="company@example.com"
+                    placeholder="company email from settings"
                   />
                 </div>
                 <Button variant="outline" onClick={() => downloadPdf(selectedPo)}>

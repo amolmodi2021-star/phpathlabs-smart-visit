@@ -29,6 +29,7 @@ type Company = {
   address: string;
   contact_person: string;
   contact_number: string;
+  email: string;
   is_active: boolean;
 };
 type Bank = { id: string; name: string; is_active: boolean };
@@ -42,6 +43,14 @@ function trimAddress(value: string): string {
 /** Keep last 10 digits — same as New Registration mobile formatting. */
 function formatMobile10(value: string): string {
   return value.replace(/\D/g, "").slice(-10);
+}
+
+function normalizeEmail(value: string): string {
+  return value.replace(/\s+/g, "").trim().toLowerCase();
+}
+
+function isValidEmail(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
 type ModuleSettings = {
@@ -90,6 +99,7 @@ function CompaniesSection() {
   const [address, setAddress] = useState("");
   const [contactPerson, setContactPerson] = useState("");
   const [contactNumber, setContactNumber] = useState("");
+  const [email, setEmail] = useState("");
   const [tdsPercent, setTdsPercent] = useState("0");
 
   const { data: rows = [], isLoading } = useQuery({
@@ -97,7 +107,7 @@ function CompaniesSection() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("accounts_companies")
-        .select("id, name, tds_percent, address, contact_person, contact_number, is_active")
+        .select("id, name, tds_percent, address, contact_person, contact_number, email, is_active")
         .order("name");
       if (error) throw error;
       return (data || []) as Company[];
@@ -110,6 +120,7 @@ function CompaniesSection() {
     setAddress("");
     setContactPerson("");
     setContactNumber("");
+    setEmail("");
     setTdsPercent("0");
     setDialogOpen(true);
   };
@@ -120,6 +131,7 @@ function CompaniesSection() {
     setAddress(row.address || "");
     setContactPerson(row.contact_person || "");
     setContactNumber(formatMobile10(row.contact_number || ""));
+    setEmail(row.email || "");
     setTdsPercent(String(row.tds_percent));
     setDialogOpen(true);
   };
@@ -133,15 +145,19 @@ function CompaniesSection() {
       const cleanAddress = trimAddress(address);
       const cleanPerson = contactPerson.replace(/\s+/g, " ").trim();
       const cleanMobile = formatMobile10(contactNumber);
+      const cleanEmail = normalizeEmail(email);
       if (contactNumber.trim() && cleanMobile.length !== 10) {
         throw new Error("Contact number must be a valid 10-digit mobile");
       }
+      if (!cleanEmail) throw new Error("Email address is required to send purchase orders");
+      if (!isValidEmail(cleanEmail)) throw new Error("Enter a valid email address");
       const payload = {
         name: trimmed,
         tds_percent: tds,
         address: cleanAddress,
         contact_person: cleanPerson,
         contact_number: cleanMobile,
+        email: cleanEmail,
         is_active: true,
       };
       if (editing) {
@@ -186,6 +202,7 @@ function CompaniesSection() {
                 <TableHead className="h-9">Name</TableHead>
                 <TableHead className="h-9">Contact</TableHead>
                 <TableHead className="h-9">Mobile</TableHead>
+                <TableHead className="h-9">Email</TableHead>
                 <TableHead className="h-9">TDS %</TableHead>
                 <TableHead className="h-9">Status</TableHead>
                 <TableHead className="h-9 text-right">Actions</TableHead>
@@ -193,10 +210,10 @@ function CompaniesSection() {
             </TableHeader>
             <TableBody>
               {isLoading && (
-                <TableRow><TableCell colSpan={6} className="text-center text-xs text-muted-foreground py-4">Loading…</TableCell></TableRow>
+                <TableRow><TableCell colSpan={7} className="text-center text-xs text-muted-foreground py-4">Loading…</TableCell></TableRow>
               )}
               {!isLoading && rows.length === 0 && (
-                <TableRow><TableCell colSpan={6} className="text-center text-xs text-muted-foreground py-4">No companies yet.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={7} className="text-center text-xs text-muted-foreground py-4">No companies yet.</TableCell></TableRow>
               )}
               {rows.map((row) => (
                 <TableRow key={row.id} className={!row.is_active ? "opacity-60" : undefined}>
@@ -210,6 +227,9 @@ function CompaniesSection() {
                   </TableCell>
                   <TableCell className="py-2 text-sm">{row.contact_person || "—"}</TableCell>
                   <TableCell className="py-2 text-sm tabular-nums">{row.contact_number || "—"}</TableCell>
+                  <TableCell className="py-2 text-sm max-w-[180px] truncate" title={row.email || undefined}>
+                    {row.email || "—"}
+                  </TableCell>
                   <TableCell className="py-2 text-sm tabular-nums">{Number(row.tds_percent)}%</TableCell>
                   <TableCell className="py-2"><StatusCell active={row.is_active} /></TableCell>
                   <TableCell className="py-2 text-right">
@@ -274,6 +294,20 @@ function CompaniesSection() {
                   {contactNumber.length === 10 ? " ✓" : ""}
                 </p>
               ) : null}
+            </div>
+            <div>
+              <Label className="text-xs">Email Address *</Label>
+              <Input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                onBlur={() => setEmail((v) => normalizeEmail(v))}
+                placeholder="orders@company.com"
+                className="h-9"
+              />
+              <p className="text-[11px] text-muted-foreground mt-1">
+                Used to email purchase orders to this company.
+              </p>
             </div>
             <div>
               <Label className="text-xs">TDS %</Label>
