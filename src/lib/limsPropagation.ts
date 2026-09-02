@@ -22,6 +22,7 @@ import { markPropagated, markInvalidated } from "./limsRealtimeDedupe";
 export type LimsModule =
   | "results"
   | "cbc"
+  | "dr_cbc"
   | "verification"
   | "doctor_approval"
   | "dispatch"
@@ -37,6 +38,7 @@ export type LimsModule =
 /** Single source of truth: which React-Query keys belong to each module. */
 export const MODULE_KEYS: Record<LimsModule, string[]> = {
   cbc: ["cbc_candidate_ids", "cbc_regs", "cbc_review", "cbc_results"],
+  dr_cbc: ["cbc_dr_candidate_ids", "cbc_dr_regs", "cbc_dr_review", "cbc_dr_results"],
   results: [
     "results_accepted_regs",
     "results_accepted_count",

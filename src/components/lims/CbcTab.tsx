@@ -27,12 +27,14 @@ import {
   Sparkles,
   CheckCircle2,
   AlertTriangle,
+  Stethoscope,
 } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { getCurrentUserName } from "@/lib/auth";
 import { patientDisplayName } from "@/lib/patientDisplayName";
 import { formatAgeGender } from "@/lib/ageGender";
+import PatientTestPipelineHover from "@/components/lims/PatientTestPipelineHover";
 import { checkDifferentialSum } from "@/lib/differentialCount";
 import { propagateRegistrationChange } from "@/lib/limsPropagation";
 import {
@@ -45,6 +47,7 @@ import {
   CBC_MORPHOLOGY_PARAM_CODES,
   CBC_MP_PARAM_CODE,
   applyCbcDraftToVerification,
+  sendCbcToDoctor,
   compressImageForCbcAi,
   isCbcLikeTest,
   normalizeDifferentialDraft,
@@ -54,7 +57,7 @@ import {
 } from "@/lib/cbcSmear";
 
 const REG_SELECT =
-  "id, invoice_number, patient_name, title, mobile_number, umr_number, gender, age_text, created_at, is_stat";
+  "id, invoice_number, patient_name, title, mobile_number, umr_number, gender, age_text, dob, visit_type, created_at, is_stat";
 
 type RegRow = {
   id: string;
@@ -65,6 +68,8 @@ type RegRow = {
   umr_number: string | null;
   gender: string | null;
   age_text: string | null;
+  dob: string | null;
+  visit_type: string | null;
   created_at: string | null;
   is_stat: boolean | null;
 };
@@ -75,6 +80,9 @@ type ResultRow = {
   test_id: string;
   parameter_id: string;
   result_value: string | null;
+  unit: string | null;
+  reference_range: string | null;
+  flag: string | null;
   status: string;
 };
 
@@ -82,6 +90,9 @@ type ParamMeta = {
   parameterId: string;
   paramCode: string;
   parameterName: string;
+  unit: string;
+  normalRangeText: string;
+  displayOrder: number;
 };
 
 type ReviewRow = {
@@ -185,7 +196,7 @@ const CbcTab = () => {
       const regId = expandedId!;
       const { data: results, error: resErr } = await supabase
         .from("patient_results")
-        .select("id, registration_id, test_id, parameter_id, result_value, status")
+        .select("id, registration_id, test_id, parameter_id, result_value, unit, reference_range, flag, status")
         .eq("registration_id", regId)
         .in("status", ["entered", "results_entered"]);
       if (resErr) throw resErr;
@@ -216,14 +227,31 @@ const CbcTab = () => {
       if (paramIds.length > 0) {
         const { data: params, error: pErr } = await supabase
           .from("report_test_parameters")
-          .select("id, param_code, parameter_name")
+          .select("id, param_code, parameter_name, unit, normal_range_text")
           .in("id", paramIds);
         if (pErr) throw pErr;
+        const orderByParam: Record<string, number> = {};
+        if (cbcTests.length > 0) {
+          const { data: tpRows } = await supabase
+            .from("test_parameters")
+            .select("parameter_id, display_order, test_id")
+            .in("test_id", cbcTests.map((x) => x.id))
+            .in("parameter_id", paramIds);
+          for (const row of (tpRows as any[]) || []) {
+            const pid = String(row.parameter_id || "");
+            const ord = Number(row.display_order ?? 9999);
+            if (!pid) continue;
+            if (orderByParam[pid] == null || ord < orderByParam[pid]) orderByParam[pid] = ord;
+          }
+        }
         for (const p of (params as any[]) || []) {
           paramById[p.id] = {
             parameterId: p.id,
             paramCode: String(p.param_code || ""),
             parameterName: String(p.parameter_name || p.param_code || ""),
+            unit: String(p.unit || ""),
+            normalRangeText: String(p.normal_range_text || ""),
+            displayOrder: orderByParam[p.id] ?? 9999,
           };
         }
       }
@@ -315,7 +343,51 @@ const CbcTab = () => {
     },
   });
 
+
   const review = reviewQuery.data;
+
+  const expandedReg = useMemo(
+    () => (expandedId ? registrations.find((r) => r.id === expandedId) || null : null),
+    [expandedId, registrations],
+  );
+
+  const { data: historicalResults = [] } = useQuery({
+    queryKey: ["cbc_historical_results", expandedReg?.umr_number, expandedId],
+    enabled: !!expandedReg?.umr_number && !!expandedId,
+    queryFn: async () => {
+      const { data: sameUmrRegs } = await supabase
+        .from("patient_registrations")
+        .select("id")
+        .eq("umr_number", expandedReg!.umr_number!)
+        .neq("id", expandedId!);
+      const regIds = (sameUmrRegs || []).map((r: any) => r.id);
+      if (regIds.length === 0) return [] as any[];
+      const { data, error } = await supabase
+        .from("patient_results")
+        .select("parameter_id, result_value, reference_range, created_at")
+        .in("registration_id", regIds)
+        .not("result_value", "is", null)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  const historyMap = useMemo(() => {
+    const map: Record<string, { resultValue: string; referenceRange: string }[]> = {};
+    for (const r of historicalResults as any[]) {
+      if (!r.parameter_id) continue;
+      if (!map[r.parameter_id]) map[r.parameter_id] = [];
+      if (map[r.parameter_id].length < 2) {
+        map[r.parameter_id].push({
+          resultValue: r.result_value || "",
+          referenceRange: r.reference_range || "",
+        });
+      }
+    }
+    return map;
+  }, [historicalResults]);
+
 
   useEffect(() => {
     if (!review) {
@@ -330,10 +402,17 @@ const CbcTab = () => {
     setShowCriticalFields(hasCritical);
   }, [review?.id, review?.updated_at, review?.draft_result, review?.ai_result]);
 
-  const testResults = useMemo(
-    () => results.filter((r) => r.test_id === selectedTestId),
-    [results, selectedTestId],
-  );
+  const testResults = useMemo(() => {
+    const rows = results.filter((r) => r.test_id === selectedTestId);
+    return [...rows].sort((a, b) => {
+      const oa = paramById[a.parameter_id]?.displayOrder ?? 9999;
+      const ob = paramById[b.parameter_id]?.displayOrder ?? 9999;
+      if (oa !== ob) return oa - ob;
+      const na = paramById[a.parameter_id]?.parameterName || "";
+      const nb = paramById[b.parameter_id]?.parameterName || "";
+      return na.localeCompare(nb);
+    });
+  }, [results, selectedTestId, paramById]);
 
   const paramByCode = useMemo(() => {
     const map: Record<string, ParamMeta> = {};
@@ -606,6 +685,42 @@ const CbcTab = () => {
     }
   };
 
+
+  const handleSendToDoctor = async () => {
+    if (!review || !expandedId || !selectedTestId) return;
+    if (imageUrls.length === 0) {
+      toast.error("Upload at least one smear image before sending to doctor");
+      return;
+    }
+    if (!diffCheck.isOk && diffCheck.hasDifferential) {
+      toast.error(`Differential sum is ${diffCheck.sum}% (must be 100%)`);
+      return;
+    }
+    setBusy("send_doctor");
+    try {
+      const keep = Object.keys(machineDcLocked) as Array<keyof CbcAiDraft>;
+      const finalDraft = scrubCriticalOnlyDraftFields(normalizeDifferentialDraft(draft, keep));
+      await sendCbcToDoctor({
+        reviewId: review.id,
+        registrationId: expandedId,
+        testId: selectedTestId,
+        draft: finalDraft,
+        paramByCode,
+        by: getCurrentUserName() || "staff",
+      });
+      await propagateRegistrationChange(qc, expandedId, ["cbc", "dr_cbc"]);
+      toast.success("Sent to Dr. CBC");
+      setExpandedId(null);
+      await qc.invalidateQueries({ queryKey: ["cbc_candidate_ids"] });
+      await qc.invalidateQueries({ queryKey: ["cbc_regs"] });
+      await qc.invalidateQueries({ queryKey: ["cbc_dr_candidate_ids"] });
+    } catch (e: any) {
+      toast.error(e?.message || "Send to doctor failed");
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const isLoading = loadingIds || loadingRegs;
 
   return (
@@ -629,7 +744,7 @@ const CbcTab = () => {
       <p className="text-xs text-muted-foreground flex items-start gap-1.5">
         <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
         AI assistive draft only — technologist must review morphology, differential, and MP before
-        approving to Result Verification. Never auto-send WhatsApp from this tab.
+        approving or sending to Dr. CBC. Never auto-send WhatsApp from this tab.
       </p>
 
       {isLoading ? (
@@ -653,25 +768,36 @@ const CbcTab = () => {
                   className="w-full text-left px-4 py-3 flex items-center gap-3 hover:bg-muted/40"
                   onClick={() => setExpandedId(open ? null : reg.id)}
                 >
-                  <div className="flex-1 min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-medium truncate">{patientDisplayName(reg)}</span>
-                      {reg.is_stat && <Badge variant="destructive">STAT</Badge>}
-                      <Badge variant="outline">{reg.invoice_number}</Badge>
-                    </div>
-                    <div className="text-xs text-muted-foreground mt-0.5">
-                      {formatAgeGender(null, reg.gender, reg.age_text)}
-                      {reg.umr_number ? ` · UMR ${reg.umr_number}` : ""}
-                      {reg.created_at
-                        ? ` · ${format(new Date(reg.created_at), "dd MMM yyyy HH:mm")}`
-                        : ""}
-                    </div>
-                  </div>
                   {open ? (
                     <ChevronUp className="h-4 w-4 shrink-0" />
                   ) : (
                     <ChevronDown className="h-4 w-4 shrink-0" />
                   )}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-medium font-mono">{reg.invoice_number}</span>
+                      <span
+                        onClick={(e) => e.stopPropagation()}
+                        onKeyDown={(e) => e.stopPropagation()}
+                      >
+                        <PatientTestPipelineHover
+                          registrationId={reg.id}
+                          invoiceNumber={reg.invoice_number || ""}
+                        />
+                      </span>
+                      {reg.is_stat && <Badge variant="destructive" className="text-[10px]">STAT</Badge>}
+                      <span className="text-sm text-muted-foreground truncate">
+                        {patientDisplayName(reg)}
+                      </span>
+                      <Badge variant="outline" className="text-[10px] font-mono">
+                        {formatAgeGender(reg.dob, reg.gender, reg.age_text)}
+                      </Badge>
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-0.5">
+                      {reg.mobile_number || "—"}
+                      {reg.umr_number ? ` · UMR ${reg.umr_number}` : ""}
+                    </div>
+                  </div>
                 </button>
 
                 {open && (
@@ -701,32 +827,51 @@ const CbcTab = () => {
                         )}
 
                         <div>
-                          <h4 className="text-sm font-medium mb-2">Analyzer values</h4>
+                          <h4 className="text-sm font-medium mb-2">CBC parameters</h4>
                           <div className="rounded-md border overflow-x-auto">
                             <Table>
                               <TableHeader>
                                 <TableRow>
-                                  <TableHead>Parameter</TableHead>
-                                  <TableHead>Code</TableHead>
-                                  <TableHead>Value</TableHead>
+                                  <TableHead className="text-xs">Code</TableHead>
+                                  <TableHead className="text-xs">Parameter</TableHead>
+                                  <TableHead className="text-xs">Prev 1</TableHead>
+                                  <TableHead className="text-xs">Prev 2</TableHead>
+                                  <TableHead className="text-xs">Result</TableHead>
+                                  <TableHead className="text-xs">Unit</TableHead>
+                                  <TableHead className="text-xs">Ref. Range</TableHead>
+                                  <TableHead className="text-xs">Flag</TableHead>
+                                  <TableHead className="text-xs">Status</TableHead>
                                 </TableRow>
                               </TableHeader>
                               <TableBody>
                                 {testResults.map((r) => {
                                   const meta = paramById[r.parameter_id];
+                                  const hist = historyMap[r.parameter_id] || [];
                                   return (
                                     <TableRow key={r.id}>
-                                      <TableCell>{meta?.parameterName || "—"}</TableCell>
-                                      <TableCell className="font-mono text-xs">
+                                      <TableCell className="font-mono text-[11px] whitespace-nowrap">
                                         {meta?.paramCode || "—"}
                                       </TableCell>
-                                      <TableCell>{r.result_value || "—"}</TableCell>
+                                      <TableCell className="text-xs">{meta?.parameterName || "—"}</TableCell>
+                                      <TableCell className="text-xs text-muted-foreground">
+                                        {hist[0]?.resultValue || "—"}
+                                      </TableCell>
+                                      <TableCell className="text-xs text-muted-foreground">
+                                        {hist[1]?.resultValue || "—"}
+                                      </TableCell>
+                                      <TableCell className="text-xs font-medium">{r.result_value || "—"}</TableCell>
+                                      <TableCell className="text-xs">{r.unit || meta?.unit || "—"}</TableCell>
+                                      <TableCell className="text-xs whitespace-pre-line">
+                                        {r.reference_range || meta?.normalRangeText || "—"}
+                                      </TableCell>
+                                      <TableCell className="text-xs">{r.flag || "—"}</TableCell>
+                                      <TableCell className="text-xs capitalize">{r.status || "—"}</TableCell>
                                     </TableRow>
                                   );
                                 })}
                                 {testResults.length === 0 && (
                                   <TableRow>
-                                    <TableCell colSpan={3} className="text-muted-foreground">
+                                    <TableCell colSpan={9} className="text-muted-foreground">
                                       No entered CBC results
                                     </TableCell>
                                   </TableRow>
@@ -827,6 +972,25 @@ const CbcTab = () => {
                               <Sparkles className="h-4 w-4 mr-1" />
                             )}
                             Interpret with AI
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            onClick={() => void handleSendToDoctor()}
+                            disabled={
+                              busy === "send_doctor" ||
+                              imageUrls.length === 0 ||
+                              review?.status === "sent_to_doctor" ||
+                              review?.status === "doctor_saved"
+                            }
+                            title={imageUrls.length === 0 ? "Upload smear images first" : "Send to Dr. CBC"}
+                          >
+                            {busy === "send_doctor" ? (
+                              <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                            ) : (
+                              <Stethoscope className="h-4 w-4 mr-1" />
+                            )}
+                            Send to Doctor
                           </Button>
                           {review?.status && (
                             <Badge variant="secondary">Review: {review.status}</Badge>

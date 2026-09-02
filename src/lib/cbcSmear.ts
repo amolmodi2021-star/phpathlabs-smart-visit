@@ -283,3 +283,36 @@ export async function applyCbcDraftToVerification(input: {
     if (insErr) throw insErr;
   }
 }
+
+
+/** Mark smear review as sent to Dr. CBC (leaves CBC tech queue). */
+export async function sendCbcToDoctor(input: {
+  reviewId: string;
+  registrationId: string;
+  testId: string;
+  draft: CbcAiDraft;
+  paramByCode: Record<string, { parameterId: string; parameterName?: string; paramCode?: string }>;
+  by: string;
+}): Promise<void> {
+  const keepKeys = Object.keys(input.draft) as Array<keyof CbcAiDraft>;
+  const finalDraft = scrubCriticalOnlyDraftFields(normalizeDifferentialDraft(input.draft));
+  await applyCbcDraftToVerification({
+    registrationId: input.registrationId,
+    testId: input.testId,
+    draft: finalDraft,
+    paramByCode: input.paramByCode,
+  });
+  const now = new Date().toISOString();
+  const { error } = await supabase
+    .from("cbc_smear_reviews")
+    .update({
+      status: "sent_to_doctor",
+      draft_result: finalDraft,
+      sent_to_doctor_at: now,
+      sent_to_doctor_by: input.by,
+      updated_at: now,
+    } as any)
+    .eq("id", input.reviewId);
+  if (error) throw error;
+  void keepKeys;
+}

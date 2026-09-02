@@ -101,6 +101,7 @@ const ALL_TABS = [
       { key: "dispatch", label: "Dispatch" },
       { key: "workflow", label: "Workflow" },
       { key: "cbc", label: "CBC" },
+      { key: "dr_cbc", label: "Dr. CBC" },
       { key: "due_payments", label: "Due Payments" },
       { key: "bad_debts", label: "Bad Debts" },
       { key: "billing", label: "Billing" },
