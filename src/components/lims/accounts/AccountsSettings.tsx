@@ -30,6 +30,10 @@ type Company = {
   contact_person: string;
   contact_number: string;
   email: string;
+  /** Exact Tally ledger name (preserve spelling/case). */
+  debit_to: string;
+  /** Exact Tally ledger name (preserve spelling/case). */
+  credit_to: string;
   is_active: boolean;
 };
 type Bank = { id: string; name: string; is_active: boolean };
@@ -100,6 +104,8 @@ function CompaniesSection() {
   const [contactPerson, setContactPerson] = useState("");
   const [contactNumber, setContactNumber] = useState("");
   const [email, setEmail] = useState("");
+  const [debitTo, setDebitTo] = useState("");
+  const [creditTo, setCreditTo] = useState("");
   const [tdsPercent, setTdsPercent] = useState("0");
 
   const { data: rows = [], isLoading } = useQuery({
@@ -107,7 +113,7 @@ function CompaniesSection() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("accounts_companies")
-        .select("id, name, tds_percent, address, contact_person, contact_number, email, is_active")
+        .select("id, name, tds_percent, address, contact_person, contact_number, email, debit_to, credit_to, is_active")
         .order("name");
       if (error) throw error;
       return (data || []) as Company[];
@@ -121,6 +127,8 @@ function CompaniesSection() {
     setContactPerson("");
     setContactNumber("");
     setEmail("");
+    setDebitTo("");
+    setCreditTo("");
     setTdsPercent("0");
     setDialogOpen(true);
   };
@@ -132,6 +140,8 @@ function CompaniesSection() {
     setContactPerson(row.contact_person || "");
     setContactNumber(formatMobile10(row.contact_number || ""));
     setEmail(row.email || "");
+    setDebitTo(row.debit_to || "");
+    setCreditTo(row.credit_to || "");
     setTdsPercent(String(row.tds_percent));
     setDialogOpen(true);
   };
@@ -146,11 +156,16 @@ function CompaniesSection() {
       const cleanPerson = contactPerson.replace(/\s+/g, " ").trim();
       const cleanMobile = formatMobile10(contactNumber);
       const cleanEmail = normalizeEmail(email);
+      // Tally ledgers: trim ends only — keep exact spelling/case/spacing inside.
+      const cleanDebitTo = debitTo.trim();
+      const cleanCreditTo = creditTo.trim();
       if (contactNumber.trim() && cleanMobile.length !== 10) {
         throw new Error("Contact number must be a valid 10-digit mobile");
       }
       if (!cleanEmail) throw new Error("Email address is required to send purchase orders");
       if (!isValidEmail(cleanEmail)) throw new Error("Enter a valid email address");
+      if (!cleanDebitTo) throw new Error("Debit To (Tally ledger) is required");
+      if (!cleanCreditTo) throw new Error("Credit To (Tally ledger) is required");
       const payload = {
         name: trimmed,
         tds_percent: tds,
@@ -158,6 +173,8 @@ function CompaniesSection() {
         contact_person: cleanPerson,
         contact_number: cleanMobile,
         email: cleanEmail,
+        debit_to: cleanDebitTo,
+        credit_to: cleanCreditTo,
         is_active: true,
       };
       if (editing) {
@@ -203,6 +220,8 @@ function CompaniesSection() {
                 <TableHead className="h-9">Contact</TableHead>
                 <TableHead className="h-9">Mobile</TableHead>
                 <TableHead className="h-9">Email</TableHead>
+                <TableHead className="h-9">Debit To</TableHead>
+                <TableHead className="h-9">Credit To</TableHead>
                 <TableHead className="h-9">TDS %</TableHead>
                 <TableHead className="h-9">Status</TableHead>
                 <TableHead className="h-9 text-right">Actions</TableHead>
@@ -210,10 +229,10 @@ function CompaniesSection() {
             </TableHeader>
             <TableBody>
               {isLoading && (
-                <TableRow><TableCell colSpan={7} className="text-center text-xs text-muted-foreground py-4">Loading…</TableCell></TableRow>
+                <TableRow><TableCell colSpan={9} className="text-center text-xs text-muted-foreground py-4">Loading…</TableCell></TableRow>
               )}
               {!isLoading && rows.length === 0 && (
-                <TableRow><TableCell colSpan={7} className="text-center text-xs text-muted-foreground py-4">No companies yet.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={9} className="text-center text-xs text-muted-foreground py-4">No companies yet.</TableCell></TableRow>
               )}
               {rows.map((row) => (
                 <TableRow key={row.id} className={!row.is_active ? "opacity-60" : undefined}>
@@ -229,6 +248,12 @@ function CompaniesSection() {
                   <TableCell className="py-2 text-sm tabular-nums">{row.contact_number || "—"}</TableCell>
                   <TableCell className="py-2 text-sm max-w-[180px] truncate" title={row.email || undefined}>
                     {row.email || "—"}
+                  </TableCell>
+                  <TableCell className="py-2 text-sm max-w-[140px] truncate font-mono text-xs" title={row.debit_to || undefined}>
+                    {row.debit_to || "—"}
+                  </TableCell>
+                  <TableCell className="py-2 text-sm max-w-[140px] truncate font-mono text-xs" title={row.credit_to || undefined}>
+                    {row.credit_to || "—"}
                   </TableCell>
                   <TableCell className="py-2 text-sm tabular-nums">{Number(row.tds_percent)}%</TableCell>
                   <TableCell className="py-2"><StatusCell active={row.is_active} /></TableCell>
@@ -309,6 +334,31 @@ function CompaniesSection() {
                 Used to email purchase orders to this company.
               </p>
             </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs">Debit To *</Label>
+                <Input
+                  value={debitTo}
+                  onChange={(e) => setDebitTo(e.target.value)}
+                  onBlur={() => setDebitTo((v) => v.trim())}
+                  placeholder="Exact Tally ledger name"
+                  className="h-9 font-mono text-sm"
+                />
+              </div>
+              <div>
+                <Label className="text-xs">Credit To *</Label>
+                <Input
+                  value={creditTo}
+                  onChange={(e) => setCreditTo(e.target.value)}
+                  onBlur={() => setCreditTo((v) => v.trim())}
+                  placeholder="Exact Tally ledger name"
+                  className="h-9 font-mono text-sm"
+                />
+              </div>
+            </div>
+            <p className="text-[11px] text-muted-foreground -mt-1">
+              Enter ledger names exactly as in Tally (case and spelling). Used later for Tally integration.
+            </p>
             <div>
               <Label className="text-xs">TDS %</Label>
               <Input type="number" min={0} max={100} step={0.001} value={tdsPercent} onChange={(e) => setTdsPercent(e.target.value)} className="h-9" />
