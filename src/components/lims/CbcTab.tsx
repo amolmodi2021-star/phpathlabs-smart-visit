@@ -743,9 +743,7 @@ const CbcTab = () => {
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
-        <RefreshButton
-          queryKeys={["cbc_candidate_ids", "cbc_regs", "cbc_review", "cbc_results"]}
-        />
+        <RefreshButton queryKeys={["cbc_candidate_ids", "cbc_regs", "cbc_review", "cbc_results", "cbc_historical_results"]} />
         <Badge variant="secondary">{filteredRegs.length} patients</Badge>
       </div>
 

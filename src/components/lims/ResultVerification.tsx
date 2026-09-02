@@ -1840,9 +1840,11 @@ const ResultVerification = () => {
           queryKeys={[
             "verification_regs_count",
             "verification_regs_v2",
-            ...(expandedPatient
-              ? ["verification_results_v2", "verification_tubes", "verification_outsourced_v2"]
-              : []),
+            "verification_results_v2",
+            "verification_tubes",
+            "verification_outsourced_v2",
+            "verification_dr_cbc_holds",
+            "verification_reg_detail",
           ]}
           className="ml-auto shrink-0"
         />

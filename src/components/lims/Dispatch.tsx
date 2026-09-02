@@ -623,19 +623,22 @@ const Dispatch = () => {
     return () => window.clearTimeout(t);
   }, [listLoading, listEntries.length, dispatchPage, listMode]);
 
-  const refreshKeys = useMemo(() => {
-    const keys = ["dispatch_filtered_ids", "dispatch_regs"];
-    if (selectedPatientId) {
-      keys.push(
-        "dispatch_detail_results",
-        "dispatch_detail_tubes",
-        "dispatch_detail_snips",
-        "dispatch_detail_held",
-        "dispatch_failed_wa_outbox",
-      );
-    }
-    return keys;
-  }, [selectedPatientId]);
+  const refreshKeys = useMemo(
+    () => [
+      "dispatch_filtered_ids",
+      "dispatch_regs",
+      "dispatch_detail_results",
+      "dispatch_detail_tubes",
+      "dispatch_detail_snips",
+      "dispatch_detail_held",
+      "dispatch_failed_wa_outbox",
+      "dispatch_held_reports",
+      "dispatch_all_results",
+      "dispatch_all_snips",
+      "dispatch_all_tubes",
+    ],
+    [],
+  );
 
   const markAsDispatched = async (entry: DispatchEntry) => {
     const reg = entry.registration;

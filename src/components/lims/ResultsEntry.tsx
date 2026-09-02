@@ -2362,9 +2362,12 @@ const ResultsEntry = () => {
             "results_accepted_regs",
             "results_machine_filtered_ids",
             "results_tests_instrument_map",
-            ...(expandedPatient
-              ? ["patient_results_existing", "results_accepted_tubes", "results_outsourced_snips", "results_reg_detail"]
-              : []),
+            // Mark detail caches stale (no fetch until expand) so Refresh is trustworthy
+            "patient_results_existing",
+            "results_accepted_tubes",
+            "results_outsourced_snips",
+            "results_reg_detail",
+            "outsourced_snips",
           ]}
           className="ml-auto shrink-0"
         />

@@ -1328,9 +1328,11 @@ const DoctorApproval = () => {
           queryKeys={[
             "doctor_approval_count",
             "doctor_approval_regs",
-            ...(expandedPatient
-              ? ["doctor_approval_results", "doctor_approval_tubes", "doctor_approval_snips"]
-              : []),
+            "doctor_approval_results",
+            "doctor_approval_tubes",
+            "doctor_approval_snips",
+            "doctor_approval_reg_detail",
+            "doctor_approval_history",
           ]}
           className="ml-auto"
         />
