@@ -294,14 +294,20 @@ export async function sendCbcToDoctor(input: {
   paramByCode: Record<string, { parameterId: string; parameterName?: string; paramCode?: string }>;
   by: string;
 }): Promise<void> {
-  const keepKeys = Object.keys(input.draft) as Array<keyof CbcAiDraft>;
   const finalDraft = scrubCriticalOnlyDraftFields(normalizeDifferentialDraft(input.draft));
-  await applyCbcDraftToVerification({
-    registrationId: input.registrationId,
-    testId: input.testId,
-    draft: finalDraft,
-    paramByCode: input.paramByCode,
+  // Apply AI/manual draft when present; allow image-only send if analyzer values already entered.
+  const hasDraftValues = Object.entries(CBC_DRAFT_TO_CODE).some(([field]) => {
+    const raw = finalDraft[field as keyof typeof CBC_DRAFT_TO_CODE];
+    return raw != null && String(raw).trim() !== "";
   });
+  if (hasDraftValues) {
+    await applyCbcDraftToVerification({
+      registrationId: input.registrationId,
+      testId: input.testId,
+      draft: finalDraft,
+      paramByCode: input.paramByCode,
+    });
+  }
   const now = new Date().toISOString();
   const { error } = await supabase
     .from("cbc_smear_reviews")
@@ -314,5 +320,4 @@ export async function sendCbcToDoctor(input: {
     } as any)
     .eq("id", input.reviewId);
   if (error) throw error;
-  void keepKeys;
 }

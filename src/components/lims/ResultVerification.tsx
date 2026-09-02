@@ -380,6 +380,28 @@ const ResultVerification = () => {
     },
   });
 
+  // CBC cases waiting in Dr. CBC must not be verified again here
+  const { data: drCbcHoldReviews = [] } = useQuery({
+    queryKey: ["verification_dr_cbc_holds", detailKey],
+    enabled: detailEnabled,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("cbc_smear_reviews")
+        .select("test_id")
+        .in("registration_id", detailRegIds)
+        .in("status", ["sent_to_doctor", "doctor_saved"]);
+      if (error) throw error;
+      return data || [];
+    },
+  });
+  const drCbcHeldTestIds = useMemo(() => {
+    const s = new Set<string>();
+    for (const r of drCbcHoldReviews as any[]) {
+      if (r.test_id) s.add(String(r.test_id));
+    }
+    return s;
+  }, [drCbcHoldReviews]);
+
   const detailReady = !detailEnabled || (resultsFetched && tubesFetched && detailRegFetched && !!detailReg);
 
   const { transferredTestKeys, outsourcedParamSets, outsourcedSnipDetails } = useMemo(() => {
@@ -505,6 +527,7 @@ const ResultVerification = () => {
       const parameters: ParameterResult[] = [];
       const snipOnlyTests: SnipOnlyTest[] = [];
       for (const t of activeTests) {
+        if (drCbcHeldTestIds.has(t.test_id)) continue; // waiting in / saved from Dr. CBC
         const testInfo = testsMap[t.test_id] || {};
         const testSnipKey = `${reg.id}||${t.test_id}`;
         const isFullTestOutsourced = transferredTestKeys.has(testSnipKey);
@@ -609,7 +632,7 @@ const ResultVerification = () => {
       }
       return { registration: fullReg, parameters, snipOnlyTests };
     });
-  }, [registrations, expandedPatient, detailReady, detailReg, testsMap, testParamsMap, existingResults, resolveNormalRange, transferredTestKeys, outsourcedParamSets, outsourcedSnipDetails, leafIdsByReg]);
+  }, [registrations, expandedPatient, detailReady, drCbcHeldTestIds, detailReg, testsMap, testParamsMap, existingResults, resolveNormalRange, transferredTestKeys, outsourcedParamSets, outsourcedSnipDetails, leafIdsByReg]);
 
   // ─── Loaded test-level notes: first non-null test_note per (reg, test) ───
   const loadedTestNotes = useMemo(() => {
