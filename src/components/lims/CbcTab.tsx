@@ -157,7 +157,7 @@ const CbcTab = () => {
     return () => clearTimeout(t);
   }, [search]);
 
-  const { data: candidateIds = [], isLoading: loadingIds } = useQuery({
+  const { data: candidateIds = [], isLoading: loadingIds, isFetching: fetchingIds, isError: idsError, refetch: refetchIds } = useQuery({
     queryKey: ["cbc_candidate_ids"],
     enabled: tabActive,
     queryFn: async (): Promise<string[]> => {
@@ -745,6 +745,9 @@ const CbcTab = () => {
         </div>
         <RefreshButton queryKeys={["cbc_candidate_ids", "cbc_regs", "cbc_review", "cbc_results", "cbc_historical_results"]} />
         <Badge variant="secondary">{filteredRegs.length} patients</Badge>
+        {(fetchingIds || loadingRegs) && !isLoading && (
+          <span className="text-xs text-muted-foreground">Updating…</span>
+        )}
       </div>
 
       <p className="text-xs text-muted-foreground flex items-start gap-1.5">
@@ -753,7 +756,16 @@ const CbcTab = () => {
         approving or sending to Dr. CBC. Never auto-send WhatsApp from this tab.
       </p>
 
-      {isLoading ? (
+      {idsError ? (
+        <Card>
+          <CardContent className="py-10 text-center text-sm space-y-3">
+            <p className="text-muted-foreground">Could not load CBC queue.</p>
+            <Button size="sm" variant="outline" onClick={() => void refetchIds()}>
+              Retry
+            </Button>
+          </CardContent>
+        </Card>
+      ) : isLoading ? (
         <div className="flex justify-center py-12 text-muted-foreground">
           <Loader2 className="h-5 w-5 animate-spin" />
         </div>

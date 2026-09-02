@@ -155,7 +155,7 @@ const DrCbcTab = () => {
     return () => clearTimeout(t);
   }, [search]);
 
-  const { data: candidateIds = [], isLoading: loadingIds } = useQuery({
+  const { data: candidateIds = [], isLoading: loadingIds, isError: idsError, refetch: refetchIds } = useQuery({
     queryKey: ["cbc_dr_candidate_ids"],
     enabled: tabActive,
     queryFn: async (): Promise<string[]> => {
@@ -537,7 +537,16 @@ const DrCbcTab = () => {
         Review smear images, edit CBC results, then Save to send to Doctor Approval.
       </p>
 
-      {isLoading ? (
+      {idsError ? (
+        <Card>
+          <CardContent className="py-10 text-center text-sm space-y-3">
+            <p className="text-muted-foreground">Could not load Dr. CBC queue.</p>
+            <Button size="sm" variant="outline" onClick={() => void refetchIds()}>
+              Retry
+            </Button>
+          </CardContent>
+        </Card>
+      ) : isLoading ? (
         <div className="flex justify-center py-12"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
       ) : filteredRegs.length === 0 ? (
         <Card>
