@@ -27,6 +27,11 @@ import {
   CBC_MP_PARAM_CODE,
   isCbcLikeTest,
 } from "@/lib/cbcSmear";
+import {
+  isAbnormalResultFlag,
+  isSuspectNegativeResult,
+  resolveCbcDisplayFlag,
+} from "@/lib/reportFlags";
 
 const REG_SELECT =
   "id, invoice_number, patient_name, title, mobile_number, umr_number, gender, age_text, dob, visit_type, created_at, is_stat";
@@ -370,11 +375,22 @@ const DrCbcTab = () => {
       const who = getCurrentUserName() || "doctor";
       for (const row of testResults) {
         const val = getVal(row);
-        if (String(val) === String(row.result_value || "")) continue;
+        const meta = paramById[row.parameter_id];
+        const flag = resolveCbcDisplayFlag({
+          value: val,
+          savedValue: row.result_value,
+          savedFlag: row.flag,
+          normalRangeText: row.reference_range || meta?.normalRangeText,
+          unit: row.unit || meta?.unit,
+        });
+        const valueChanged = String(val) !== String(row.result_value || "");
+        const flagChanged = String(flag || "") !== String(row.flag || "");
+        if (!valueChanged && !flagChanged) continue;
         const { error } = await supabase
           .from("patient_results")
           .update({
             result_value: val || null,
+            flag: flag || null,
             status: "verified",
             verified_at: now,
             verified_by: who,
@@ -556,8 +572,28 @@ const DrCbcTab = () => {
                                 const hist = historyMap[r.parameter_id] || [];
                                 const morph = isMorph(code);
                                 const opts = morphOptsFor(code);
+                                const value = getVal(r);
+                                const flag = resolveCbcDisplayFlag({
+                                  value,
+                                  savedValue: r.result_value,
+                                  savedFlag: r.flag,
+                                  normalRangeText: r.reference_range || meta?.normalRangeText,
+                                  unit: r.unit || meta?.unit,
+                                });
+                                const isNegative = isSuspectNegativeResult(value);
+                                const isAbnormal = isAbnormalResultFlag(flag);
+                                const rowBg = isNegative
+                                  ? "bg-red-50"
+                                  : isAbnormal
+                                    ? "bg-destructive/5"
+                                    : "";
+                                const inputAbnCls = isNegative
+                                  ? "border-red-500 ring-1 ring-red-300 text-red-700 font-semibold"
+                                  : isAbnormal
+                                    ? "border-destructive text-destructive font-bold"
+                                    : "";
                                 return (
-                                  <TableRow key={r.id}>
+                                  <TableRow key={r.id} className={rowBg}>
                                     <TableCell className="font-mono text-[11px]">{code || "—"}</TableCell>
                                     <TableCell className="text-xs">{meta?.parameterName || "—"}</TableCell>
                                     <TableCell className="text-xs text-muted-foreground">{hist[0] || "—"}</TableCell>
@@ -565,14 +601,14 @@ const DrCbcTab = () => {
                                     <TableCell className="text-xs">
                                       {morph && opts.length > 0 ? (
                                         <DescriptiveCombobox
-                                          value={getVal(r)}
+                                          value={value}
                                           options={opts}
                                           onChange={(v) => setEdited((prev) => ({ ...prev, [r.id]: v }))}
                                         />
                                       ) : (
                                         <Input
-                                          className="h-8 text-xs"
-                                          value={getVal(r)}
+                                          className={`h-8 text-xs ${inputAbnCls}`}
+                                          value={value}
                                           onChange={(e) =>
                                             setEdited((prev) => ({ ...prev, [r.id]: e.target.value }))
                                           }
@@ -583,7 +619,15 @@ const DrCbcTab = () => {
                                     <TableCell className="text-xs whitespace-pre-line max-w-[120px]">
                                       {r.reference_range || meta?.normalRangeText || "—"}
                                     </TableCell>
-                                    <TableCell className="text-xs">{r.flag || "—"}</TableCell>
+                                    <TableCell className="text-xs text-center">
+                                      {flag === "H" && <Badge variant="destructive" className="text-xs">HIGH</Badge>}
+                                      {flag === "L" && <Badge variant="destructive" className="text-xs">LOW</Badge>}
+                                      {flag === "N" && <Badge variant="secondary" className="text-xs text-green-700">Normal</Badge>}
+                                      {flag === "X" && <Badge variant="destructive" className="text-xs">Abn</Badge>}
+                                      {flag === "A" && <Badge variant="destructive" className="text-xs">Abn</Badge>}
+                                      {!flag && value && <Badge variant="outline" className="text-xs">—</Badge>}
+                                      {!flag && !value && "—"}
+                                    </TableCell>
                                     <TableCell className="text-xs">
                                       <Badge variant="outline" className="text-[10px]">Dr. CBC</Badge>
                                     </TableCell>

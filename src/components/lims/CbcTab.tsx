@@ -55,6 +55,11 @@ import {
   uploadCbcSmearImage,
   type CbcAiDraft,
 } from "@/lib/cbcSmear";
+import {
+  isAbnormalResultFlag,
+  isSuspectNegativeResult,
+  resolveCbcDisplayFlag,
+} from "@/lib/reportFlags";
 
 const REG_SELECT =
   "id, invoice_number, patient_name, title, mobile_number, umr_number, gender, age_text, dob, visit_type, created_at, is_stat";
@@ -847,8 +852,28 @@ const CbcTab = () => {
                                 {testResults.map((r) => {
                                   const meta = paramById[r.parameter_id];
                                   const hist = historyMap[r.parameter_id] || [];
+                                  const value = r.result_value || "";
+                                  const flag = resolveCbcDisplayFlag({
+                                    value,
+                                    savedValue: r.result_value,
+                                    savedFlag: r.flag,
+                                    normalRangeText: r.reference_range || meta?.normalRangeText,
+                                    unit: r.unit || meta?.unit,
+                                  });
+                                  const isNegative = isSuspectNegativeResult(value);
+                                  const isAbnormal = isAbnormalResultFlag(flag);
+                                  const rowBg = isNegative
+                                    ? "bg-red-50"
+                                    : isAbnormal
+                                      ? "bg-destructive/5"
+                                      : "";
+                                  const resultCls = isNegative
+                                    ? "text-red-700 font-semibold"
+                                    : isAbnormal
+                                      ? "text-destructive font-bold"
+                                      : "font-medium";
                                   return (
-                                    <TableRow key={r.id}>
+                                    <TableRow key={r.id} className={rowBg}>
                                       <TableCell className="font-mono text-[11px] whitespace-nowrap">
                                         {meta?.paramCode || "—"}
                                       </TableCell>
@@ -859,12 +884,22 @@ const CbcTab = () => {
                                       <TableCell className="text-xs text-muted-foreground">
                                         {hist[1]?.resultValue || "—"}
                                       </TableCell>
-                                      <TableCell className="text-xs font-medium">{r.result_value || "—"}</TableCell>
+                                      <TableCell className={`text-xs ${resultCls}`}>
+                                        {value || "—"}
+                                      </TableCell>
                                       <TableCell className="text-xs">{r.unit || meta?.unit || "—"}</TableCell>
                                       <TableCell className="text-xs whitespace-pre-line">
                                         {r.reference_range || meta?.normalRangeText || "—"}
                                       </TableCell>
-                                      <TableCell className="text-xs">{r.flag || "—"}</TableCell>
+                                      <TableCell className="text-xs text-center">
+                                        {flag === "H" && <Badge variant="destructive" className="text-xs">HIGH</Badge>}
+                                        {flag === "L" && <Badge variant="destructive" className="text-xs">LOW</Badge>}
+                                        {flag === "N" && <Badge variant="secondary" className="text-xs text-green-700">Normal</Badge>}
+                                        {flag === "X" && <Badge variant="destructive" className="text-xs">Abn</Badge>}
+                                        {flag === "A" && <Badge variant="destructive" className="text-xs">Abn</Badge>}
+                                        {!flag && value && <Badge variant="outline" className="text-xs">—</Badge>}
+                                        {!flag && !value && "—"}
+                                      </TableCell>
                                       <TableCell className="text-xs capitalize">{r.status || "—"}</TableCell>
                                     </TableRow>
                                   );

@@ -323,6 +323,42 @@ export const isSuspectNegativeResult = (value: string | number | null | undefine
   return Number.isFinite(num) && num < 0;
 };
 
+/** H / L / A / X — same set Results & Verification highlight. */
+export const isAbnormalResultFlag = (flag?: string | null): boolean => {
+  const f = String(flag || "").toUpperCase();
+  return f === "H" || f === "L" || f === "A" || f === "X";
+};
+
+/**
+ * Display / save flag for CBC-style read-only or lightly-edited grids.
+ * Keep the saved flag while the value is unchanged; otherwise recalculate from ref text.
+ */
+export const resolveCbcDisplayFlag = (opts: {
+  value: string;
+  savedValue?: string | null;
+  savedFlag?: string | null;
+  normalRangeText?: string | null;
+  unit?: string | null;
+  rangeType?: string | null;
+  normalFindings?: string | null;
+  expectedValue?: string | null;
+}): string => {
+  const value = (opts.value ?? "").toString();
+  if (!value.trim()) return "";
+  const saved = String(opts.savedFlag || "").toUpperCase();
+  const unchanged = String(opts.savedValue ?? "") === value;
+  if (unchanged && saved) return saved;
+  const auto = calculateResultFlag({
+    value,
+    rangeType: opts.rangeType || undefined,
+    expectedValue: opts.expectedValue || undefined,
+    normalRangeText: opts.normalRangeText || undefined,
+    normalFindings: opts.normalFindings || undefined,
+    unit: opts.unit,
+  });
+  return auto || (unchanged ? saved : "");
+};
+
 export const normalizeTestResultFlags = <T extends FlagEvaluationInput>(rows: T[]): (T & { flag: AbnormalFlag })[] => {
   return rows.map((row) => ({
     ...row,
