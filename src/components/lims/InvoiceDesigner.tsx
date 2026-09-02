@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Upload, Save, Trash2, AlignLeft, AlignCenter, AlignRight, Bold, Minus, Plus } from "lucide-react";
 import { toast } from "sonner";
+import { invalidateInvoiceBrandCache } from "@/lib/invoiceBrandCache";
 
 const SETTING_KEYS = [
   "invoice_lab_name",
@@ -172,6 +173,7 @@ const InvoiceDesigner = () => {
           .from("app_settings")
           .upsert({ setting_key: key, setting_value: settings[key] || "" }, { onConflict: "setting_key" });
       }
+      invalidateInvoiceBrandCache();
       toast.success("Invoice settings saved");
     } catch {
       toast.error("Failed to save settings");

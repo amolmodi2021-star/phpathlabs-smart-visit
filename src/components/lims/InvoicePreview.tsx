@@ -20,6 +20,10 @@ import {
   shouldFireBoundInvoiceQueue,
   type InvoiceQueueToken,
 } from "@/lib/whatsappOutboxQueue";
+import {
+  getInvoiceBrandCached,
+  INVOICE_BRAND_DEFAULTS,
+} from "@/lib/invoiceBrandCache";
 
 interface InvoicePreviewProps {
   data: any;
@@ -64,55 +68,6 @@ function sortInvoiceLines(lines: any[], packageTestsById: Map<string, string[]>)
   });
 }
 
-const SETTING_KEYS = [
-  "invoice_lab_name",
-  "invoice_address",
-  "invoice_contact",
-  "invoice_tagline",
-  "invoice_logo_url",
-  "invoice_logo_align",
-  "invoice_lab_name_align",
-  "invoice_lab_name_visible",
-  "invoice_tagline_align",
-  "invoice_address_align",
-  "invoice_lab_name_size",
-  "invoice_lab_name_bold",
-  "invoice_lab_name_color",
-  "invoice_contact_size",
-  "invoice_contact_bold",
-  "invoice_contact_color",
-  "invoice_address_size",
-  "invoice_address_bold",
-  "invoice_address_color",
-  "invoice_tagline_size",
-  "invoice_tagline_bold",
-  "invoice_tagline_color",
-];
-
-const DEFAULTS: Record<string, string> = {
-  invoice_lab_name: "PH PathLabs",
-  invoice_address: "",
-  invoice_contact: "LabLine: 6356 55 66 99",
-  invoice_tagline: "Invoice / Sample Receipt",
-  invoice_logo_url: "",
-  invoice_logo_align: "center",
-  invoice_lab_name_align: "center",
-  invoice_lab_name_visible: "true",
-  invoice_tagline_align: "center",
-  invoice_address_align: "center",
-  invoice_lab_name_size: "16",
-  invoice_lab_name_bold: "true",
-  invoice_lab_name_color: "#2E3192",
-  invoice_contact_size: "10",
-  invoice_contact_bold: "false",
-  invoice_contact_color: "#6b7280",
-  invoice_address_size: "9",
-  invoice_address_bold: "false",
-  invoice_address_color: "#6b7280",
-  invoice_tagline_size: "9",
-  invoice_tagline_bold: "false",
-  invoice_tagline_color: "#6b7280",
-};
 
 /** Logo-matched palette (PH PathLabs: royal blue + medical red). */
 const PALETTE = {
@@ -195,15 +150,6 @@ async function waitForHtmlImage(img: HTMLImageElement, timeoutMs = 12000): Promi
   ]);
 }
 
-/** Preload a remote logo so React <img> and capture both see a warm cache. */
-async function preloadInvoiceAsset(url: string): Promise<void> {
-  const src = String(url || "").trim();
-  if (!src) return;
-  const img = new Image();
-  img.decoding = "async";
-  img.src = src;
-  await waitForHtmlImage(img);
-}
 
 async function waitForImagesIn(root: HTMLElement, timeoutMs = 12000): Promise<void> {
   const imgs = Array.from(root.querySelectorAll("img"));
@@ -284,7 +230,8 @@ const InvoicePreview = ({
   const barcodeRef = useRef<HTMLCanvasElement>(null);
   const queuedInvoiceRef = useRef<string | null>(null);
   const autoQueuedRef = useRef<string | null>(null);
-  const [brand, setBrand] = useState<Record<string, string>>(DEFAULTS);
+  const [brand, setBrand] = useState<Record<string, string>>(INVOICE_BRAND_DEFAULTS);
+  const [logoSrc, setLogoSrc] = useState("");
   const [channelName, setChannelName] = useState("");
   const [consoleQueued, setConsoleQueued] = useState(false);
   const [waSending, setWaSending] = useState(false);
@@ -304,6 +251,7 @@ const InvoicePreview = ({
       setPackageNamesReady(false);
       setFontsReady(false);
       setBrandReady(false);
+      setLogoSrc("");
       return;
     }
     const invoiceNo = String(data?.invoice_number || "").trim();
@@ -311,6 +259,7 @@ const InvoicePreview = ({
     setPackageNamesReady(false);
     setFontsReady(false);
     setBrandReady(false);
+    setLogoSrc("");
     let cancelled = false;
     let fontsOk = false;
     let packagesOk = false;
@@ -337,19 +286,12 @@ const InvoicePreview = ({
         }
       })();
       const brandPromise = (async () => {
-        const { data: rows } = await supabase
-          .from("app_settings")
-          .select("setting_key, setting_value")
-          .in("setting_key", SETTING_KEYS);
-        const merged = { ...DEFAULTS };
-        (rows || []).forEach((r) => {
-          merged[r.setting_key] = r.setting_value;
-        });
-        if (cancelled) return merged;
-        setBrand(merged);
-        // Warm logo cache before capture/auto-queue — prevents blank header.
-        await preloadInvoiceAsset(merged.invoice_logo_url || "");
-        return merged;
+        // Session memory + IndexedDB: settings/logo fetched once, not per invoice.
+        const bundle = await getInvoiceBrandCached();
+        if (cancelled) return bundle;
+        setBrand(bundle.brand);
+        setLogoSrc(bundle.logoSrc || bundle.brand.invoice_logo_url || "");
+        return bundle;
       })();
       await packagePromise;
       if (cancelled) return;
@@ -640,8 +582,9 @@ const InvoicePreview = ({
     const headerHtml = () => {
       // No top blue line; solid red rule (not CSS border) under brand block.
       let h = `<div style="padding:20px 0 4px;margin:0">`;
-      if (brand.invoice_logo_url) {
-        h += `<div style="text-align:${brand.invoice_logo_align};line-height:0"><img src="${brand.invoice_logo_url}" style="max-height:40px;display:inline-block" /></div>`;
+      const printLogo = logoSrc || brand.invoice_logo_url;
+      if (printLogo) {
+        h += `<div style="text-align:${brand.invoice_logo_align};line-height:0"><img src="${printLogo}" style="max-height:40px;display:inline-block" /></div>`;
       }
       if (labVisible) {
         h += `<h2 style="margin:2px 0 0;${textStyleCss(brand, "invoice_lab_name", "15", PALETTE.blue)};text-align:${brand.invoice_lab_name_align};letter-spacing:-0.02em;line-height:1.15">${brand.invoice_lab_name}</h2>`;
@@ -950,9 +893,9 @@ const InvoicePreview = ({
         >
           {/* Brand header — solid red rule (not CSS border: html2canvas thickens borders) */}
           <div style={{ padding: "20px 0 4px" }}>
-            {brand.invoice_logo_url && (
+            {(logoSrc || brand.invoice_logo_url) && (
               <div style={{ textAlign: brand.invoice_logo_align as any, lineHeight: 0 }}>
-                <img src={brand.invoice_logo_url} alt="Logo" loading="eager" decoding="sync" style={{ maxHeight: 44, display: "inline-block" }} />
+                <img src={logoSrc || brand.invoice_logo_url} alt="Logo" loading="eager" decoding="sync" style={{ maxHeight: 44, display: "inline-block" }} />
               </div>
             )}
             {labVisible && (
