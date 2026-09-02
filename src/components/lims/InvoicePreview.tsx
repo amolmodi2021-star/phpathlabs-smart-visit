@@ -178,6 +178,42 @@ async function ensureInvoiceFontsReady(): Promise<void> {
   }
 }
 
+
+async function waitForHtmlImage(img: HTMLImageElement, timeoutMs = 12000): Promise<void> {
+  if (img.complete && img.naturalWidth > 0) return;
+  const waitLoad = new Promise<void>((resolve) => {
+    const done = () => resolve();
+    img.addEventListener("load", done, { once: true });
+    img.addEventListener("error", done, { once: true });
+  });
+  const decode = typeof img.decode === "function"
+    ? img.decode().then(() => undefined).catch(() => undefined)
+    : Promise.resolve();
+  await Promise.race([
+    Promise.all([waitLoad, decode]).then(() => undefined),
+    new Promise<void>((resolve) => setTimeout(resolve, timeoutMs)),
+  ]);
+}
+
+/** Preload a remote logo so React <img> and capture both see a warm cache. */
+async function preloadInvoiceAsset(url: string): Promise<void> {
+  const src = String(url || "").trim();
+  if (!src) return;
+  const img = new Image();
+  img.decoding = "async";
+  img.src = src;
+  await waitForHtmlImage(img);
+}
+
+async function waitForImagesIn(root: HTMLElement, timeoutMs = 12000): Promise<void> {
+  const imgs = Array.from(root.querySelectorAll("img"));
+  if (imgs.length === 0) return;
+  await Promise.race([
+    Promise.all(imgs.map((img) => waitForHtmlImage(img, timeoutMs))),
+    new Promise<void>((resolve) => setTimeout(resolve, timeoutMs)),
+  ]);
+}
+
 // Warm ₹ glyph as soon as this module loads (registration / invoice paths).
 if (typeof window !== "undefined") {
   void ensureInvoiceFontsReady();
@@ -255,6 +291,8 @@ const InvoicePreview = ({
   const [packageTestsById, setPackageTestsById] = useState<Map<string, string[]>>(new Map());
   const [packageNamesReady, setPackageNamesReady] = useState(false);
   const [fontsReady, setFontsReady] = useState(false);
+  /** Brand settings + logo bytes ready — must be true before WhatsApp capture. */
+  const [brandReady, setBrandReady] = useState(false);
 
   const onReadyRef = useRef(onReady);
   onReadyRef.current = onReady;
@@ -265,17 +303,21 @@ const InvoicePreview = ({
       setWaSending(false);
       setPackageNamesReady(false);
       setFontsReady(false);
+      setBrandReady(false);
       return;
     }
     const invoiceNo = String(data?.invoice_number || "").trim();
     setConsoleQueued(queuedInvoiceRef.current === invoiceNo);
     setPackageNamesReady(false);
     setFontsReady(false);
+    setBrandReady(false);
     let cancelled = false;
     let fontsOk = false;
     let packagesOk = false;
+    let brandOk = false;
     const maybeReady = () => {
-      if (cancelled || !fontsOk || !packagesOk || !invoiceNo) return;
+      // Do not signal ready until logo/address brand settings are loaded and logo preloaded.
+      if (cancelled || !fontsOk || !packagesOk || !brandOk || !invoiceNo) return;
       onReadyRef.current?.(invoiceNo);
     };
     void ensureInvoiceFontsReady().then(() => {
@@ -286,25 +328,38 @@ const InvoicePreview = ({
     });
     (async () => {
       const lines = Array.isArray(data?.tests) ? data.tests : [];
-      try {
-        const map = await fetchPackageIncludedTestNamesFromLines(lines);
-        if (!cancelled) setPackageTestsById(map);
-      } catch {
-        if (!cancelled) setPackageTestsById(new Map());
-      }
+      const packagePromise = (async () => {
+        try {
+          const map = await fetchPackageIncludedTestNamesFromLines(lines);
+          if (!cancelled) setPackageTestsById(map);
+        } catch {
+          if (!cancelled) setPackageTestsById(new Map());
+        }
+      })();
+      const brandPromise = (async () => {
+        const { data: rows } = await supabase
+          .from("app_settings")
+          .select("setting_key, setting_value")
+          .in("setting_key", SETTING_KEYS);
+        const merged = { ...DEFAULTS };
+        (rows || []).forEach((r) => {
+          merged[r.setting_key] = r.setting_value;
+        });
+        if (cancelled) return merged;
+        setBrand(merged);
+        // Warm logo cache before capture/auto-queue — prevents blank header.
+        await preloadInvoiceAsset(merged.invoice_logo_url || "");
+        return merged;
+      })();
+      await packagePromise;
       if (cancelled) return;
       packagesOk = true;
       setPackageNamesReady(true);
+      await brandPromise;
+      if (cancelled) return;
+      brandOk = true;
+      setBrandReady(true);
       maybeReady();
-      const { data: rows } = await supabase
-        .from("app_settings")
-        .select("setting_key, setting_value")
-        .in("setting_key", SETTING_KEYS);
-      if (rows && !cancelled) {
-        const merged = { ...DEFAULTS };
-        rows.forEach((r) => { merged[r.setting_key] = r.setting_value; });
-        setBrand(merged);
-      }
     })();
     return () => { cancelled = true; };
   }, [open, data?.invoice_number]);
@@ -372,6 +427,11 @@ const InvoicePreview = ({
       settle(false, "not ready");
       return;
     }
+    if (!brandReady) {
+      toast.error("Invoice header still loading — try again in a moment");
+      settle(false, "brand not ready");
+      return;
+    }
     setWaSending(true);
     const host = document.createElement("div");
     try {
@@ -412,18 +472,11 @@ const InvoicePreview = ({
       host.appendChild(clone);
       document.body.appendChild(host);
 
-      const imgs = Array.from(clone.querySelectorAll("img"));
-      await Promise.all(
-        imgs.map(
-          (img) =>
-            img.complete
-              ? Promise.resolve()
-              : new Promise<void>((resolve) => {
-                  img.onload = () => resolve();
-                  img.onerror = () => resolve();
-                }),
-        ),
-      );
+      // Wait on-screen receipt + offscreen clone so logo/address paint before rasterize.
+      if (source) await waitForImagesIn(source);
+      await waitForImagesIn(clone);
+      // One paint frame after images decode.
+      await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
 
       await ensureInvoiceFontsReady();
       let fontEmbedCSS = "";
@@ -441,7 +494,8 @@ const InvoicePreview = ({
           dataUrl = await toJpeg(clone, {
             quality: 0.95,
             pixelRatio: 2,
-            cacheBust: true,
+            // cacheBust re-fetches logo with ?t= and races the capture → blank logo.
+            cacheBust: false,
             backgroundColor: "#ffffff",
             width,
             height,
@@ -505,13 +559,13 @@ const InvoicePreview = ({
       host.remove();
       setWaSending(false);
     }
-  }, [open, data, brand, renderBarcode, isPickupInvoice, onQueueSettled]);
+  }, [open, data, brand, brandReady, renderBarcode, isPickupInvoice, onQueueSettled]);
 
   // Parent-driven sequential queue (home-visit multi-patient). Bound to invoice #.
   const lastQueueNonce = useRef(0);
   useEffect(() => {
     const invoiceNo = String(data?.invoice_number || "").trim();
-    const ready = open && packageNamesReady && fontsReady;
+    const ready = open && packageNamesReady && fontsReady && brandReady;
     if (
       !shouldFireBoundInvoiceQueue({
         token: queueRequest,
@@ -524,12 +578,12 @@ const InvoicePreview = ({
     }
     lastQueueNonce.current = Number(queueRequest?.nonce || 0);
     void queueInvoiceViaWaApi();
-  }, [queueRequest, open, data?.invoice_number, packageNamesReady, fontsReady, queueInvoiceViaWaApi]);
+  }, [queueRequest, open, data?.invoice_number, packageNamesReady, fontsReady, brandReady, queueInvoiceViaWaApi]);
 
   // New registration: queue invoice to durable outbox once barcode/layout is ready.
   useEffect(() => {
     if (!autoQueueWhatsApp || !open || !data?.invoice_number || !data?.mobile_number) return;
-    if (!packageNamesReady || !fontsReady) return;
+    if (!packageNamesReady || !fontsReady || !brandReady) return;
     if (isPickupInvoice(data)) return;
     const invoiceNo = String(data.invoice_number);
     if (autoQueuedRef.current === invoiceNo || queuedInvoiceRef.current === invoiceNo) return;
@@ -539,7 +593,7 @@ const InvoicePreview = ({
       void queueInvoiceViaWaApi();
     }, 900);
     return () => clearTimeout(timer);
-  }, [autoQueueWhatsApp, open, data, data?.invoice_number, data?.mobile_number, queueInvoiceViaWaApi, isPickupInvoice, packageNamesReady, fontsReady]);
+  }, [autoQueueWhatsApp, open, data, data?.invoice_number, data?.mobile_number, queueInvoiceViaWaApi, isPickupInvoice, packageNamesReady, fontsReady, brandReady]);
 
   if (!data) return null;
 
@@ -840,7 +894,7 @@ const InvoicePreview = ({
           }
           function whenReady(cb) {
             var imgs = Array.prototype.slice.call(document.images || []);
-            var pending = imgs.filter(function (img) { return !img.complete; }).length;
+            var pending = imgs.filter(function (img) { return !(img.complete && img.naturalWidth > 0); }).length;
             var fontsReady = document.fonts && document.fonts.ready
               ? document.fonts.ready.catch(function () {})
               : Promise.resolve();
@@ -853,7 +907,7 @@ const InvoicePreview = ({
                 if (pending <= 0) go();
               };
             });
-            setTimeout(go, 2500);
+            setTimeout(go, 8000);
           }
           whenReady(function () { fit(); setTimeout(function () { window.focus(); window.print(); }, 120); });
         })();
@@ -872,10 +926,10 @@ const InvoicePreview = ({
           <DialogTitle>Invoice Generated — {data.invoice_number}</DialogTitle>
         </DialogHeader>
 
-        {!fontsReady ? (
+        {(!fontsReady || !brandReady) ? (
           <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
-            Loading invoice fonts…
+            {!fontsReady ? "Loading invoice fonts…" : "Loading invoice header…"}
           </div>
         ) : null}
 
@@ -889,16 +943,16 @@ const InvoicePreview = ({
             padding: "10px 16px 12px",
             color: PALETTE.ink,
             // Keep in DOM for capture sizing, but hide until ₹ font subset is ready
-            visibility: fontsReady ? "visible" : "hidden",
-            height: fontsReady ? undefined : 0,
-            overflow: fontsReady ? undefined : "hidden",
+            visibility: fontsReady && brandReady ? "visible" : "hidden",
+            height: fontsReady && brandReady ? undefined : 0,
+            overflow: fontsReady && brandReady ? undefined : "hidden",
           }}
         >
           {/* Brand header — solid red rule (not CSS border: html2canvas thickens borders) */}
           <div style={{ padding: "20px 0 4px" }}>
             {brand.invoice_logo_url && (
               <div style={{ textAlign: brand.invoice_logo_align as any, lineHeight: 0 }}>
-                <img src={brand.invoice_logo_url} alt="Logo" style={{ maxHeight: 44, display: "inline-block" }} />
+                <img src={brand.invoice_logo_url} alt="Logo" loading="eager" decoding="sync" style={{ maxHeight: 44, display: "inline-block" }} />
               </div>
             )}
             {labVisible && (
@@ -1142,7 +1196,7 @@ const InvoicePreview = ({
             <p className="w-full text-sm text-primary font-medium">{statusHint}</p>
           ) : null}
           {!hidePrint && (
-            <Button className="flex-1" variant="outline" onClick={handlePrint} disabled={!fontsReady}>
+            <Button className="flex-1" variant="outline" onClick={handlePrint} disabled={!fontsReady || !brandReady}>
               <Printer className="h-4 w-4 mr-2" />Print
             </Button>
           )}
@@ -1150,7 +1204,7 @@ const InvoicePreview = ({
             <Button
               className="flex-1"
               onClick={() => void queueInvoiceViaWaApi()}
-              disabled={waSending || !data?.mobile_number || !fontsReady}
+              disabled={waSending || !data?.mobile_number || !fontsReady || !brandReady}
             >
               {waSending ? (
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
