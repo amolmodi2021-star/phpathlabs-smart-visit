@@ -3,6 +3,7 @@ import PageSizeSelect from "@/components/lims/PageSizeSelect";
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { propagateRegistrationChange } from "@/lib/limsPropagation";
+import { useLimsTabActive } from "@/lib/limsTabActive";
 import SyncingOverlay from "./SyncingOverlay";
 import { formatAgeGender } from "@/lib/ageGender";
 import { patientDisplayName } from "@/lib/patientDisplayName";
@@ -268,6 +269,7 @@ const Dispatch = () => {
   const isMobile = useIsMobile();
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const tabActive = useLimsTabActive();
   useLimsPipelineRealtime("dispatch");
   const restoredUiRef = useRef<DispatchUiRestore | null>(readDispatchUiRestore());
   const listScrollRef = useRef<HTMLDivElement | null>(null);
@@ -345,6 +347,7 @@ const Dispatch = () => {
       dateFrom.toISOString(),
       dateTo.toISOString(),
     ],
+    enabled: tabActive,
     queryFn: async (): Promise<string[]> => {
       return await fetchDispatchFilterIds(listMode, debouncedSearch, {
         dateFromIso: dateFrom.toISOString(),
@@ -380,7 +383,7 @@ const Dispatch = () => {
 
   const { data: registrationsRaw = [], isLoading: loadingRegs } = useQuery({
     queryKey: ["dispatch_regs", listMode, pageKey, effectivePageSize, safePage],
-    enabled: pageIds.length > 0,
+    enabled: tabActive && pageIds.length > 0,
     queryFn: async () => {
       const { data } = await supabase.from("patient_registrations")
         .select("id, invoice_number, patient_name, title, mobile_number, umr_number, status, is_stat, tests, cancelled_tests, visit_type, gender, dob, age_text, created_at, updated_at, bill_cancelled, registered_by, due_amount, pickup_point_id")
@@ -395,7 +398,7 @@ const Dispatch = () => {
   const registrations =
     !idsPlaceholder && filteredDispatchIds.length === 0 ? [] : registrationsRaw;
 
-  const listLoading = loadingIds || (pageIds.length > 0 && loadingRegs);
+  const listLoading = (loadingIds && !idsPlaceholder) || (pageIds.length > 0 && loadingRegs);
   const regIds = registrations.map((r: any) => r.id);
   const regKey = shortIdsKey(regIds, "d");
 

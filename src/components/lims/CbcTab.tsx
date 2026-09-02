@@ -37,6 +37,7 @@ import { formatAgeGender } from "@/lib/ageGender";
 import PatientTestPipelineHover from "@/components/lims/PatientTestPipelineHover";
 import { checkDifferentialSum } from "@/lib/differentialCount";
 import { propagateRegistrationChange } from "@/lib/limsPropagation";
+import { useLimsTabActive } from "@/lib/limsTabActive";
 import {
   CBC_AI_TARGET_CODES,
   CBC_CRITICAL_ONLY_DRAFT_KEYS,
@@ -140,6 +141,7 @@ function asUrlList(raw: unknown): string[] {
 
 const CbcTab = () => {
   const qc = useQueryClient();
+  const tabActive = useLimsTabActive();
   const fileRef = useRef<HTMLInputElement>(null);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -157,6 +159,7 @@ const CbcTab = () => {
 
   const { data: candidateIds = [], isLoading: loadingIds } = useQuery({
     queryKey: ["cbc_candidate_ids"],
+    enabled: tabActive,
     queryFn: async (): Promise<string[]> => {
       const { data, error } = await supabase.rpc("lims_cbc_verification_candidate_ids");
       if (error) throw error;
@@ -166,7 +169,7 @@ const CbcTab = () => {
 
   const { data: registrations = [], isLoading: loadingRegs } = useQuery({
     queryKey: ["cbc_regs", candidateIds.join(",")],
-    enabled: candidateIds.length > 0,
+    enabled: tabActive && candidateIds.length > 0,
     queryFn: async (): Promise<RegRow[]> => {
       const { data, error } = await supabase
         .from("patient_registrations")
@@ -196,7 +199,7 @@ const CbcTab = () => {
 
   const detailQuery = useQuery({
     queryKey: ["cbc_results", expandedId],
-    enabled: !!expandedId,
+    enabled: tabActive && !!expandedId,
     queryFn: async () => {
       const regId = expandedId!;
       const { data: results, error: resErr } = await supabase
@@ -318,7 +321,7 @@ const CbcTab = () => {
 
   const reviewQuery = useQuery({
     queryKey: ["cbc_review", expandedId, selectedTestId],
-    enabled: !!expandedId && !!selectedTestId,
+    enabled: tabActive && !!expandedId && !!selectedTestId,
     queryFn: async (): Promise<ReviewRow> => {
       const regId = expandedId!;
       const testId = selectedTestId!;

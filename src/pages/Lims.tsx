@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
 import { fetchWorkflowPendingCount } from "@/lib/workflowFetch";
 import { addDaysToDayString, localDayString } from "@/lib/workflowWorksheet";
+import { LimsTabActiveContext } from "@/lib/limsTabActive";
 
 const PatientRegistration = lazy(() => import("@/components/lims/PatientRegistration"));
 const RegisteredPatients = lazy(() => import("@/components/lims/RegisteredPatients"));
@@ -196,11 +197,13 @@ const Lims = () => {
               forceMount
               className="data-[state=inactive]:hidden mt-3"
             >
-              <TabErrorBoundary tabKey={t.key}>
-                <Suspense fallback={<TabFallback />}>
-                  <Comp />
-                </Suspense>
-              </TabErrorBoundary>
+              <LimsTabActiveContext.Provider value={safeTab === t.key}>
+                <TabErrorBoundary tabKey={t.key}>
+                  <Suspense fallback={<TabFallback />}>
+                    <Comp />
+                  </Suspense>
+                </TabErrorBoundary>
+              </LimsTabActiveContext.Provider>
             </TabsContent>
           );
         })}

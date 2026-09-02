@@ -36,6 +36,7 @@ import { useMasterLookup } from "@/hooks/useMasterLookup";
 import { checkDifferentialSum } from "@/lib/differentialCount";
 import { isCbcCriticalOnlyParamCode, partitionCbcCriticalParams } from "@/lib/cbcSmear";
 import { CbcOptionalParamsToggle } from "@/components/lims/CbcOptionalParamsToggle";
+import { useLimsTabActive } from "@/lib/limsTabActive";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { formatDateDDMMYYYY } from "@/lib/utils";
@@ -95,6 +96,7 @@ interface PatientEntry { registration: any; parameters: ParameterResult[]; snipO
 
 const DoctorApproval = () => {
   const qc = useQueryClient();
+  const tabActive = useLimsTabActive();
   useLimsPipelineRealtime("doctor_approval");
   const { data: masterMachines = [] } = useMasterLookup("machine_name");
   const [activeSection, setActiveSection] = useState<"approval" | "modified">("approval");
@@ -194,6 +196,7 @@ const DoctorApproval = () => {
 
   const { data: pendingIds = [] as string[], isLoading: loadingIds, isPlaceholderData: idsPlaceholder } = useQuery({
     queryKey: ["doctor_approval_count", debouncedSearch],
+    enabled: tabActive,
     queryFn: async (): Promise<string[]> => {
       const candidates = await fetchDoctorApprovalCandidateIds();
       return await fetchFilteredSortedIds(candidates, debouncedSearch);
@@ -207,7 +210,7 @@ const DoctorApproval = () => {
 
   const { data: registrationsRaw = [], isLoading: loadingRegs } = useQuery({
     queryKey: ["doctor_approval_regs", pageKey],
-    enabled: pageIds.length > 0,
+    enabled: tabActive && pageIds.length > 0,
     queryFn: async () => {
       const { data } = await supabase.from("patient_registrations")
         .select(REG_LIST_SELECT)
@@ -235,7 +238,7 @@ const DoctorApproval = () => {
   // Detail fetches ONLY for expanded patient
   const detailRegIds = expandedPatient ? [expandedPatient] : [];
   const detailKey = shortIdsKey(detailRegIds, "da");
-  const detailEnabled = !!expandedPatient;
+  const detailEnabled = tabActive && !!expandedPatient;
 
   const { data: existingResults = [], isFetched: resultsFetched } = useQuery({
     queryKey: ["doctor_approval_results", detailKey],
@@ -279,7 +282,7 @@ const DoctorApproval = () => {
   });
 
   const detailReady = !detailEnabled || (resultsFetched && tubesFetched && detailRegFetched && !!detailReg);
-  const listLoading = loadingIds || loadingRegs;
+  const listLoading = (loadingIds && !idsPlaceholder) || (pageIds.length > 0 && loadingRegs);
 
   const { data: outsourcedSnips = [] } = useQuery({
     queryKey: ["doctor_approval_snips", detailKey],

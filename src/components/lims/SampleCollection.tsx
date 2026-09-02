@@ -1,6 +1,7 @@
 import RefreshButton from "@/components/lims/RefreshButton";
 import { useState, useRef, useCallback, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useLimsTabActive } from "@/lib/limsTabActive";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -73,6 +74,7 @@ type CollectionTab = "pending" | "deferred" | "collected";
 
 const SampleCollection = () => {
   const qc = useQueryClient();
+  const tabActive = useLimsTabActive();
   useLimsPipelineRealtime("sample_collection");
   const [activeTab, setActiveTab] = useState<CollectionTab>("pending");
   const [search, setSearch] = useState("");
@@ -126,6 +128,7 @@ const SampleCollection = () => {
   // Lean tube index for queue membership (tiny payload vs select("*")).
   const { data: tubeIndex = [], isLoading: loadingIndex } = useQuery({
     queryKey: ["sample_tubes_collection", showOlderPending],
+    enabled: tabActive,
     queryFn: async () => {
       let q = supabase
         .from("sample_tubes" as any)
@@ -172,7 +175,7 @@ const SampleCollection = () => {
 
   const { data: searchMatchedIds, isFetching: searchingIds } = useQuery({
     queryKey: ["sample_collection_search", activeTab, appliedSearch, shortIdsKey(activeCandidateIds, "sc")],
-    enabled: !!appliedSearch && activeCandidateIds.length > 0,
+    enabled: tabActive && !!appliedSearch && activeCandidateIds.length > 0,
     queryFn: async () => {
       const matched = new Set<string>();
       const chunkSize = 100;
@@ -201,7 +204,7 @@ const SampleCollection = () => {
 
   const { data: registrations = [], isLoading: loadingRegs, isFetching: fetchingRegs } = useQuery({
     queryKey: ["sample_collection_regs", pageKey],
-    enabled: pageIds.length > 0,
+    enabled: tabActive && pageIds.length > 0,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("patient_registrations")
@@ -224,7 +227,7 @@ const SampleCollection = () => {
 
   const { data: pageTubes = [], isLoading: loadingTubes, isFetching: fetchingTubes } = useQuery({
     queryKey: ["sample_collection_page_tubes", pageKey],
-    enabled: pageIds.length > 0,
+    enabled: tabActive && pageIds.length > 0,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("sample_tubes" as any)

@@ -39,6 +39,7 @@ import { CbcOptionalParamsToggle } from "@/components/lims/CbcOptionalParamsTogg
 import { useNewArrivalsBadge } from "@/hooks/useNewArrivalsBadge";
 import { signalSync } from "@/lib/limsSyncSignal";
 import { propagateRegistrationChange } from "@/lib/limsPropagation";
+import { useLimsTabActive } from "@/lib/limsTabActive";
 import { isResultPastPending, resolveResultForResultsEntry, healOrphanPatientResults, restoreMissingApprovedFromReports } from "@/lib/patientResultLookup";
 import { invokeLimsReprocess } from "@/lib/invokeLimsReprocess";
 import { fetchResultsEntryCandidateIds, fetchResultsEntryMachineCandidateIds, fetchFilteredSortedIds } from "@/lib/limsPendingCandidates";
@@ -159,6 +160,7 @@ const handleResultTabKey = (e: React.KeyboardEvent) => {
 
 const ResultsEntry = () => {
   const qc = useQueryClient();
+  const tabActive = useLimsTabActive();
   const [searchParams] = useSearchParams();
   const { data: masterMachines = [] } = useMasterLookup("machine_name");
   const [mode, setMode] = useState<"patient" | "machine" | "outsourced">("patient");
@@ -244,6 +246,7 @@ const ResultsEntry = () => {
 
   const { data: pendingIds = [] as string[], isLoading: loadingIds, isPlaceholderData: idsPlaceholder } = useQuery({
     queryKey: ["results_accepted_count", debouncedSearch],
+    enabled: tabActive,
     queryFn: async (): Promise<string[]> => {
       const candidates = await fetchResultsEntryCandidateIds();
       return await fetchFilteredSortedIds(candidates, debouncedSearch);
@@ -286,7 +289,7 @@ const ResultsEntry = () => {
     isFetched: machineFilterFetched,
   } = useQuery({
     queryKey: ["results_machine_filtered_ids", pendingIdsKey, selectedMachine],
-    enabled: machineFilterActive && pendingIds.length > 0,
+    enabled: tabActive && machineFilterActive && pendingIds.length > 0,
     queryFn: async (): Promise<string[]> => {
       const want = selectedMachine === "others" ? "" : selectedMachine;
       const machinePending = await fetchResultsEntryMachineCandidateIds(want);
@@ -315,7 +318,7 @@ const ResultsEntry = () => {
   // ─── Fetch accepted registrations (list headers — page only) ───
   const { data: acceptedRegsRaw = [], isLoading: loadingRegs } = useQuery({
     queryKey: ["results_accepted_regs", pageKey],
-    enabled: pageIds.length > 0,
+    enabled: tabActive && pageIds.length > 0,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("patient_registrations")
@@ -340,7 +343,7 @@ const ResultsEntry = () => {
   }, [acceptedRegsRaw, pageIds, pendingIds.length, idsPlaceholder]);
 
   const listLoading =
-    loadingIds ||
+    (loadingIds && !idsPlaceholder) ||
     (pageIds.length > 0 && loadingRegs) ||
     (machineFilterActive && loadingMachineFilter);
 
@@ -350,7 +353,7 @@ const ResultsEntry = () => {
   // Detail scope — gate masters + heavy fetches on expand (egress)
   const detailRegIds = expandedPatient ? [expandedPatient] : [];
   const detailKey = shortIdsKey(detailRegIds, "re-d");
-  const detailEnabled = !!expandedPatient;
+  const detailEnabled = tabActive && !!expandedPatient;
 
   // ─── Masters only after expand (cached; shared across Results/Verify/Doctor) ───
   const { data: testsMap = {} } = useQuery({

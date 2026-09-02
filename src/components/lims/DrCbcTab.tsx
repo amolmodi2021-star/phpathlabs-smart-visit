@@ -22,6 +22,7 @@ import { getCurrentUserName } from "@/lib/auth";
 import { patientDisplayName } from "@/lib/patientDisplayName";
 import { formatAgeGender } from "@/lib/ageGender";
 import { propagateRegistrationChange } from "@/lib/limsPropagation";
+import { useLimsTabActive } from "@/lib/limsTabActive";
 import {
   CBC_MORPHOLOGY_PARAM_CODES,
   CBC_MP_PARAM_CODE,
@@ -138,6 +139,7 @@ function SmearImageViewer({
 
 const DrCbcTab = () => {
   const qc = useQueryClient();
+  const tabActive = useLimsTabActive();
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -155,6 +157,7 @@ const DrCbcTab = () => {
 
   const { data: candidateIds = [], isLoading: loadingIds } = useQuery({
     queryKey: ["cbc_dr_candidate_ids"],
+    enabled: tabActive,
     queryFn: async (): Promise<string[]> => {
       const { data, error } = await supabase.rpc("lims_cbc_dr_candidate_ids");
       if (error) throw error;
@@ -164,7 +167,7 @@ const DrCbcTab = () => {
 
   const { data: registrations = [], isLoading: loadingRegs } = useQuery({
     queryKey: ["cbc_dr_regs", candidateIds.join(",")],
-    enabled: candidateIds.length > 0,
+    enabled: tabActive && candidateIds.length > 0,
     queryFn: async (): Promise<RegRow[]> => {
       const { data, error } = await supabase
         .from("patient_registrations")
@@ -189,7 +192,7 @@ const DrCbcTab = () => {
 
   const detailQuery = useQuery({
     queryKey: ["cbc_dr_results", expandedId],
-    enabled: !!expandedId,
+    enabled: tabActive && !!expandedId,
     queryFn: async () => {
       const regId = expandedId!;
       const { data: reviews, error: revErr } = await supabase
@@ -318,7 +321,7 @@ const DrCbcTab = () => {
 
   const { data: historicalResults = [] } = useQuery({
     queryKey: ["cbc_dr_historical", expandedReg?.umr_number, expandedId],
-    enabled: !!expandedReg?.umr_number && !!expandedId,
+    enabled: tabActive && !!expandedReg?.umr_number && !!expandedId,
     queryFn: async () => {
       const { data: sameUmrRegs } = await supabase
         .from("patient_registrations")

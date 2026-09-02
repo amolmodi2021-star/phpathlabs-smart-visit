@@ -34,6 +34,7 @@ import { useMasterLookup } from "@/hooks/useMasterLookup";
 import { checkDifferentialSum } from "@/lib/differentialCount";
 import { isCbcCriticalOnlyParamCode, partitionCbcCriticalParams } from "@/lib/cbcSmear";
 import { CbcOptionalParamsToggle } from "@/components/lims/CbcOptionalParamsToggle";
+import { useLimsTabActive } from "@/lib/limsTabActive";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { formatDateDDMMYYYY } from "@/lib/utils";
@@ -150,6 +151,7 @@ function readVerificationUiRestore(): VerificationUiRestore | null {
 const ResultVerification = () => {
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const tabActive = useLimsTabActive();
   const restoredUiRef = useRef<VerificationUiRestore | null>(readVerificationUiRestore());
   const restoredScrollAppliedRef = useRef(false);
   const { data: masterMachines = [] } = useMasterLookup("machine_name");
@@ -221,6 +223,7 @@ const ResultVerification = () => {
   // Pagination is computed from this set so the queue's "X total" matches reality.
   const { data: pendingIds = [] as string[], isLoading: loadingIds, isPlaceholderData: idsPlaceholder } = useQuery({
     queryKey: ["verification_regs_count", debouncedSearch],
+    enabled: tabActive,
     queryFn: async (): Promise<string[]> => {
       const candidates = await fetchVerificationCandidateIds();
       return await fetchFilteredSortedIds(candidates, debouncedSearch);
@@ -234,7 +237,7 @@ const ResultVerification = () => {
 
   const { data: registrationsRaw = [], isLoading: loadingRegs } = useQuery({
     queryKey: ["verification_regs_v2", pageKey],
-    enabled: pageIds.length > 0,
+    enabled: tabActive && pageIds.length > 0,
     queryFn: async () => {
       const { data } = await supabase
         .from("patient_registrations")
@@ -276,7 +279,7 @@ const ResultVerification = () => {
   // Detail fetches ONLY for expanded patient
   const detailRegIds = expandedPatient ? [expandedPatient] : [];
   const detailKey = shortIdsKey(detailRegIds, "rv");
-  const detailEnabled = !!expandedPatient;
+  const detailEnabled = tabActive && !!expandedPatient;
 
   // Masters only after expand (shared cache with Results/Doctor)
   const { data: testsMap = {} } = useQuery({
@@ -1860,7 +1863,7 @@ const ResultVerification = () => {
         </Card>
       </div>
 
-      {(loadingIds || loadingRegs) ? (
+      {(loadingIds && !idsPlaceholder) || (pageIds.length > 0 && loadingRegs) ? (
         <Card><CardContent className="p-8 text-center text-muted-foreground">Loading…</CardContent></Card>
       ) : filteredEntries.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">

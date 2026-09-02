@@ -1,6 +1,7 @@
 import RefreshButton from "@/components/lims/RefreshButton";
 import { Fragment, useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useLimsTabActive } from "@/lib/limsTabActive";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -70,6 +71,7 @@ const ACCEPTED_PAGE_SIZE = 10;
 
 const SampleAcceptance = () => {
   const qc = useQueryClient();
+  const tabActive = useLimsTabActive();
   useLimsPipelineRealtime("sample_acceptance");
   const [activeTab, setActiveTab] = useState("pending");
   const [search, setSearch] = useState("");
@@ -95,6 +97,7 @@ const SampleAcceptance = () => {
   // Pending: lean tubes for list + barcode scan (no test JSON).
   const { data: collectedTubes = [], isLoading } = useQuery({
     queryKey: ["sample_tubes_acceptance_pending", showOlderPending],
+    enabled: tabActive,
     queryFn: async () => {
       let q = supabase
         .from("sample_tubes" as any)
@@ -117,6 +120,7 @@ const SampleAcceptance = () => {
   // Accepted: tiny index only (membership + order) — details on expand.
   const { data: acceptedIndex = [], isLoading: isLoadingAccepted } = useQuery({
     queryKey: ["sample_tubes_acceptance_accepted"],
+    enabled: tabActive,
     queryFn: async () => {
       const since = new Date();
       since.setDate(since.getDate() - 30);
@@ -175,7 +179,7 @@ const SampleAcceptance = () => {
   // Lean registration headers for the active list only.
   const { data: registrations = [] } = useQuery({
     queryKey: ["sample_acceptance_regs", activeTab, listRegKey, debouncedSearch],
-    enabled: listRegIds.length > 0,
+    enabled: tabActive && listRegIds.length > 0,
     queryFn: async () => {
       let query = supabase
         .from("patient_registrations")
@@ -202,7 +206,7 @@ const SampleAcceptance = () => {
   const detailStatus = activeTab === "accepted" ? "accepted" : "collected";
   const { data: detailTubes = [], isLoading: loadingDetail } = useQuery({
     queryKey: ["sample_acceptance_detail_tubes", expandedRow, detailStatus],
-    enabled: !!expandedRow,
+    enabled: tabActive && !!expandedRow,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("sample_tubes" as any)
