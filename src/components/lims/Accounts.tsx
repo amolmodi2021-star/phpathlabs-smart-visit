@@ -4,12 +4,14 @@ import { getAllowedSections } from "@/lib/auth";
 import DailyCollectionReport from "@/components/lims/accounts/DailyCollectionReport";
 import PurchaseInvoices from "@/components/lims/accounts/PurchaseInvoices";
 import PurchaseOrders from "@/components/lims/accounts/PurchaseOrders";
+import PoItems from "@/components/lims/accounts/PoItems";
 import AccountsSettings from "@/components/lims/accounts/AccountsSettings";
 
 const ALL_ACCOUNT_TABS = [
   { key: "daily_collection", label: "Daily Collection" },
   { key: "purchase", label: "Purchase" },
   { key: "po", label: "PO Generator" },
+  { key: "po_items", label: "PO Items" },
   { key: "settings", label: "Settings" },
 ] as const;
 
@@ -24,7 +26,12 @@ const Accounts = () => {
   const visibleTabs = useMemo(
     () =>
       allowed
-        ? ALL_ACCOUNT_TABS.filter((t) => allowed.includes(t.key))
+        ? ALL_ACCOUNT_TABS.filter(
+            (t) =>
+              allowed.includes(t.key) ||
+              // Roles that already have PO Generator also get PO Items without re-saving roles.
+              (t.key === "po_items" && allowed.includes("po")),
+          )
         : [...ALL_ACCOUNT_TABS],
     [allowed],
   );
@@ -61,6 +68,7 @@ const Accounts = () => {
       {safeTab === "daily_collection" && <DailyCollectionReport />}
       {safeTab === "purchase" && <PurchaseInvoices />}
       {safeTab === "po" && <PurchaseOrders />}
+      {safeTab === "po_items" && <PoItems />}
       {safeTab === "settings" && <AccountsSettings />}
     </div>
   );

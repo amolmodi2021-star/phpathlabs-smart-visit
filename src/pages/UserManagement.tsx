@@ -115,6 +115,7 @@ const ALL_TABS = [
       { key: "daily_collection", label: "Daily Collection" },
       { key: "purchase", label: "Purchase" },
       { key: "po", label: "PO Generator" },
+      { key: "po_items", label: "PO Items" },
       { key: "settings", label: "Settings" },
     ],
   },
