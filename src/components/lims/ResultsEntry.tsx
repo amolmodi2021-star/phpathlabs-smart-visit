@@ -33,6 +33,8 @@ import TimeResultInput from "./TimeResultInput";
 import { parseTimeResultToSeconds } from "@/lib/timeRange";
 import { useMasterLookup } from "@/hooks/useMasterLookup";
 import { checkDifferentialSum } from "@/lib/differentialCount";
+import { isCbcCriticalOnlyParamCode, partitionCbcCriticalParams } from "@/lib/cbcSmear";
+import { CbcOptionalParamsToggle } from "@/components/lims/CbcOptionalParamsToggle";
 
 import { useNewArrivalsBadge } from "@/hooks/useNewArrivalsBadge";
 import { signalSync } from "@/lib/limsSyncSignal";
@@ -173,6 +175,8 @@ const ResultsEntry = () => {
   const [expandedPatient, setExpandedPatient] = useState<string | null>(null);
   /** Accordion: only one test's parameters open at a time (`regId||testId`). */
   const [expandedTestKey, setExpandedTestKey] = useState<string | null>(null);
+  /** Open state for CBC optional immature-cell param dropdowns (key = regId||testId). */
+  const [optionalCbcOpen, setOptionalCbcOpen] = useState<Record<string, boolean>>({});
   const [snipEntryKeys, setSnipEntryKeys] = useState<Set<string>>(new Set());
   const [uploadingSnipKey, setUploadingSnipKey] = useState<string | null>(null);
   const [savingSnipKey, setSavingSnipKey] = useState<string | null>(null);
@@ -1513,19 +1517,23 @@ const ResultsEntry = () => {
       return;
     }
 
-    // Count blank parameters
+    // Count blank parameters (skip rarely-used CBC immature cells when empty)
     let blanks = 0;
     for (const p of testParams) {
       if (p.isCalculated) continue;
       const key = `${reg.id}||${p.parameterId}`;
       const val = editedValues[key] !== undefined ? editedValues[key] : p.resultValue;
-      if (!val || val.trim() === "") blanks++;
+      if (!val || val.trim() === "") {
+        if (isCbcCriticalOnlyParamCode(p.paramCode)) continue;
+        blanks++;
+      }
     }
     if (blanks > 0) {
       setBlankParamCount(blanks);
       const ids = new Set<string>();
       for (const p of testParams) {
         if (p.isCalculated) continue;
+        if (isCbcCriticalOnlyParamCode(p.paramCode)) continue;
         const key = `${reg.id}||${p.parameterId}`;
         const val = editedValues[key] !== undefined ? editedValues[key] : p.resultValue;
         if (!val || val.trim() === "") ids.add(p.parameterId);
@@ -1713,7 +1721,9 @@ const ResultsEntry = () => {
     const isAwaiting = isInterfaceParameter && !currentValue;
 
     const isBlank = !currentValue || currentValue.trim() === "";
-    const shouldHighlightBlanks = highlightBlanksForRegs.has(`${regId}||${p.testId}`);
+    const shouldHighlightBlanks =
+      highlightBlanksForRegs.has(`${regId}||${p.testId}`) &&
+      !isCbcCriticalOnlyParamCode(p.paramCode);
     const isNegative = isSuspectNegativeResult(currentValue);
     const rowBg = isNegative
       ? "bg-red-50"
@@ -2070,6 +2080,12 @@ const ResultsEntry = () => {
                 const v = editedValues[k] !== undefined ? editedValues[k] : p.resultValue;
                 return v && v.trim() !== "";
               }).length;
+              const expectedParamCount = tg.params.filter((p) => {
+                if (!isCbcCriticalOnlyParamCode(p.paramCode)) return true;
+                const k = `${reg.id}||${p.parameterId}`;
+                const v = editedValues[k] !== undefined ? editedValues[k] : p.resultValue;
+                return !!(v && v.trim());
+              }).length;
               const toggleTest = () => {
                 setExpandedTestKey((prev) => (prev === testKey ? null : testKey));
               };
@@ -2098,7 +2114,7 @@ const ResultsEntry = () => {
                           </>
                         );
                       })()}
-                      <Badge variant="outline" className="text-[10px]">{filledCount}/{tg.params.length}</Badge>
+                      <Badge variant="outline" className="text-[10px]">{filledCount}/{expectedParamCount}</Badge>
                       {isFullTestOutsourced && (() => {
                         const allHaveResults = tg.params.every(p => {
                           const k = `${reg.id}||${p.parameterId}`;
@@ -2251,7 +2267,31 @@ const ResultsEntry = () => {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {tg.params.map(p => renderParamRow(entry, p))}
+                        {(() => {
+                          const getVal = (p: ParameterResult) => {
+                            const k = `${reg.id}||${p.parameterId}`;
+                            return editedValues[k] !== undefined ? editedValues[k] : p.resultValue;
+                          };
+                          const { mainParams, optionalVisible, optionalHidden } = partitionCbcCriticalParams(
+                            tg.params,
+                            getVal,
+                          );
+                          const optOpen = !!optionalCbcOpen[testKey];
+                          return (
+                            <>
+                              {[...mainParams, ...optionalVisible].map((p) => renderParamRow(entry, p))}
+                              <CbcOptionalParamsToggle
+                                hiddenCount={optionalHidden.length}
+                                open={optOpen}
+                                colSpan={10}
+                                onOpenChange={(open) =>
+                                  setOptionalCbcOpen((prev) => ({ ...prev, [testKey]: open }))
+                                }
+                              />
+                              {optOpen && optionalHidden.map((p) => renderParamRow(entry, p))}
+                            </>
+                          );
+                        })()}
                       </TableBody>
                     </Table>
                     </div>

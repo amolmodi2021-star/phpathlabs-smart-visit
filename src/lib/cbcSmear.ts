@@ -39,6 +39,38 @@ export const CBC_CRITICAL_ONLY_DRAFT_KEYS = [
   "normoblast",
 ] as const;
 
+const CBC_CRITICAL_ONLY_CODE_SET = new Set<string>(CBC_CRITICAL_ONLY_PARAM_CODES);
+
+export function isCbcCriticalOnlyParamCode(code?: string | null): boolean {
+  return !!code && CBC_CRITICAL_ONLY_CODE_SET.has(String(code).toUpperCase());
+}
+
+export function hasCbcParamResultValue(value?: string | null): boolean {
+  return !!(value && String(value).trim());
+}
+
+/**
+ * Split CBC immature-cell params: filled ones stay in the main grid;
+ * blank ones stay behind the optional dropdown until the user opens it.
+ */
+export function partitionCbcCriticalParams<T extends { paramCode?: string | null }>(
+  params: T[],
+  getValue: (p: T) => string | null | undefined,
+): { mainParams: T[]; optionalVisible: T[]; optionalHidden: T[] } {
+  const mainParams: T[] = [];
+  const optionalVisible: T[] = [];
+  const optionalHidden: T[] = [];
+  for (const p of params) {
+    if (!isCbcCriticalOnlyParamCode(p.paramCode)) {
+      mainParams.push(p);
+      continue;
+    }
+    if (hasCbcParamResultValue(getValue(p))) optionalVisible.push(p);
+    else optionalHidden.push(p);
+  }
+  return { mainParams, optionalVisible, optionalHidden };
+}
+
 
 export const CBC_AI_TARGET_CODES = [
   ...CBC_DC_PARAM_CODES,

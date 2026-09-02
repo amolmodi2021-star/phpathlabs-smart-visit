@@ -34,6 +34,8 @@ import { Search, User, Monitor, Calculator, ChevronDown, ChevronUp, Loader2, Che
 import { DescriptiveCombobox } from "./DescriptiveCombobox";
 import { useMasterLookup } from "@/hooks/useMasterLookup";
 import { checkDifferentialSum } from "@/lib/differentialCount";
+import { isCbcCriticalOnlyParamCode, partitionCbcCriticalParams } from "@/lib/cbcSmear";
+import { CbcOptionalParamsToggle } from "@/components/lims/CbcOptionalParamsToggle";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { formatDateDDMMYYYY } from "@/lib/utils";
@@ -104,6 +106,7 @@ const DoctorApproval = () => {
   const [expandedPatient, setExpandedPatient] = useState<string | null>(null);
   /** Accordion: only one test's parameters open at a time. */
   const [expandedTestKey, setExpandedTestKey] = useState<string | null>(null);
+  const [optionalCbcOpen, setOptionalCbcOpen] = useState<Record<string, boolean>>({});
   const [editedValues, setEditedValues] = useState<Record<string, string>>({});
   const [editedUnits, setEditedUnits] = useState<Record<string, string>>({});
   const [editedRefRanges, setEditedRefRanges] = useState<Record<string, string>>({});
@@ -1190,6 +1193,12 @@ const DoctorApproval = () => {
                 const v = editedValues[k] !== undefined ? editedValues[k] : p.resultValue;
                 return v && v.trim() !== "";
               }).length;
+              const expectedParamCount = tg.params.filter((p) => {
+                if (!isCbcCriticalOnlyParamCode(p.paramCode)) return true;
+                const k = `${reg.id}||${p.parameterId}`;
+                const v = editedValues[k] !== undefined ? editedValues[k] : p.resultValue;
+                return !!(v && v.trim());
+              }).length;
               return (
                 <div key={tg.testId} className="ml-1">
                   <div
@@ -1215,7 +1224,7 @@ const DoctorApproval = () => {
                           </>
                         );
                       })()}
-                      <Badge variant="outline" className="text-[10px]">{filledCount}/{tg.params.length}</Badge>
+                      <Badge variant="outline" className="text-[10px]">{filledCount}/{expectedParamCount}</Badge>
                       <StickyNote
                         className={`inline h-3.5 w-3.5 cursor-pointer shrink-0 ${getTestNote(reg.id, tg.testId) ? 'text-amber-600' : 'text-muted-foreground hover:text-primary'}`}
                         onClick={(e) => {
@@ -1263,7 +1272,33 @@ const DoctorApproval = () => {
                       <TableHead className="py-1 text-xs w-[240px]">Ref. Range</TableHead><TableHead className="py-1 text-xs w-[70px] text-center">Flag</TableHead>
                       <TableHead className="py-1 text-xs w-[70px] text-center">Status</TableHead><TableHead className="py-1 text-xs w-[40px] text-center"></TableHead>
                     </TableRow></TableHeader>
-                    <TableBody>{tg.params.map(p => renderParamRow(entry, p))}</TableBody>
+                    <TableBody>
+                      {(() => {
+                        const getVal = (p: ParameterResult) => {
+                          const k = `${reg.id}||${p.parameterId}`;
+                          return editedValues[k] !== undefined ? editedValues[k] : p.resultValue;
+                        };
+                        const { mainParams, optionalVisible, optionalHidden } = partitionCbcCriticalParams(
+                          tg.params,
+                          getVal,
+                        );
+                        const optOpen = !!optionalCbcOpen[testKey];
+                        return (
+                          <>
+                            {[...mainParams, ...optionalVisible].map((p) => renderParamRow(entry, p))}
+                            <CbcOptionalParamsToggle
+                              hiddenCount={optionalHidden.length}
+                              open={optOpen}
+                              colSpan={10}
+                              onOpenChange={(open) =>
+                                setOptionalCbcOpen((prev) => ({ ...prev, [testKey]: open }))
+                              }
+                            />
+                            {optOpen && optionalHidden.map((p) => renderParamRow(entry, p))}
+                          </>
+                        );
+                      })()}
+                    </TableBody>
                   </Table>
                     </>
                   )}

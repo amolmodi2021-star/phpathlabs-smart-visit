@@ -26,12 +26,14 @@ import {
   CBC_MORPHOLOGY_PARAM_CODES,
   CBC_MP_PARAM_CODE,
   isCbcLikeTest,
+  partitionCbcCriticalParams,
 } from "@/lib/cbcSmear";
 import {
   isAbnormalResultFlag,
   isSuspectNegativeResult,
   resolveCbcDisplayFlag,
 } from "@/lib/reportFlags";
+import { CbcOptionalParamsToggle } from "@/components/lims/CbcOptionalParamsToggle";
 
 const REG_SELECT =
   "id, invoice_number, patient_name, title, mobile_number, umr_number, gender, age_text, dob, visit_type, created_at, is_stat";
@@ -141,6 +143,7 @@ const DrCbcTab = () => {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [selectedTestId, setSelectedTestId] = useState<string | null>(null);
   const [edited, setEdited] = useState<Record<string, string>>({});
+  const [optionalCbcOpen, setOptionalCbcOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [viewerOpen, setViewerOpen] = useState(false);
   const [viewerStart, setViewerStart] = useState(0);
@@ -287,6 +290,7 @@ const DrCbcTab = () => {
     }
     setSelectedTestId((prev) => (prev && cbcTests.some((t: any) => t.id === prev) ? prev : cbcTests[0].id));
     setEdited({});
+    setOptionalCbcOpen(false);
   }, [expandedId, cbcTests]);
 
   const activeReview = useMemo(
@@ -435,6 +439,79 @@ const DrCbcTab = () => {
     }
   };
 
+  useEffect(() => {
+    setOptionalCbcOpen(false);
+  }, [selectedTestId]);
+
+  const renderDrCbcResultRow = (r: any) => {
+    const meta = paramById[r.parameter_id];
+    const code = meta?.paramCode || "";
+    const hist = historyMap[r.parameter_id] || [];
+    const morph = isMorph(code);
+    const opts = morphOptsFor(code);
+    const value = getVal(r);
+    const flag = resolveCbcDisplayFlag({
+      value,
+      savedValue: r.result_value,
+      savedFlag: r.flag,
+      normalRangeText: r.reference_range || meta?.normalRangeText,
+      unit: r.unit || meta?.unit,
+    });
+    const isNegative = isSuspectNegativeResult(value);
+    const isAbnormal = isAbnormalResultFlag(flag);
+    const rowBg = isNegative
+      ? "bg-red-50"
+      : isAbnormal
+        ? "bg-destructive/5"
+        : "";
+    const inputAbnCls = isNegative
+      ? "border-red-500 ring-1 ring-red-300 text-red-700 font-semibold"
+      : isAbnormal
+        ? "border-destructive text-destructive font-bold"
+        : "";
+    return (
+      <TableRow key={r.id} className={rowBg}>
+        <TableCell className="font-mono text-[11px]">{code || "—"}</TableCell>
+        <TableCell className="text-xs">{meta?.parameterName || "—"}</TableCell>
+        <TableCell className="text-xs text-muted-foreground">{hist[0] || "—"}</TableCell>
+        <TableCell className="text-xs text-muted-foreground">{hist[1] || "—"}</TableCell>
+        <TableCell className="text-xs">
+          {morph && opts.length > 0 ? (
+            <DescriptiveCombobox
+              value={value}
+              options={opts}
+              onChange={(v) => setEdited((prev) => ({ ...prev, [r.id]: v }))}
+            />
+          ) : (
+            <Input
+              className={`h-8 text-xs ${inputAbnCls}`}
+              value={value}
+              onChange={(e) =>
+                setEdited((prev) => ({ ...prev, [r.id]: e.target.value }))
+              }
+            />
+          )}
+        </TableCell>
+        <TableCell className="text-xs">{r.unit || meta?.unit || "—"}</TableCell>
+        <TableCell className="text-xs whitespace-pre-line max-w-[120px]">
+          {r.reference_range || meta?.normalRangeText || "—"}
+        </TableCell>
+        <TableCell className="text-xs text-center">
+          {flag === "H" && <Badge variant="destructive" className="text-xs">HIGH</Badge>}
+          {flag === "L" && <Badge variant="destructive" className="text-xs">LOW</Badge>}
+          {flag === "N" && <Badge variant="secondary" className="text-xs text-green-700">Normal</Badge>}
+          {flag === "X" && <Badge variant="destructive" className="text-xs">Abn</Badge>}
+          {flag === "A" && <Badge variant="destructive" className="text-xs">Abn</Badge>}
+          {!flag && value && <Badge variant="outline" className="text-xs">—</Badge>}
+          {!flag && !value && "—"}
+        </TableCell>
+        <TableCell className="text-xs">
+          <Badge variant="outline" className="text-[10px]">Dr. CBC</Badge>
+        </TableCell>
+      </TableRow>
+    );
+  };
+
   const isLoading = loadingIds || loadingRegs;
 
   return (
@@ -566,74 +643,29 @@ const DrCbcTab = () => {
                               </TableRow>
                             </TableHeader>
                             <TableBody>
-                              {testResults.map((r: any) => {
-                                const meta = paramById[r.parameter_id];
-                                const code = meta?.paramCode || "";
-                                const hist = historyMap[r.parameter_id] || [];
-                                const morph = isMorph(code);
-                                const opts = morphOptsFor(code);
-                                const value = getVal(r);
-                                const flag = resolveCbcDisplayFlag({
-                                  value,
-                                  savedValue: r.result_value,
-                                  savedFlag: r.flag,
-                                  normalRangeText: r.reference_range || meta?.normalRangeText,
-                                  unit: r.unit || meta?.unit,
-                                });
-                                const isNegative = isSuspectNegativeResult(value);
-                                const isAbnormal = isAbnormalResultFlag(flag);
-                                const rowBg = isNegative
-                                  ? "bg-red-50"
-                                  : isAbnormal
-                                    ? "bg-destructive/5"
-                                    : "";
-                                const inputAbnCls = isNegative
-                                  ? "border-red-500 ring-1 ring-red-300 text-red-700 font-semibold"
-                                  : isAbnormal
-                                    ? "border-destructive text-destructive font-bold"
-                                    : "";
+                              {(() => {
+                                const rowsWithCode = testResults.map((r: any) => ({
+                                  ...r,
+                                  paramCode: paramById[r.parameter_id]?.paramCode || "",
+                                }));
+                                const { mainParams, optionalVisible, optionalHidden } =
+                                  partitionCbcCriticalParams(rowsWithCode, (r) => getVal(r));
                                 return (
-                                  <TableRow key={r.id} className={rowBg}>
-                                    <TableCell className="font-mono text-[11px]">{code || "—"}</TableCell>
-                                    <TableCell className="text-xs">{meta?.parameterName || "—"}</TableCell>
-                                    <TableCell className="text-xs text-muted-foreground">{hist[0] || "—"}</TableCell>
-                                    <TableCell className="text-xs text-muted-foreground">{hist[1] || "—"}</TableCell>
-                                    <TableCell className="text-xs">
-                                      {morph && opts.length > 0 ? (
-                                        <DescriptiveCombobox
-                                          value={value}
-                                          options={opts}
-                                          onChange={(v) => setEdited((prev) => ({ ...prev, [r.id]: v }))}
-                                        />
-                                      ) : (
-                                        <Input
-                                          className={`h-8 text-xs ${inputAbnCls}`}
-                                          value={value}
-                                          onChange={(e) =>
-                                            setEdited((prev) => ({ ...prev, [r.id]: e.target.value }))
-                                          }
-                                        />
-                                      )}
-                                    </TableCell>
-                                    <TableCell className="text-xs">{r.unit || meta?.unit || "—"}</TableCell>
-                                    <TableCell className="text-xs whitespace-pre-line max-w-[120px]">
-                                      {r.reference_range || meta?.normalRangeText || "—"}
-                                    </TableCell>
-                                    <TableCell className="text-xs text-center">
-                                      {flag === "H" && <Badge variant="destructive" className="text-xs">HIGH</Badge>}
-                                      {flag === "L" && <Badge variant="destructive" className="text-xs">LOW</Badge>}
-                                      {flag === "N" && <Badge variant="secondary" className="text-xs text-green-700">Normal</Badge>}
-                                      {flag === "X" && <Badge variant="destructive" className="text-xs">Abn</Badge>}
-                                      {flag === "A" && <Badge variant="destructive" className="text-xs">Abn</Badge>}
-                                      {!flag && value && <Badge variant="outline" className="text-xs">—</Badge>}
-                                      {!flag && !value && "—"}
-                                    </TableCell>
-                                    <TableCell className="text-xs">
-                                      <Badge variant="outline" className="text-[10px]">Dr. CBC</Badge>
-                                    </TableCell>
-                                  </TableRow>
+                                  <>
+                                    {[...mainParams, ...optionalVisible].map((r) =>
+                                      renderDrCbcResultRow(r),
+                                    )}
+                                    <CbcOptionalParamsToggle
+                                      hiddenCount={optionalHidden.length}
+                                      open={optionalCbcOpen}
+                                      colSpan={9}
+                                      onOpenChange={setOptionalCbcOpen}
+                                    />
+                                    {optionalCbcOpen &&
+                                      optionalHidden.map((r) => renderDrCbcResultRow(r))}
+                                  </>
                                 );
-                              })}
+                              })()}
                               {testResults.length === 0 && (
                                 <TableRow>
                                   <TableCell colSpan={9} className="text-muted-foreground text-sm">
