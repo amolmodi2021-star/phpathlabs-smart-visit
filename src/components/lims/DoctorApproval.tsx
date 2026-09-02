@@ -109,6 +109,8 @@ const DoctorApproval = () => {
   /** Accordion: only one test's parameters open at a time. */
   const [expandedTestKey, setExpandedTestKey] = useState<string | null>(null);
   const [optionalCbcOpen, setOptionalCbcOpen] = useState<Record<string, boolean>>({});
+  /** Off by default (30-day pending window). On = include older pending work. */
+  const [showOlderPending, setShowOlderPending] = useState(false);
   const [editedValues, setEditedValues] = useState<Record<string, string>>({});
   const [editedUnits, setEditedUnits] = useState<Record<string, string>>({});
   const [editedRefRanges, setEditedRefRanges] = useState<Record<string, string>>({});
@@ -195,10 +197,10 @@ const DoctorApproval = () => {
   useEffect(() => { setExpandedTestKey(null); }, [expandedPatient]);
 
   const { data: pendingIds = [] as string[], isLoading: loadingIds, isPlaceholderData: idsPlaceholder } = useQuery({
-    queryKey: ["doctor_approval_count", debouncedSearch],
+    queryKey: ["doctor_approval_count", debouncedSearch, showOlderPending],
     enabled: tabActive,
     queryFn: async (): Promise<string[]> => {
-      const candidates = await fetchDoctorApprovalCandidateIds();
+      const candidates = await fetchDoctorApprovalCandidateIds(showOlderPending);
       return await fetchFilteredSortedIds(candidates, debouncedSearch);
     },
     placeholderData: keepPreviousData,
@@ -1366,6 +1368,16 @@ const DoctorApproval = () => {
             </SelectContent>
           </Select>
         )}
+        <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer select-none whitespace-nowrap">
+          <input
+            type="checkbox"
+            className="rounded border-input"
+            checked={showOlderPending}
+            onChange={(e) => { setShowOlderPending(e.target.checked); setDaPage(0); setExpandedPatient(null); }}
+          />
+          Show older pending
+          <span className="text-xs hidden sm:inline">(beyond 30 days)</span>
+        </label>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">

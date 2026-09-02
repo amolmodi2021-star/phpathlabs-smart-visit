@@ -15,22 +15,26 @@ async function rpcUuidArray(fn: string, args: Record<string, any> = {}): Promise
   return [];
 }
 
-export async function fetchVerificationCandidateIds(): Promise<string[]> {
-  return rpcUuidArray("lims_verification_candidate_ids");
+export async function fetchVerificationCandidateIds(includeOlder = false): Promise<string[]> {
+  return rpcUuidArray("lims_verification_candidate_ids", { p_include_older: includeOlder });
 }
 
-export async function fetchDoctorApprovalCandidateIds(): Promise<string[]> {
-  return rpcUuidArray("lims_doctor_approval_candidate_ids");
+export async function fetchDoctorApprovalCandidateIds(includeOlder = false): Promise<string[]> {
+  return rpcUuidArray("lims_doctor_approval_candidate_ids", { p_include_older: includeOlder });
 }
 
-export async function fetchResultsEntryCandidateIds(): Promise<string[]> {
-  return rpcUuidArray("lims_results_entry_candidate_ids");
+export async function fetchResultsEntryCandidateIds(includeOlder = false): Promise<string[]> {
+  return rpcUuidArray("lims_results_entry_candidate_ids", { p_include_older: includeOlder });
 }
 
 /** Results Machine Wise: pending enterable params for one instrument ("" = Others). */
-export async function fetchResultsEntryMachineCandidateIds(instrument: string): Promise<string[]> {
+export async function fetchResultsEntryMachineCandidateIds(
+  instrument: string,
+  includeOlder = false,
+): Promise<string[]> {
   return rpcUuidArray("lims_results_entry_machine_candidate_ids", {
     p_instrument: instrument || null,
+    p_include_older: includeOlder,
   });
 }
 

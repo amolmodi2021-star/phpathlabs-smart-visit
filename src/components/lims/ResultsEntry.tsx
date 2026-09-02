@@ -207,6 +207,8 @@ const ResultsEntry = () => {
     };
   }, []);
   const [rePage, setRePage] = useState(0);
+  /** Off by default (30-day pending window). On = include older pending work. */
+  const [showOlderPending, setShowOlderPending] = useState(false);
   const [refreshingRegId, setRefreshingRegId] = useState<string | null>(null);
 
   const handleRefreshFromLims = useCallback(async (regId: string) => {
@@ -242,13 +244,13 @@ const ResultsEntry = () => {
     setRePage(0);
     setExpandedPatient(null);
     setExpandedTestKey(null);
-  }, [mode, selectedMachine]);
+  }, [mode, selectedMachine, showOlderPending]);
 
   const { data: pendingIds = [] as string[], isLoading: loadingIds, isPlaceholderData: idsPlaceholder } = useQuery({
-    queryKey: ["results_accepted_count", debouncedSearch],
+    queryKey: ["results_accepted_count", debouncedSearch, showOlderPending],
     enabled: tabActive,
     queryFn: async (): Promise<string[]> => {
-      const candidates = await fetchResultsEntryCandidateIds();
+      const candidates = await fetchResultsEntryCandidateIds(showOlderPending);
       return await fetchFilteredSortedIds(candidates, debouncedSearch);
     },
     placeholderData: keepPreviousData,
@@ -288,11 +290,11 @@ const ResultsEntry = () => {
     isFetching: fetchingMachineFilter,
     isFetched: machineFilterFetched,
   } = useQuery({
-    queryKey: ["results_machine_filtered_ids", pendingIdsKey, selectedMachine],
+    queryKey: ["results_machine_filtered_ids", pendingIdsKey, selectedMachine, showOlderPending],
     enabled: tabActive && machineFilterActive && pendingIds.length > 0,
     queryFn: async (): Promise<string[]> => {
       const want = selectedMachine === "others" ? "" : selectedMachine;
-      const machinePending = await fetchResultsEntryMachineCandidateIds(want);
+      const machinePending = await fetchResultsEntryMachineCandidateIds(want, showOlderPending);
       if (machinePending.length === 0) return [];
       const allow = new Set(machinePending);
       return pendingIds.filter((id) => allow.has(id));
@@ -2356,6 +2358,16 @@ const ResultsEntry = () => {
             </SelectContent>
           </Select>
         )}
+        <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer select-none whitespace-nowrap">
+          <input
+            type="checkbox"
+            className="rounded border-input"
+            checked={showOlderPending}
+            onChange={(e) => setShowOlderPending(e.target.checked)}
+          />
+          Show older pending
+          <span className="text-xs hidden sm:inline">(beyond 30 days)</span>
+        </label>
         <RefreshButton
           queryKeys={[
             "results_accepted_count",

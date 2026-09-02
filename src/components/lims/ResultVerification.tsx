@@ -163,6 +163,8 @@ const ResultVerification = () => {
   const [expandedPatient, setExpandedPatient] = useState<string | null>(() => restoredUiRef.current?.expandedPatient ?? null);
   /** Accordion: only one test's parameters open at a time. */
   const [expandedTestKey, setExpandedTestKey] = useState<string | null>(null);
+  /** Off by default (30-day pending window). On = include older pending work. */
+  const [showOlderPending, setShowOlderPending] = useState(false);
   const [optionalCbcOpen, setOptionalCbcOpen] = useState<Record<string, boolean>>({});
   const [editedValues, setEditedValues] = useState<Record<string, string>>({});
   const [editedUnits, setEditedUnits] = useState<Record<string, string>>({});
@@ -222,10 +224,10 @@ const ResultVerification = () => {
   // Pending candidates (regs with at least one entered result/snip).
   // Pagination is computed from this set so the queue's "X total" matches reality.
   const { data: pendingIds = [] as string[], isLoading: loadingIds, isPlaceholderData: idsPlaceholder } = useQuery({
-    queryKey: ["verification_regs_count", debouncedSearch],
+    queryKey: ["verification_regs_count", debouncedSearch, showOlderPending],
     enabled: tabActive,
     queryFn: async (): Promise<string[]> => {
-      const candidates = await fetchVerificationCandidateIds();
+      const candidates = await fetchVerificationCandidateIds(showOlderPending);
       return await fetchFilteredSortedIds(candidates, debouncedSearch);
     },
     placeholderData: keepPreviousData,
@@ -1836,6 +1838,16 @@ const ResultVerification = () => {
             </SelectContent>
           </Select>
         )}
+        <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer select-none whitespace-nowrap">
+          <input
+            type="checkbox"
+            className="rounded border-input"
+            checked={showOlderPending}
+            onChange={(e) => { setShowOlderPending(e.target.checked); setRvPage(0); setExpandedPatient(null); }}
+          />
+          Show older pending
+          <span className="text-xs hidden sm:inline">(beyond 30 days)</span>
+        </label>
         <RefreshButton
           queryKeys={[
             "verification_regs_count",
