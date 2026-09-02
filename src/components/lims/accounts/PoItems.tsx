@@ -10,6 +10,9 @@ import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import { toast } from "sonner";
 import { Download, FileSpreadsheet, Pencil, Plus, Search, Upload } from "lucide-react";
 import { exportToExcel, parseExcelFile } from "@/lib/excel";
@@ -26,7 +29,10 @@ export type PoCatalogItem = {
   updated_at?: string;
 };
 
+type CompanyOption = { id: string; name: string };
+
 const QUERY_KEY = "accounts_po_catalog_items";
+const COMPANIES_KEY = "accounts_companies";
 
 const EXCEL_HEADERS = {
   code: "Item Code",
@@ -110,6 +116,31 @@ const PoItems = () => {
     },
   });
 
+  const { data: companies = [] } = useQuery({
+    queryKey: [COMPANIES_KEY, "active_for_po_items"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("accounts_companies" as any)
+        .select("id, name")
+        .eq("is_active", true)
+        .order("name");
+      if (error) throw error;
+      return (data || []) as CompanyOption[];
+    },
+  });
+
+  const companyByLower = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const c of companies) map.set(c.name.trim().toLowerCase(), c.name);
+    return map;
+  }, [companies]);
+
+  const resolveCompanyName = (raw: string): string | null => {
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+    return companyByLower.get(trimmed.toLowerCase()) || null;
+  };
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return rows.filter((r) => {
@@ -135,7 +166,8 @@ const PoItems = () => {
   const openEdit = (row: PoCatalogItem) => {
     setEditing(row);
     setItemName(row.item_name);
-    setCompanyName(row.company_name || "");
+    const matched = resolveCompanyName(row.company_name || "") || row.company_name || "";
+    setCompanyName(matched);
     setGstRate(String(row.gst_rate ?? 0));
     setPrice(String(row.price ?? 0));
     setDialogOpen(true);
@@ -145,6 +177,8 @@ const PoItems = () => {
     mutationFn: async () => {
       const name = itemName.trim();
       if (!name) throw new Error("Item name is required");
+      const company = resolveCompanyName(companyName);
+      if (!company) throw new Error("Select the company this item is ordered from");
       const gst = num(gstRate);
       const amt = num(price);
       if (gst < 0 || gst > 100) throw new Error("GST Rate must be between 0 and 100");
@@ -155,7 +189,7 @@ const PoItems = () => {
           .from("accounts_po_catalog_items" as any)
           .update({
             item_name: name,
-            company_name: companyName.trim(),
+            company_name: company,
             gst_rate: gst,
             price: amt,
           } as any)
@@ -166,7 +200,7 @@ const PoItems = () => {
 
       const { error } = await supabase.from("accounts_po_catalog_items" as any).insert({
         item_name: name,
-        company_name: companyName.trim(),
+        company_name: company,
         gst_rate: gst,
         price: amt,
         is_active: true,
@@ -224,13 +258,21 @@ const PoItems = () => {
         const excelRow = idx + 2;
         const code = String(cell(row, EXCEL_HEADERS.code, "Code", "item_code") || "").trim().toUpperCase();
         const name = String(cell(row, EXCEL_HEADERS.name, "Name", "item_name") || "").trim();
-        const company = String(cell(row, EXCEL_HEADERS.company, "Company", "company_name") || "").trim();
+        const companyRaw = String(cell(row, EXCEL_HEADERS.company, "Company", "company_name") || "").trim();
         const gst = num(cell(row, EXCEL_HEADERS.gst, "GST", "GST %", "gst_rate"));
         const amt = num(cell(row, EXCEL_HEADERS.price, "Unit Price", "price"));
         const active = parseActive(cell(row, EXCEL_HEADERS.active, "Status", "is_active"), true);
 
         if (!name) {
           errors.push(`Row ${excelRow}: Item Name is required`);
+          return;
+        }
+        const company = resolveCompanyName(companyRaw);
+        if (!company) {
+          errors.push(
+            `Row ${excelRow}: Company Name must match an Accounts → Settings company` +
+              (companyRaw ? ` (got "${companyRaw}")` : ""),
+          );
           return;
         }
         if (gst < 0 || gst > 100) {
@@ -269,7 +311,6 @@ const PoItems = () => {
       let upserted = 0;
       let inserted = 0;
 
-      // Chunk to avoid payload limits
       const chunkSize = 200;
       for (let i = 0; i < toUpsert.length; i += chunkSize) {
         const chunk = toUpsert.slice(i, i + chunkSize);
@@ -303,7 +344,7 @@ const PoItems = () => {
         {
           [EXCEL_HEADERS.code]: "",
           [EXCEL_HEADERS.name]: "Sample reagent kit",
-          [EXCEL_HEADERS.company]: "ABC Diagnostics",
+          [EXCEL_HEADERS.company]: companies[0]?.name || "Company from Settings",
           [EXCEL_HEADERS.gst]: 18,
           [EXCEL_HEADERS.price]: 1250,
           [EXCEL_HEADERS.active]: "Yes",
@@ -329,7 +370,8 @@ const PoItems = () => {
           <div>
             <CardTitle className="text-sm">PO Items</CardTitle>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Master list for purchase orders. Item codes are auto-generated; Excel re-upload upserts by Item Code.
+              Master list for purchase orders. Pick the company each item is ordered from (Settings → Companies).
+              Item codes are auto-generated; Excel re-upload upserts by Item Code.
             </p>
           </div>
           <div className="flex flex-wrap gap-1.5">
@@ -470,8 +512,24 @@ const PoItems = () => {
               <Input value={itemName} onChange={(e) => setItemName(e.target.value)} className="h-9" />
             </div>
             <div>
-              <Label className="text-xs">Company Name</Label>
-              <Input value={companyName} onChange={(e) => setCompanyName(e.target.value)} className="h-9" />
+              <Label className="text-xs">Company (order from) *</Label>
+              <Select value={companyName || undefined} onValueChange={setCompanyName}>
+                <SelectTrigger className="h-9">
+                  <SelectValue placeholder={companies.length ? "Select company" : "Add companies in Settings first"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {companies.map((c) => (
+                    <SelectItem key={c.id} value={c.name}>
+                      {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {!companies.length && (
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  No active companies. Add them under Accounts → Settings → Companies.
+                </p>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -501,7 +559,7 @@ const PoItems = () => {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
-            <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
+            <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || !companies.length}>
               {saveMutation.isPending ? "Saving…" : "Save"}
             </Button>
           </DialogFooter>
