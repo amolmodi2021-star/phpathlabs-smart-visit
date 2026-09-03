@@ -288,21 +288,20 @@ const SampleAcceptance = () => {
     mutationFn: async ({ reg, tubeIds }: { reg: any; tubeIds: string[] }) => {
       const now = new Date().toISOString();
 
-      // Update tube status — guarded so a stale double-click can't re-accept already-processed tubes
-      const { error } = await supabase
+      // Only tubes that actually flip collected → accepted get orders.
+      // A double-click's second update matches 0 rows, so we must not recreate orders.
+      const { data: newlyAccepted, error } = await supabase
         .from("sample_tubes" as any)
         .update({ status: "accepted", accepted_at: now, accepted_by: getCurrentUserName() })
         .in("id", tubeIds)
-        .eq("status", "collected"); // CRITICAL: only accept tubes still in "collected" state
+        .eq("status", "collected")
+        .select(TUBE_DETAIL_SELECT);
       if (error) throw error;
 
-      // Prefer live tube rows (barcode accept / stale cache), fall back to pending list
-      const { data: freshTubes, error: tubeFetchErr } = await supabase
-        .from("sample_tubes" as any)
-        .select(TUBE_DETAIL_SELECT)
-        .in("id", tubeIds);
-      if (tubeFetchErr) throw tubeFetchErr;
-      const acceptedTubesData = (freshTubes || []) as unknown as SampleTubeRow[];
+      const acceptedTubesData = (newlyAccepted || []) as unknown as SampleTubeRow[];
+      if (acceptedTubesData.length === 0) {
+        return { created: 0, sampleIds: [] as string[], skipped: 0, alreadyAccepted: true };
+      }
 
       // Generate analyzer orders immediately (fresh master fetch — not UI query cache)
       const orderResult = await createLimsOrdersForAcceptedTubes({
@@ -313,15 +312,19 @@ const SampleAcceptance = () => {
       });
 
       await recalculateRegistrationStatus(reg.id);
-      return orderResult;
+      return { ...orderResult, alreadyAccepted: false };
     },
     onSuccess: async (orderResult, { reg, tubeIds }) => {
-      const n = orderResult?.created ?? 0;
-      toast.success(
-        n > 0
-          ? `${tubeIds.length} sample(s) accepted — ${n} LIMS order(s) generated`
-          : `${tubeIds.length} sample(s) accepted (no interface orders — check send_for_interface flags)`
-      );
+      if (orderResult?.alreadyAccepted) {
+        toast.message("Samples already accepted — no new analyzer orders created");
+      } else {
+        const n = orderResult?.created ?? 0;
+        toast.success(
+          n > 0
+            ? `${tubeIds.length} sample(s) accepted — ${n} LIMS order(s) generated`
+            : `${tubeIds.length} sample(s) accepted (no interface orders — check send_for_interface flags)`,
+        );
+      }
       setSelectedTubes(new Set());
       await propagateRegistrationChange(qc, reg.id, ["sample_acceptance", "results", "sample_collection"], { skipRecalc: true });
     },

@@ -1458,7 +1458,18 @@ Deno.serve(async (req) => {
           )
         : enrichedTests;
 
-      if (filteredTests.length === 0) {
+      // Dedupe by analyzer assay code (+ machine). Duplicate lims_test_orders for the
+      // same sample_id (double-accept) must not send each test twice to the instrument.
+      const dedupedTests: typeof filteredTests = [];
+      const seenCodes = new Set<string>();
+      for (const t of filteredTests) {
+        const key = `${String(t.code).toLowerCase()}||${String(t.machine_id).toLowerCase()}`;
+        if (seenCodes.has(key)) continue;
+        seenCodes.add(key);
+        dedupedTests.push(t);
+      }
+
+      if (dedupedTests.length === 0) {
         const responseBody = { sample_id: sampleId, tests: [], message: machineId ? `No pending tests for machine ${machineId}` : "No pending tests" };
         await supabase.from("lims_interface_logs").insert({
           sample_id: sampleId, direction: "outgoing", event_type: "query_tests",
@@ -1473,7 +1484,7 @@ Deno.serve(async (req) => {
         order_id: primaryOrder.id,
         sample_id: sampleId,
         patient_name: primaryOrder.patient_name,
-        tests: filteredTests,
+        tests: dedupedTests,
       };
 
       await supabase.from("lims_interface_logs").insert({

@@ -122,30 +122,63 @@ export async function loadInterfaceMapsForTests(testIds: string[]): Promise<{
 /**
  * Insert lims_test_orders for accepted tubes. Fetches fresh master data so acceptance
  * does not depend on Sample Acceptance React Query caches.
+ *
+ * - Multiple tubes that share the same sample_id (e.g. no suffix) are merged into one order.
+ * - If a pending/in_progress order already exists for that sample_id, skip insert
+ *   (prevents double-accept duplicates that make analyzers see each test twice).
  */
 export async function createLimsOrdersForAcceptedTubes(args: {
   invoiceNumber: string;
   patientName: string;
   cancelledTests?: unknown;
   tubes: TubeForOrder[];
-}): Promise<{ created: number; sampleIds: string[] }> {
+}): Promise<{ created: number; sampleIds: string[]; skipped: number }> {
   const allTestIds = args.tubes.flatMap((t) => t.test_ids || []);
   const { testsMap, testParamData } = await loadInterfaceMapsForTests(allTestIds);
   const cancelledIds = cancelledIdSet(args.cancelledTests);
-  const sampleIds: string[] = [];
-  let created = 0;
   const supabase = await getSupabase();
 
+  // Merge tubes that resolve to the same analyzer barcode / sample_id.
+  const bySampleId = new Map<string, LimsOrderTest[]>();
   for (const tube of args.tubes) {
     const orderTests = buildOrderTestsForTube(
       tube.test_ids || [],
       testsMap,
       testParamData,
-      cancelledIds
+      cancelledIds,
     );
     if (orderTests.length === 0) continue;
-
     const sampleId = sampleIdForTube(args.invoiceNumber, tube.suffix);
+    const existing = bySampleId.get(sampleId) || [];
+    const seen = new Set(existing.map((t) => `${t.code}||${t.machine_id}`));
+    for (const t of orderTests) {
+      const key = `${t.code}||${t.machine_id}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      existing.push(t);
+    }
+    bySampleId.set(sampleId, existing);
+  }
+
+  const sampleIds: string[] = [];
+  let created = 0;
+  let skipped = 0;
+
+  for (const [sampleId, orderTests] of bySampleId) {
+    if (orderTests.length === 0) continue;
+
+    const { data: existingOrders, error: existingErr } = await supabase
+      .from("lims_test_orders")
+      .select("id")
+      .eq("sample_id", sampleId)
+      .in("status", ["pending", "in_progress"])
+      .limit(1);
+    if (existingErr) throw existingErr;
+    if (existingOrders && existingOrders.length > 0) {
+      skipped += 1;
+      continue;
+    }
+
     const { error } = await supabase.from("lims_test_orders").insert({
       sample_id: sampleId,
       patient_name: args.patientName,
@@ -157,5 +190,5 @@ export async function createLimsOrdersForAcceptedTubes(args: {
     sampleIds.push(sampleId);
   }
 
-  return { created, sampleIds };
+  return { created, sampleIds, skipped };
 }
