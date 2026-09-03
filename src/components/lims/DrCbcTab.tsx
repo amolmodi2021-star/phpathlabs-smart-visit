@@ -29,6 +29,7 @@ import {
   isCbcLikeTest,
   partitionCbcCriticalParams,
 } from "@/lib/cbcSmear";
+import { checkDifferentialSum } from "@/lib/differentialCount";
 import {
   isAbnormalResultFlag,
   isSuspectNegativeResult,
@@ -588,8 +589,20 @@ const DrCbcTab = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only on test / result set change
   }, [selectedTestId, testResults.length, detailQuery.dataUpdatedAt]);
 
+  const diffCheck = useMemo(() => {
+    const list = testResults.map((r: any) => ({
+      paramCode: paramById[r.parameter_id]?.paramCode || "",
+      value: getVal(r),
+    }));
+    return checkDifferentialSum(list);
+  }, [testResults, paramById, getVal, edited]);
+
   const handleSave = async () => {
     if (!expandedId || !selectedTestId || !activeReview) return;
+    if (!diffCheck.isOk && diffCheck.hasDifferential) {
+      toast.error(`Differential sum is ${diffCheck.sum}% (must be 100%)`);
+      return;
+    }
     setBusy(true);
     try {
       const now = new Date().toISOString();
@@ -977,11 +990,36 @@ const DrCbcTab = () => {
                           </Table>
                         </div>
 
-                        <div className="sticky bottom-0 bg-background/95 backdrop-blur border-t pt-3 -mx-3 px-3 pb-3 sm:static sm:border-0 sm:p-0 sm:mx-0">
+                        <div className="sticky bottom-0 bg-background/95 backdrop-blur border-t pt-3 -mx-3 px-3 pb-3 sm:static sm:border-0 sm:p-0 sm:mx-0 space-y-2">
+                          {diffCheck.hasDifferential && (
+                            <div className="text-sm">
+                              Differential (DC) sum:{" "}
+                              <span
+                                className={
+                                  diffCheck.isOk
+                                    ? "text-green-700 font-semibold"
+                                    : "text-red-600 font-semibold"
+                                }
+                              >
+                                {diffCheck.sum}%
+                              </span>
+                              {!diffCheck.isOk && (
+                                <span className="text-red-600">
+                                  {" "}
+                                  (must equal 100% — diff {diffCheck.diff > 0 ? "+" : ""}
+                                  {diffCheck.diff})
+                                </span>
+                              )}
+                            </div>
+                          )}
                           <Button
                             type="button"
                             className="w-full sm:w-auto h-11 text-base"
-                            disabled={busy || !activeReview}
+                            disabled={
+                              busy ||
+                              !activeReview ||
+                              (!diffCheck.isOk && diffCheck.hasDifferential)
+                            }
                             onClick={() => void handleSave()}
                           >
                             {busy ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
