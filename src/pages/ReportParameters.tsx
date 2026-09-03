@@ -66,6 +66,12 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
   const [editId, setEditId] = useState<string | null>(null);
   const [editParamCode, setEditParamCode] = useState("");
   const [saving, setSaving] = useState(false);
+  /** Full active param list for formula builder (not the paginated table page). */
+  const [formulaParamOptions, setFormulaParamOptions] = useState<
+    { id: string; param_code: string; parameter_name: string }[]
+  >([]);
+  const [formulaParamSearch, setFormulaParamSearch] = useState("");
+  const [loadingFormulaParams, setLoadingFormulaParams] = useState(false);
 
   const [form, setForm] = useState({
     parameter_name: "",
@@ -116,6 +122,51 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
   }, [appliedSearch, page, showInactive, toast]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Formula builder must see ALL active parameters — not just the current 10-row table page.
+  useEffect(() => {
+    if (!dialogOpen || !form.is_calculated) return;
+    let cancelled = false;
+    (async () => {
+      setLoadingFormulaParams(true);
+      const pageSize = 1000;
+      const all: { id: string; param_code: string; parameter_name: string }[] = [];
+      for (let from = 0; ; from += pageSize) {
+        const { data, error } = await supabase
+          .from("report_test_parameters")
+          .select("id, param_code, parameter_name")
+          .or("is_active.is.null,is_active.eq.true")
+          .order("parameter_name")
+          .range(from, from + pageSize - 1);
+        if (error) {
+          if (!cancelled) {
+            toast({
+              title: "Failed to load formula parameters",
+              description: error.message,
+              variant: "destructive",
+            });
+          }
+          break;
+        }
+        const rows = (data || []) as typeof all;
+        all.push(...rows);
+        if (rows.length < pageSize) break;
+      }
+      if (!cancelled) {
+        setFormulaParamOptions(all);
+        setLoadingFormulaParams(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [dialogOpen, form.is_calculated, toast]);
+
+  useEffect(() => {
+    if (!dialogOpen) {
+      setFormulaParamSearch("");
+    }
+  }, [dialogOpen]);
 
   const runSearch = () => {
     setPage(0);
@@ -735,17 +786,80 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
                         </SelectContent>
                       </Select>
                       {t === "parameter" ? (
-                        <Select value={item.parameter_id} onValueChange={(v) => {
-                          const selected = params.find(p => p.id === v);
-                          const f = [...form.calculation_formula];
-                          f[idx] = { ...f[idx], parameter_id: v, parameter_name: selected?.parameter_name || "" };
-                          setForm({ ...form, calculation_formula: f });
-                        }}>
-                          <SelectTrigger className="flex-1 h-8"><SelectValue placeholder="Select parameter" /></SelectTrigger>
-                          <SelectContent>
-                            {params.filter(p => p.id !== editId).map(p => (
-                              <SelectItem key={p.id} value={p.id}>{p.parameter_name} ({p.param_code})</SelectItem>
-                            ))}
+                        <Select
+                          value={item.parameter_id || undefined}
+                          onValueChange={(v) => {
+                            const selected = formulaParamOptions.find((p) => p.id === v);
+                            const f = [...form.calculation_formula];
+                            f[idx] = {
+                              ...f[idx],
+                              parameter_id: v,
+                              parameter_name: selected?.parameter_name || item.parameter_name || "",
+                            };
+                            setForm({ ...form, calculation_formula: f });
+                          }}
+                        >
+                          <SelectTrigger className="flex-1 h-8">
+                            <SelectValue
+                              placeholder={
+                                loadingFormulaParams
+                                  ? "Loading parameters…"
+                                  : item.parameter_name || "Select parameter"
+                              }
+                            />
+                          </SelectTrigger>
+                          <SelectContent className="max-h-72">
+                            <div className="sticky top-0 z-10 bg-popover p-2 border-b">
+                              <Input
+                                className="h-8"
+                                placeholder="Search parameter…"
+                                value={formulaParamSearch}
+                                onChange={(e) => setFormulaParamSearch(e.target.value)}
+                                onKeyDown={(e) => e.stopPropagation()}
+                              />
+                            </div>
+                            {(() => {
+                              const q = formulaParamSearch.trim().toLowerCase();
+                              const options = formulaParamOptions.filter((p) => p.id !== editId);
+                              const filtered = q
+                                ? options.filter(
+                                    (p) =>
+                                      p.parameter_name.toLowerCase().includes(q) ||
+                                      String(p.param_code || "").toLowerCase().includes(q),
+                                  )
+                                : options;
+                              const selectedMissing =
+                                item.parameter_id &&
+                                !options.some((p) => p.id === item.parameter_id);
+                              if (loadingFormulaParams && filtered.length === 0) {
+                                return (
+                                  <div className="px-2 py-3 text-xs text-muted-foreground flex items-center gap-2">
+                                    <Loader2 className="h-3 w-3 animate-spin" /> Loading…
+                                  </div>
+                                );
+                              }
+                              if (filtered.length === 0 && !selectedMissing) {
+                                return (
+                                  <div className="px-2 py-3 text-xs text-muted-foreground">
+                                    No parameters found
+                                  </div>
+                                );
+                              }
+                              return (
+                                <>
+                                  {selectedMissing && (
+                                    <SelectItem value={item.parameter_id}>
+                                      {item.parameter_name || item.parameter_id} (saved)
+                                    </SelectItem>
+                                  )}
+                                  {filtered.map((p) => (
+                                    <SelectItem key={p.id} value={p.id}>
+                                      {p.parameter_name} ({p.param_code})
+                                    </SelectItem>
+                                  ))}
+                                </>
+                              );
+                            })()}
                           </SelectContent>
                         </Select>
                       ) : t === "fixed" ? (
