@@ -120,38 +120,46 @@ function SmearImageViewer({
   const [idx, setIdx] = useState(startIndex);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
-  const [viewportEl, setViewportEl] = useState<HTMLDivElement | null>(null);
+  const viewportRef = useRef<HTMLDivElement | null>(null);
   const zoomRef = useRef(1);
   const panRef = useRef({ x: 0, y: 0 });
-  const idxRef = useRef(idx);
-  const urlsLenRef = useRef(urls.length);
+  const idxRef = useRef(0);
+  const urlsRef = useRef(urls);
 
   zoomRef.current = zoom;
   panRef.current = pan;
   idxRef.current = idx;
-  urlsLenRef.current = urls.length;
+  urlsRef.current = urls;
 
   const goTo = useCallback((next: number) => {
-    const n = urlsLenRef.current;
+    const list = urlsRef.current;
+    const n = list.length;
     if (n <= 0) return;
     const clamped = ((next % n) + n) % n;
     setIdx(clamped);
+    idxRef.current = clamped;
     setZoom(1);
+    zoomRef.current = 1;
     setPan({ x: 0, y: 0 });
+    panRef.current = { x: 0, y: 0 };
   }, []);
 
   useEffect(() => {
-    if (open) {
-      setIdx(startIndex);
-      setZoom(1);
-      setPan({ x: 0, y: 0 });
-    }
-  }, [open, startIndex]);
+    if (!open) return;
+    const start = Math.min(Math.max(startIndex, 0), Math.max(urls.length - 1, 0));
+    setIdx(start);
+    idxRef.current = start;
+    setZoom(1);
+    zoomRef.current = 1;
+    setPan({ x: 0, y: 0 });
+    panRef.current = { x: 0, y: 0 };
+  }, [open, startIndex, urls.length]);
 
   // Native touch listeners (non-passive) so pinch/swipe work inside Dialog.
   useEffect(() => {
-    if (!open || !viewportEl) return;
-    const el = viewportEl;
+    if (!open) return;
+    const el = viewportRef.current;
+    if (!el) return;
 
     type Pt = { x: number; y: number };
     const pts = (touches: TouchList): Pt[] =>
@@ -201,18 +209,18 @@ function SmearImageViewer({
         const m = mid(a, b);
         const nextZoom = Math.min(5, Math.max(1, startZoom * (d / startDist)));
         e.preventDefault();
-        setZoom(nextZoom);
         zoomRef.current = nextZoom;
+        setZoom(nextZoom);
         if (nextZoom <= 1.01) {
-          setPan({ x: 0, y: 0 });
           panRef.current = { x: 0, y: 0 };
+          setPan({ x: 0, y: 0 });
         } else if (startMid) {
           const next = {
             x: startPan.x + (m.x - startMid.x),
             y: startPan.y + (m.y - startMid.y),
           };
-          setPan(next);
           panRef.current = next;
+          setPan(next);
         }
         moved = true;
         return;
@@ -225,8 +233,8 @@ function SmearImageViewer({
         if (mode === "pan" && zoomRef.current > 1.05) {
           e.preventDefault();
           const next = { x: startPan.x + dx, y: startPan.y + dy };
-          setPan(next);
           panRef.current = next;
+          setPan(next);
         }
       }
     };
@@ -253,13 +261,13 @@ function SmearImageViewer({
         const now = Date.now();
         if (!moved && now - lastTapAt < 320) {
           if (zoomRef.current > 1.2) {
-            setZoom(1);
-            setPan({ x: 0, y: 0 });
             zoomRef.current = 1;
             panRef.current = { x: 0, y: 0 };
+            setZoom(1);
+            setPan({ x: 0, y: 0 });
           } else {
-            setZoom(2.5);
             zoomRef.current = 2.5;
+            setZoom(2.5);
           }
           lastTapAt = 0;
         } else if (!moved) {
@@ -271,10 +279,10 @@ function SmearImageViewer({
         startTouch = null;
         startMid = null;
         if (zoomRef.current <= 1.01) {
-          setZoom(1);
-          setPan({ x: 0, y: 0 });
           zoomRef.current = 1;
           panRef.current = { x: 0, y: 0 };
+          setZoom(1);
+          setPan({ x: 0, y: 0 });
         }
       } else if (e.touches.length === 1) {
         startTouch = pts(e.touches)[0];
@@ -294,9 +302,10 @@ function SmearImageViewer({
       el.removeEventListener("touchend", onEnd);
       el.removeEventListener("touchcancel", onEnd);
     };
-  }, [open, goTo, viewportEl]);
+  }, [open, goTo]); // idx via refs — do not rebind listeners on every image change
 
-  if (!urls.length) return null;
+  if (!open || !urls.length) return null;
+
   const safeIdx = Math.min(Math.max(idx, 0), urls.length - 1);
   const url = urls[safeIdx];
 
@@ -330,14 +339,39 @@ function SmearImageViewer({
             >
               <ChevronRight className="h-4 w-4" />
             </Button>
-            <Button type="button" size="icon" variant="ghost" className="h-9 w-9" onClick={() => {
-              setZoom((z) => Math.max(1, z - 0.25));
-              setPan((p) => (zoom <= 1.25 ? { x: 0, y: 0 } : p));
-            }}>
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className="h-9 w-9"
+              onClick={() => {
+                setZoom((z) => {
+                  const next = Math.max(1, z - 0.25);
+                  zoomRef.current = next;
+                  if (next <= 1.01) {
+                    panRef.current = { x: 0, y: 0 };
+                    setPan({ x: 0, y: 0 });
+                  }
+                  return next;
+                });
+              }}
+            >
               <ZoomOut className="h-4 w-4" />
             </Button>
             <span className="text-xs w-10 text-center tabular-nums">{Math.round(zoom * 100)}%</span>
-            <Button type="button" size="icon" variant="ghost" className="h-9 w-9" onClick={() => setZoom((z) => Math.min(5, z + 0.25))}>
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className="h-9 w-9"
+              onClick={() => {
+                setZoom((z) => {
+                  const next = Math.min(5, z + 0.25);
+                  zoomRef.current = next;
+                  return next;
+                });
+              }}
+            >
               <ZoomIn className="h-4 w-4" />
             </Button>
             <Button type="button" size="icon" variant="ghost" className="h-9 w-9" onClick={onClose}>
@@ -356,7 +390,6 @@ function SmearImageViewer({
             style={{
               transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
               transformOrigin: "center center",
-              transition: zoom === 1 && pan.x === 0 && pan.y === 0 ? "transform 120ms ease-out" : "none",
             }}
           >
             <img
@@ -370,7 +403,7 @@ function SmearImageViewer({
             <>
               <button
                 type="button"
-                className="absolute left-1 top-1/2 -translate-y-1/2 h-12 w-10 rounded-md bg-black/40 text-white flex items-center justify-center sm:hidden"
+                className="absolute left-1 top-1/2 -translate-y-1/2 h-12 w-10 rounded-md bg-black/40 text-white flex items-center justify-center"
                 onClick={() => goTo(safeIdx - 1)}
                 aria-label="Previous image"
               >
@@ -378,7 +411,7 @@ function SmearImageViewer({
               </button>
               <button
                 type="button"
-                className="absolute right-1 top-1/2 -translate-y-1/2 h-12 w-10 rounded-md bg-black/40 text-white flex items-center justify-center sm:hidden"
+                className="absolute right-1 top-1/2 -translate-y-1/2 h-12 w-10 rounded-md bg-black/40 text-white flex items-center justify-center"
                 onClick={() => goTo(safeIdx + 1)}
                 aria-label="Next image"
               >
@@ -387,7 +420,7 @@ function SmearImageViewer({
             </>
           )}
           <p className="absolute bottom-2 left-0 right-0 text-center text-[10px] text-white/70 pointer-events-none px-2">
-            Pinch to zoom · swipe for next/prev · double-tap zoom
+            Pinch to zoom | swipe for next/prev | double-tap zoom
           </p>
         </div>
 
