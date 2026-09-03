@@ -913,6 +913,21 @@ const DoctorApproval = () => {
 
       await supabase.from("outsourced_test_snips").update({ outsource_status: "results_entered" } as any).eq("registration_id", regId).eq("test_id", testId).eq("outsource_status", "verified");
 
+      // CBC Dr. CBC path: doctor_saved / sent_to_doctor reviews block CBC + Verification
+      // candidate RPCs. Reopen as interpreted so images stay attached and the case
+      // returns to CBC + Result Verification (not stuck between queues).
+      const { data: reopenedReviews } = await supabase
+        .from("cbc_smear_reviews")
+        .update({
+          status: "interpreted",
+          updated_at: new Date().toISOString(),
+        } as any)
+        .eq("registration_id", regId)
+        .eq("test_id", testId)
+        .in("status", ["doctor_saved", "sent_to_doctor", "approved"])
+        .select("id");
+      const reopenedCbc = (reopenedReviews || []).length > 0;
+
       // Recompute parent registration status so Verification sees this test as entered again
       await recalculateRegistrationStatus(regId);
 
@@ -934,8 +949,18 @@ const DoctorApproval = () => {
       setEditedNotes((prev) => stripKeys(prev));
       setEditedTestNotes((prev) => { const next = { ...prev }; delete next[`${regId}||${testId}`]; return next; });
 
-      await propagateRegistrationChange(qc, regId, ["doctor_approval", "verification"]);
-      toast.success(`${testName} sent back for verification`);
+      await propagateRegistrationChange(
+        qc,
+        regId,
+        reopenedCbc
+          ? ["doctor_approval", "verification", "cbc", "dr_cbc"]
+          : ["doctor_approval", "verification"],
+      );
+      toast.success(
+        reopenedCbc
+          ? `${testName} sent back to CBC / Result Verification (smear images kept)`
+          : `${testName} sent back for verification`,
+      );
     } catch (err: any) { toast.error(err.message || "Failed"); }
     finally { setActionKey(null); }
   };
