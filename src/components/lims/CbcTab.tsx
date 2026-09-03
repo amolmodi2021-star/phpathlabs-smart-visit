@@ -700,14 +700,11 @@ const CbcTab = () => {
       toast.error("Upload at least one smear image before sending to doctor");
       return;
     }
-    if (!diffCheck.isOk && diffCheck.hasDifferential) {
-      toast.error(`Differential sum is ${diffCheck.sum}% (must be 100%)`);
-      return;
-    }
+    // DC sum = 100 is NOT required here — doctor enters/corrects differential on Dr. CBC.
+    // Approve → Result Verification still enforces 100%.
     setBusy("send_doctor");
     try {
-      const keep = Object.keys(machineDcLocked) as Array<keyof CbcAiDraft>;
-      const finalDraft = scrubCriticalOnlyDraftFields(normalizeDifferentialDraft(draft, keep));
+      const finalDraft = scrubCriticalOnlyDraftFields(draft);
       await sendCbcToDoctor({
         reviewId: review.id,
         registrationId: expandedId,
@@ -715,6 +712,7 @@ const CbcTab = () => {
         draft: finalDraft,
         paramByCode,
         by: getCurrentUserName() || "staff",
+        skipDifferentialNormalize: true,
       });
       await propagateRegistrationChange(qc, expandedId, ["cbc", "dr_cbc"]);
       toast.success("Sent to Dr. CBC");
@@ -1083,7 +1081,10 @@ const CbcTab = () => {
                                   {diffCheck.sum}%
                                 </span>
                                 {!diffCheck.isOk && diffCheck.hasDifferential && (
-                                  <span className="text-red-600"> (must equal 100%)</span>
+                                  <span className="text-red-600">
+                                    {" "}
+                                    (must equal 100% to Approve; Send to Doctor is allowed — doctor enters DC)
+                                  </span>
                                 )}
                               </div>
 

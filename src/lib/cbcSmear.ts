@@ -270,8 +270,12 @@ export async function applyCbcDraftToVerification(input: {
   testId: string;
   draft: CbcAiDraft;
   paramByCode: Record<string, { parameterId: string; parameterName?: string; paramCode?: string }>;
+  /** Skip forcing N+L+M+E+B = 100 (used when sending to doctor for DC entry). */
+  skipDifferentialNormalize?: boolean;
 }): Promise<void> {
-  const draft = normalizeDifferentialDraft(input.draft);
+  const draft = input.skipDifferentialNormalize
+    ? input.draft
+    : normalizeDifferentialDraft(input.draft);
   const updates: Array<{ parameterId: string; value: string }> = [];
   for (const [field, code] of Object.entries(CBC_DRAFT_TO_CODE) as Array<[
     keyof typeof CBC_DRAFT_TO_CODE,
@@ -325,8 +329,13 @@ export async function sendCbcToDoctor(input: {
   draft: CbcAiDraft;
   paramByCode: Record<string, { parameterId: string; parameterName?: string; paramCode?: string }>;
   by: string;
+  /** When true (CBC → Dr. CBC), do not force differential sum to 100 — doctor will enter DC. */
+  skipDifferentialNormalize?: boolean;
 }): Promise<void> {
-  const finalDraft = scrubCriticalOnlyDraftFields(normalizeDifferentialDraft(input.draft));
+  const scrubbed = scrubCriticalOnlyDraftFields(input.draft);
+  const finalDraft = input.skipDifferentialNormalize
+    ? scrubbed
+    : scrubCriticalOnlyDraftFields(normalizeDifferentialDraft(scrubbed));
   // Apply AI/manual draft when present; allow image-only send if analyzer values already entered.
   const hasDraftValues = Object.entries(CBC_DRAFT_TO_CODE).some(([field]) => {
     const raw = finalDraft[field as keyof typeof CBC_DRAFT_TO_CODE];
@@ -338,6 +347,7 @@ export async function sendCbcToDoctor(input: {
       testId: input.testId,
       draft: finalDraft,
       paramByCode: input.paramByCode,
+      skipDifferentialNormalize: input.skipDifferentialNormalize,
     });
   }
   const now = new Date().toISOString();
