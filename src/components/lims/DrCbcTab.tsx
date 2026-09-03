@@ -1,6 +1,6 @@
 import RefreshButton from "@/components/lims/RefreshButton";
 import PatientTestPipelineHover from "@/components/lims/PatientTestPipelineHover";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   Search, Loader2, ChevronDown, ChevronUp, Save, ZoomIn, ZoomOut, X, Calculator, ListChecks,
+  ChevronLeft, ChevronRight,
 } from "lucide-react";
 import { toast } from "sonner";
 import { getCurrentUserName } from "@/lib/auth";
@@ -104,7 +105,7 @@ function evaluateFormula(formula: any[], paramValues: Record<string, string>): s
   }
 }
 
-/** Mobile-friendly smear lightbox with pinch-friendly zoom controls. */
+/** Mobile smear lightbox: pinch-zoom, pan when zoomed, swipe L/R between images. */
 function SmearImageViewer({
   urls,
   open,
@@ -118,27 +119,225 @@ function SmearImageViewer({
 }) {
   const [idx, setIdx] = useState(startIndex);
   const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [viewportEl, setViewportEl] = useState<HTMLDivElement | null>(null);
+  const zoomRef = useRef(1);
+  const panRef = useRef({ x: 0, y: 0 });
+  const idxRef = useRef(idx);
+  const urlsLenRef = useRef(urls.length);
+
+  zoomRef.current = zoom;
+  panRef.current = pan;
+  idxRef.current = idx;
+  urlsLenRef.current = urls.length;
+
+  const goTo = useCallback((next: number) => {
+    const n = urlsLenRef.current;
+    if (n <= 0) return;
+    const clamped = ((next % n) + n) % n;
+    setIdx(clamped);
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+  }, []);
+
   useEffect(() => {
     if (open) {
       setIdx(startIndex);
       setZoom(1);
+      setPan({ x: 0, y: 0 });
     }
   }, [open, startIndex]);
+
+  // Native touch listeners (non-passive) so pinch/swipe work inside Dialog.
+  useEffect(() => {
+    if (!open || !viewportEl) return;
+    const el = viewportEl;
+
+    type Pt = { x: number; y: number };
+    const pts = (touches: TouchList): Pt[] =>
+      Array.from(touches).map((t) => ({ x: t.clientX, y: t.clientY }));
+    const dist = (a: Pt, b: Pt) => Math.hypot(a.x - b.x, a.y - b.y);
+    const mid = (a: Pt, b: Pt) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+
+    let mode: "none" | "pinch" | "pan" | "swipe" = "none";
+    let startDist = 0;
+    let startZoom = 1;
+    let startPan = { x: 0, y: 0 };
+    let startTouch: Pt | null = null;
+    let startMid: Pt | null = null;
+    let moved = false;
+    let lastTapAt = 0;
+
+    const onStart = (e: TouchEvent) => {
+      moved = false;
+      if (e.touches.length >= 2) {
+        mode = "pinch";
+        const [a, b] = pts(e.touches);
+        startDist = dist(a, b) || 1;
+        startZoom = zoomRef.current;
+        startPan = { ...panRef.current };
+        startMid = mid(a, b);
+        e.preventDefault();
+        return;
+      }
+      if (e.touches.length === 1) {
+        startTouch = pts(e.touches)[0];
+        startPan = { ...panRef.current };
+        mode = zoomRef.current > 1.05 ? "pan" : "swipe";
+      }
+    };
+
+    const onMove = (e: TouchEvent) => {
+      if (e.touches.length >= 2) {
+        const [a, b] = pts(e.touches);
+        if (mode !== "pinch") {
+          mode = "pinch";
+          startDist = dist(a, b) || 1;
+          startZoom = zoomRef.current;
+          startPan = { ...panRef.current };
+          startMid = mid(a, b);
+        }
+        const d = dist(a, b) || 1;
+        const m = mid(a, b);
+        const nextZoom = Math.min(5, Math.max(1, startZoom * (d / startDist)));
+        e.preventDefault();
+        setZoom(nextZoom);
+        zoomRef.current = nextZoom;
+        if (nextZoom <= 1.01) {
+          setPan({ x: 0, y: 0 });
+          panRef.current = { x: 0, y: 0 };
+        } else if (startMid) {
+          const next = {
+            x: startPan.x + (m.x - startMid.x),
+            y: startPan.y + (m.y - startMid.y),
+          };
+          setPan(next);
+          panRef.current = next;
+        }
+        moved = true;
+        return;
+      }
+      if (e.touches.length === 1 && startTouch) {
+        const cur = pts(e.touches)[0];
+        const dx = cur.x - startTouch.x;
+        const dy = cur.y - startTouch.y;
+        if (Math.abs(dx) > 6 || Math.abs(dy) > 6) moved = true;
+        if (mode === "pan" && zoomRef.current > 1.05) {
+          e.preventDefault();
+          const next = { x: startPan.x + dx, y: startPan.y + dy };
+          setPan(next);
+          panRef.current = next;
+        }
+      }
+    };
+
+    const onEnd = (e: TouchEvent) => {
+      if (mode === "swipe" && startTouch && e.changedTouches.length >= 1) {
+        const cur = {
+          x: e.changedTouches[0].clientX,
+          y: e.changedTouches[0].clientY,
+        };
+        const dx = cur.x - startTouch.x;
+        const dy = cur.y - startTouch.y;
+        if (
+          Math.abs(dx) > 50 &&
+          Math.abs(dx) > Math.abs(dy) * 1.2 &&
+          zoomRef.current <= 1.05
+        ) {
+          if (dx < 0) goTo(idxRef.current + 1);
+          else goTo(idxRef.current - 1);
+          mode = "none";
+          startTouch = null;
+          return;
+        }
+        const now = Date.now();
+        if (!moved && now - lastTapAt < 320) {
+          if (zoomRef.current > 1.2) {
+            setZoom(1);
+            setPan({ x: 0, y: 0 });
+            zoomRef.current = 1;
+            panRef.current = { x: 0, y: 0 };
+          } else {
+            setZoom(2.5);
+            zoomRef.current = 2.5;
+          }
+          lastTapAt = 0;
+        } else if (!moved) {
+          lastTapAt = now;
+        }
+      }
+      if (e.touches.length === 0) {
+        mode = "none";
+        startTouch = null;
+        startMid = null;
+        if (zoomRef.current <= 1.01) {
+          setZoom(1);
+          setPan({ x: 0, y: 0 });
+          zoomRef.current = 1;
+          panRef.current = { x: 0, y: 0 };
+        }
+      } else if (e.touches.length === 1) {
+        startTouch = pts(e.touches)[0];
+        startPan = { ...panRef.current };
+        mode = zoomRef.current > 1.05 ? "pan" : "swipe";
+        startMid = null;
+      }
+    };
+
+    el.addEventListener("touchstart", onStart, { passive: false });
+    el.addEventListener("touchmove", onMove, { passive: false });
+    el.addEventListener("touchend", onEnd, { passive: false });
+    el.addEventListener("touchcancel", onEnd, { passive: false });
+    return () => {
+      el.removeEventListener("touchstart", onStart);
+      el.removeEventListener("touchmove", onMove);
+      el.removeEventListener("touchend", onEnd);
+      el.removeEventListener("touchcancel", onEnd);
+    };
+  }, [open, goTo, viewportEl]);
+
   if (!urls.length) return null;
-  const url = urls[Math.min(Math.max(idx, 0), urls.length - 1)];
+  const safeIdx = Math.min(Math.max(idx, 0), urls.length - 1);
+  const url = urls[safeIdx];
+
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-[100vw] w-full h-[100dvh] max-h-[100dvh] rounded-none p-0 gap-0 flex flex-col sm:max-w-3xl sm:h-[90vh] sm:rounded-lg">
-        <DialogHeader className="px-3 py-2 border-b flex-row items-center justify-between space-y-0">
+      <DialogContent className="max-w-[100vw] w-full h-[100dvh] max-h-[100dvh] rounded-none p-0 gap-0 flex flex-col sm:max-w-3xl sm:h-[90vh] sm:rounded-lg [&>button]:hidden">
+        <DialogHeader className="px-3 py-2 border-b flex-row items-center justify-between space-y-0 shrink-0">
           <DialogTitle className="text-sm">
-            Smear {idx + 1} / {urls.length}
+            Smear {safeIdx + 1} / {urls.length}
           </DialogTitle>
           <div className="flex items-center gap-1">
-            <Button type="button" size="icon" variant="ghost" className="h-9 w-9" onClick={() => setZoom((z) => Math.max(1, z - 0.25))}>
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className="h-9 w-9"
+              disabled={urls.length < 2}
+              onClick={() => goTo(safeIdx - 1)}
+              title="Previous"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className="h-9 w-9"
+              disabled={urls.length < 2}
+              onClick={() => goTo(safeIdx + 1)}
+              title="Next"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+            <Button type="button" size="icon" variant="ghost" className="h-9 w-9" onClick={() => {
+              setZoom((z) => Math.max(1, z - 0.25));
+              setPan((p) => (zoom <= 1.25 ? { x: 0, y: 0 } : p));
+            }}>
               <ZoomOut className="h-4 w-4" />
             </Button>
             <span className="text-xs w-10 text-center tabular-nums">{Math.round(zoom * 100)}%</span>
-            <Button type="button" size="icon" variant="ghost" className="h-9 w-9" onClick={() => setZoom((z) => Math.min(4, z + 0.25))}>
+            <Button type="button" size="icon" variant="ghost" className="h-9 w-9" onClick={() => setZoom((z) => Math.min(5, z + 0.25))}>
               <ZoomIn className="h-4 w-4" />
             </Button>
             <Button type="button" size="icon" variant="ghost" className="h-9 w-9" onClick={onClose}>
@@ -146,31 +345,60 @@ function SmearImageViewer({
             </Button>
           </div>
         </DialogHeader>
+
         <div
-          className="flex-1 overflow-auto bg-black touch-pan-x touch-pan-y"
-          style={{ WebkitOverflowScrolling: "touch" }}
+          ref={viewportRef}
+          className="relative flex-1 overflow-hidden bg-black select-none"
+          style={{ touchAction: "none", WebkitUserSelect: "none" }}
         >
-          <div className="min-h-full min-w-full flex items-center justify-center p-2">
+          <div
+            className="absolute inset-0 flex items-center justify-center"
+            style={{
+              transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+              transformOrigin: "center center",
+              transition: zoom === 1 && pan.x === 0 && pan.y === 0 ? "transform 120ms ease-out" : "none",
+            }}
+          >
             <img
               src={url}
-              alt={`Smear ${idx + 1}`}
+              alt={`Smear ${safeIdx + 1}`}
               draggable={false}
-              className="max-w-none select-none"
-              style={{
-                width: `${zoom * 100}%`,
-                touchAction: "pan-x pan-y pinch-zoom",
-              }}
+              className="max-h-full max-w-full object-contain pointer-events-none"
             />
           </div>
+          {urls.length > 1 && (
+            <>
+              <button
+                type="button"
+                className="absolute left-1 top-1/2 -translate-y-1/2 h-12 w-10 rounded-md bg-black/40 text-white flex items-center justify-center sm:hidden"
+                onClick={() => goTo(safeIdx - 1)}
+                aria-label="Previous image"
+              >
+                <ChevronLeft className="h-6 w-6" />
+              </button>
+              <button
+                type="button"
+                className="absolute right-1 top-1/2 -translate-y-1/2 h-12 w-10 rounded-md bg-black/40 text-white flex items-center justify-center sm:hidden"
+                onClick={() => goTo(safeIdx + 1)}
+                aria-label="Next image"
+              >
+                <ChevronRight className="h-6 w-6" />
+              </button>
+            </>
+          )}
+          <p className="absolute bottom-2 left-0 right-0 text-center text-[10px] text-white/70 pointer-events-none px-2">
+            Pinch to zoom · swipe for next/prev · double-tap zoom
+          </p>
         </div>
+
         {urls.length > 1 && (
-          <div className="flex gap-2 overflow-x-auto p-2 border-t bg-background">
+          <div className="flex gap-2 overflow-x-auto p-2 border-t bg-background shrink-0">
             {urls.map((u, i) => (
               <button
                 key={`${u}-${i}`}
                 type="button"
-                className={`shrink-0 w-14 h-14 rounded border overflow-hidden ${i === idx ? "ring-2 ring-primary" : ""}`}
-                onClick={() => { setIdx(i); setZoom(1); }}
+                className={`shrink-0 w-14 h-14 rounded border overflow-hidden ${i === safeIdx ? "ring-2 ring-primary" : ""}`}
+                onClick={() => goTo(i)}
               >
                 <img src={u} alt="" className="w-full h-full object-cover" />
               </button>
@@ -933,7 +1161,7 @@ const DrCbcTab = () => {
                               onClick={() => { setViewerStart(0); setViewerOpen(true); }}
                             >
                               <ZoomIn className="h-4 w-4 mr-1" />
-                              Open images (pinch to zoom)
+                              Open images (pinch / swipe)
                             </Button>
                           )}
                         </div>
