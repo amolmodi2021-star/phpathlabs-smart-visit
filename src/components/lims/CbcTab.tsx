@@ -177,7 +177,12 @@ const CbcTab = () => {
         .in("id", candidateIds)
         .order("created_at", { ascending: false });
       if (error) throw error;
-      return (data as RegRow[]) || [];
+      // Newest invoice first (same as Results / Verification / Doctor Approval queues)
+      return ((data as RegRow[]) || []).slice().sort((a, b) =>
+        String(b.invoice_number || "").localeCompare(String(a.invoice_number || ""), undefined, {
+          numeric: true,
+        }),
+      );
     },
   });
 
@@ -696,10 +701,7 @@ const CbcTab = () => {
 
   const handleSendToDoctor = async () => {
     if (!review || !expandedId || !selectedTestId) return;
-    if (imageUrls.length === 0) {
-      toast.error("Upload at least one smear image before sending to doctor");
-      return;
-    }
+    // Images optional — doctor can review on Dr. CBC even without smear photos.
     // DC sum = 100 is NOT required here — doctor enters/corrects differential on Dr. CBC.
     // Approve → Result Verification still enforces 100%.
     setBusy("send_doctor");
@@ -1025,11 +1027,10 @@ const CbcTab = () => {
                             onClick={() => void handleSendToDoctor()}
                             disabled={
                               busy === "send_doctor" ||
-                              imageUrls.length === 0 ||
                               review?.status === "sent_to_doctor" ||
                               review?.status === "doctor_saved"
                             }
-                            title={imageUrls.length === 0 ? "Upload smear images first" : "Send to Dr. CBC"}
+                            title="Send to Dr. CBC"
                           >
                             {busy === "send_doctor" ? (
                               <Loader2 className="h-4 w-4 mr-1 animate-spin" />

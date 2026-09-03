@@ -587,7 +587,12 @@ const DrCbcTab = () => {
         .in("id", candidateIds)
         .order("created_at", { ascending: false });
       if (error) throw error;
-      return (data as RegRow[]) || [];
+      // Newest invoice first (same as Results / Verification / Doctor Approval queues)
+      return ((data as RegRow[]) || []).slice().sort((a, b) =>
+        String(b.invoice_number || "").localeCompare(String(a.invoice_number || ""), undefined, {
+          numeric: true,
+        }),
+      );
     },
   });
 
