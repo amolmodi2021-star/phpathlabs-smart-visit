@@ -402,8 +402,16 @@ function appendHistoricalTrendPages(pages: PageContent[], trends: TrendSeries[])
 
 function snipPageToContent(
   snip: SnipPage,
-  fallback?: { departmentName?: string; testName?: string; collectionDateIso?: string | null },
+  fallback?: {
+    departmentName?: string;
+    testName?: string;
+    collectionDateIso?: string | null;
+    approvers?: string[];
+  },
 ): PageContent {
+  const approvers = snip.approvedBy
+    ? [snip.approvedBy]
+    : (fallback?.approvers?.length ? fallback.approvers : undefined);
   return {
     type: "snip",
     departmentName: snip.departmentName || fallback?.departmentName || "Results",
@@ -414,6 +422,7 @@ function snipPageToContent(
     snipTopMarginPct: snip.topMarginPct,
     snipFullBleed: !!snip.fullBleed,
     sampleCollectionDate: fallback?.collectionDateIso || null,
+    approvers,
   };
 }
 
@@ -465,6 +474,7 @@ function assembleReportPages(
           departmentName: block.departmentName,
           testName: block.testName,
           collectionDateIso: block.collectionDateIso,
+          approvers: block.approvers,
         }));
       }
     }
@@ -545,6 +555,8 @@ interface SnipPage {
   topMarginPct?: number;
   /** Composed lab PDF page — already has letterhead + demographics; full-bleed. */
   fullBleed?: boolean;
+  /** Who approved this snipped/outsourced test (from snip row or snapshot). */
+  approvedBy?: string | null;
 }
 
 interface PageContent {
@@ -980,6 +992,18 @@ const LimsReportView = () => {
     }
 
     // Outsourced visuals: store high-res crops only; letterhead + demographics from report shell.
+    // Resolve approver per test from snip row and/or approved snapshot (snip-only markers).
+    const approverByTestId: Record<string, string> = {};
+    let reportHeaderApprover: string | null = null;
+    for (const r of filteredReports) {
+      const headerBy = typeof (r as any)?.approved_by === "string" ? String((r as any).approved_by).trim() : "";
+      if (headerBy && !reportHeaderApprover) reportHeaderApprover = headerBy;
+      for (const tr of (r.test_results || []) as any[]) {
+        const tid = tr?.test_id;
+        const by = typeof tr?.approved_by === "string" ? tr.approved_by.trim() : "";
+        if (tid && by && !approverByTestId[tid]) approverByTestId[tid] = by;
+      }
+    }
     const snipPages: SnipPage[] = [];
     const snipIds = new Set<string>();
     for (const s of snips || []) {
@@ -1002,6 +1026,11 @@ const LimsReportView = () => {
       }
       if (urls.length === 0) continue;
       const legacyFullBleed = snipImageUrlsFromRow(s).length === 0 && !!composedPdfUrlFromRow(s);
+      const snipApprovedBy =
+        (typeof s.approved_by === "string" && s.approved_by.trim()) ||
+        approverByTestId[s.test_id] ||
+        reportHeaderApprover ||
+        null;
       for (let i = 0; i < urls.length; i++) {
         const u = urls[i];
         const marker = "/outsourced-snips/";
@@ -1030,6 +1059,7 @@ const LimsReportView = () => {
               scalePct: 100,
               topMarginPct: 0,
               fullBleed: legacyFullBleed,
+              approvedBy: snipApprovedBy,
             });
           }
         } catch (e) {
@@ -1598,6 +1628,7 @@ const LimsReportView = () => {
           scalePct: pg.snipScalePct,
           topMarginPct: pg.snipTopMarginPct,
           fullBleed: pg.snipFullBleed,
+          approvedBy: pg.approvers?.[0] || null,
         });
         snipsMap.set(key, list);
         if (key !== "__orphan__" && !seenTests.has(key)) {
@@ -2486,9 +2517,13 @@ const LimsReportView = () => {
                     barcodePng={invoiceBarcodePng}
                   />
                   {!isProvisional && page.type !== "trends" && (() => {
+                  // Prefer page-specific approvers (incl. snip pages). Never default snip pages
+                  // to "first pathologist in map" — that incorrectly shows e.g. Dr Hemang.
                   const pageApprovers = page.approvers && page.approvers.length > 0
                     ? page.approvers
-                    : Object.keys(signatureMap).length > 0 ? [Object.keys(signatureMap)[0]] : [];
+                    : (page.type === "snip"
+                        ? []
+                        : (Object.keys(signatureMap).length > 0 ? [Object.keys(signatureMap)[0]] : []));
                   
                   // Collect snapshot signature metadata from test results on this page.
                   // Image comes from live pathologist_signatures (by name) when snapshot URL is empty.
@@ -2534,13 +2569,20 @@ const LimsReportView = () => {
                           designation: snap.designation || live.designation,
                         };
                       }
-                      return snap || live;
+                      return snap || live || (name
+                        ? {
+                            pathologist_name: name,
+                            qualification: null,
+                            designation: null,
+                            signatureUrl: null,
+                          }
+                        : null);
                     })
                     .filter(Boolean);
                   // Deduplicate by pathologist_name
                   const uniqueSigs = resolvedSigs.filter((s, i, arr) => arr.findIndex(x => x.pathologist_name === s.pathologist_name) === i);
-                  if (uniqueSigs.length === 0 && Object.keys(signatureMap).length > 0) {
-                    // Fallback: show first signature
+                  if (uniqueSigs.length === 0 && page.type !== "snip" && Object.keys(signatureMap).length > 0) {
+                    // Fallback for structured pages only: show first signature
                     const fallback = Object.values(signatureMap)[0];
                     return (
                       <div className="ml-auto">
@@ -2554,6 +2596,7 @@ const LimsReportView = () => {
                       </div>
                     );
                   }
+                  if (uniqueSigs.length === 0) return null;
                   return (
                     <div className="flex justify-end items-start gap-6 flex-nowrap ml-auto">
                       {uniqueSigs.map((sig, idx) => (
@@ -2573,7 +2616,7 @@ const LimsReportView = () => {
                       ))}
                     </div>
                   );
-                })()}
+                  })()}
                 </div>
                 {/* Page Number */}
                 <div className="text-center mt-0.5" style={{ fontSize: "7px", color: "hsl(var(--muted-foreground))" }}>
