@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Loader2, AlertTriangle } from "lucide-react";
-import { getCachedSignatureDataUrl } from "@/lib/reportAssetCache";
 
 export interface ApproverChoice {
   pathologistName: string;
@@ -71,18 +70,12 @@ const SelectApproverDialog = ({ open, onOpenChange, onConfirm }: SelectApproverD
   const handleConfirm = async () => {
     const doc = doctors.find(d => d.id === selectedId);
     if (!doc) return;
-    let signatureUrl: string | null = null;
-    if (doc.signature_image_path) {
-      const { data } = supabase.storage.from("signatures").getPublicUrl(doc.signature_image_path);
-      signatureUrl =
-        (await getCachedSignatureDataUrl(doc.signature_image_path, data.publicUrl)) ||
-        data.publicUrl;
-    }
+    // Signature image is resolved at report render by pathologist name — do not embed.
     onConfirm({
       pathologistName: doc.pathologist_name,
       qualification: doc.qualification,
       designation: doc.designation,
-      signatureUrl,
+      signatureUrl: null,
     });
   };
 

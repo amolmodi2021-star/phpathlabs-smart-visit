@@ -1,5 +1,4 @@
 import { mergeApprovedReportSnapshot, approvedReportHeaderFromReg } from "@/lib/approvedReportSnapshot";
-import { getCachedSignatureDataUrl } from "@/lib/reportAssetCache";
 import RefreshButton from "@/components/lims/RefreshButton";
 import PageSizeSelect from "@/components/lims/PageSizeSelect";
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
@@ -141,18 +140,13 @@ const DoctorApproval = () => {
           .maybeSingle();
         let choice: ApproverChoice | null = null;
         if (sigData) {
-          let signatureUrl: string | null = null;
-          if (sigData.signature_image_path) {
-            const { data: u } = supabase.storage.from("signatures").getPublicUrl(sigData.signature_image_path);
-            signatureUrl =
-              (await getCachedSignatureDataUrl(sigData.signature_image_path, u.publicUrl)) ||
-              u.publicUrl;
-          }
+          // Do NOT load/embed signature image into report snapshots — resolve by
+          // pathologist name at PDF/print time from pathologist_signatures.
           choice = {
             pathologistName: sigData.pathologist_name || currentUser.display_name || "Doctor",
             qualification: sigData.qualification || null,
             designation: sigData.designation || null,
-            signatureUrl,
+            signatureUrl: null,
           };
         }
         currentUserSigCacheRef.current = { userId: currentUser.id, checked: true, choice };
@@ -682,7 +676,7 @@ const DoctorApproval = () => {
         approved_by: approver.pathologistName,
         approved_by_qualification: approver.qualification,
         approved_by_designation: approver.designation,
-        approved_by_signature_url: approver.signatureUrl,
+        approved_by_signature_url: null,
         note: u.note || null,
         test_note: u.test_note || null,
       }));
@@ -798,7 +792,7 @@ const DoctorApproval = () => {
           approved_by: approver.pathologistName,
           approved_by_qualification: approver.qualification,
           approved_by_designation: approver.designation,
-          approved_by_signature_url: approver.signatureUrl,
+          approved_by_signature_url: null,
           note: u.note || null,
           test_note: u.test_note || null,
         }));
@@ -817,7 +811,7 @@ const DoctorApproval = () => {
           approved_by: approver.pathologistName,
           approved_by_qualification: approver.qualification,
           approved_by_designation: approver.designation,
-          approved_by_signature_url: approver.signatureUrl,
+          approved_by_signature_url: null,
         });
       }
       // Atomic DB merge — also removes prior snip-only markers for these tests.
@@ -1173,7 +1167,7 @@ const DoctorApproval = () => {
                           approved_by: snipApproverChoice.pathologistName,
                           approved_by_qualification: snipApproverChoice.qualification,
                           approved_by_designation: snipApproverChoice.designation,
-                          approved_by_signature_url: snipApproverChoice.signatureUrl,
+                          approved_by_signature_url: null,
                           note: u.note || null,
                           test_note: u.test_note || null,
                         }))
@@ -1185,7 +1179,7 @@ const DoctorApproval = () => {
                           approved_by: snipApproverChoice.pathologistName,
                           approved_by_qualification: snipApproverChoice.qualification,
                           approved_by_designation: snipApproverChoice.designation,
-                          approved_by_signature_url: snipApproverChoice.signatureUrl,
+                          approved_by_signature_url: null,
                         }];
                     await mergeApprovedReportSnapshot({
                       registrationId: reg.id,

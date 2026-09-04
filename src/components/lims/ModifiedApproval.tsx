@@ -502,7 +502,7 @@ const ModifiedApproval = () => {
             approved_by: p.approved_by || report.approved_by || null,
             approved_by_qualification: p.approved_by_qualification || null,
             approved_by_designation: p.approved_by_designation || null,
-            approved_by_signature_url: p.approved_by_signature_url || null,
+            approved_by_signature_url: null,
             note: newNote,
             test_note: newTestNote,
           });
@@ -547,7 +547,7 @@ const ModifiedApproval = () => {
           approved_by: r.approved_by || prev.approved_by || report.approved_by || null,
           approved_by_qualification: r.approved_by_qualification || prev.approved_by_qualification || null,
           approved_by_designation: r.approved_by_designation || prev.approved_by_designation || null,
-          approved_by_signature_url: r.approved_by_signature_url || prev.approved_by_signature_url || null,
+          approved_by_signature_url: null,
         };
       });
       const incomingKeys = new Set(

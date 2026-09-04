@@ -381,11 +381,11 @@ export async function healApprovedReportSnapshotFromLive(
   for (const r of existing) {
     const by = String(r?.approved_by || "").trim();
     if (!by || metaByApprover.has(by)) continue;
-    if (r?.approved_by_signature_url || r?.approved_by_qualification || r?.approved_by_designation) {
+    if (r?.approved_by_qualification || r?.approved_by_designation || r?.approved_by) {
       metaByApprover.set(by, {
         approved_by_qualification: r.approved_by_qualification || null,
         approved_by_designation: r.approved_by_designation || null,
-        approved_by_signature_url: r.approved_by_signature_url || null,
+        approved_by_signature_url: null,
       });
     }
   }
@@ -415,7 +415,7 @@ export async function healApprovedReportSnapshotFromLive(
       approved_by: row.approved_by || primary?.approved_by || null,
       approved_by_qualification: meta.approved_by_qualification || null,
       approved_by_designation: meta.approved_by_designation || null,
-      approved_by_signature_url: meta.approved_by_signature_url || null,
+      approved_by_signature_url: null,
       note: row.note || null,
       test_note: row.test_note || null,
     });

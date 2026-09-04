@@ -1039,8 +1039,8 @@ const LimsReportView = () => {
       }
     }
     // Inline / normalize snapshot signature URLs in approved_reports.test_results.
-    // Rows are flat param snapshots (not nested `.parameters`); Storage often serves
-    // JPEGs as application/octet-stream which hangs html-to-image PDF capture.
+    // Prefer live pathologist_signatures by approved_by name (no embedded base64 in DB).
+    // Legacy rows may still have data:/http URLs — keep those working until healed.
     const inlineSignatureUrl = async (raw: unknown): Promise<string | null> => {
       if (typeof raw !== "string" || !raw.trim()) return null;
       if (raw.startsWith("data:")) return normalizeImageDataUrl(raw) || raw;
@@ -1050,18 +1050,44 @@ const LimsReportView = () => {
       const cacheKey = sigPath ? reportAssetCacheKey("signatures", sigPath) : `url:${raw}`;
       return (await urlToDataUrl(raw, cacheKey)) || null;
     };
+    const resolveSignatureForApprover = (approvedBy: unknown, embeddedUrl: unknown): string | null => {
+      const name = String(approvedBy || "").trim().toLowerCase();
+      if (name && sigMap[name]?.signatureUrl) return sigMap[name].signatureUrl;
+      if (typeof embeddedUrl === "string" && embeddedUrl.trim()) return embeddedUrl.trim();
+      return null;
+    };
     for (const r of filteredReports) {
       const trs = (r.test_results || []) as any[];
       for (const tr of trs) {
-        if (tr.approved_by_signature_url) {
+        const by = tr.approved_by;
+        const fromLive = resolveSignatureForApprover(by, null);
+        if (fromLive) {
+          tr.approved_by_signature_url = fromLive;
+        } else if (tr.approved_by_signature_url) {
           const fixed = await inlineSignatureUrl(tr.approved_by_signature_url);
           if (fixed) tr.approved_by_signature_url = fixed;
         }
+        // Also fill qualification/designation from live master when snapshot omitted them
+        if (by && sigMap[String(by).toLowerCase()]) {
+          const live = sigMap[String(by).toLowerCase()];
+          if (!tr.approved_by_qualification && live.qualification) tr.approved_by_qualification = live.qualification;
+          if (!tr.approved_by_designation && live.designation) tr.approved_by_designation = live.designation;
+        }
         const params = (tr.parameters || []) as any[];
         for (const p of params) {
-          if (!p.approved_by_signature_url) continue;
-          const fixed = await inlineSignatureUrl(p.approved_by_signature_url);
-          if (fixed) p.approved_by_signature_url = fixed;
+          const pBy = p.approved_by || by;
+          const pLive = resolveSignatureForApprover(pBy, null);
+          if (pLive) {
+            p.approved_by_signature_url = pLive;
+          } else if (p.approved_by_signature_url) {
+            const fixed = await inlineSignatureUrl(p.approved_by_signature_url);
+            if (fixed) p.approved_by_signature_url = fixed;
+          }
+          if (pBy && sigMap[String(pBy).toLowerCase()]) {
+            const live = sigMap[String(pBy).toLowerCase()];
+            if (!p.approved_by_qualification && live.qualification) p.approved_by_qualification = live.qualification;
+            if (!p.approved_by_designation && live.designation) p.approved_by_designation = live.designation;
+          }
         }
       }
     }
@@ -2464,18 +2490,32 @@ const LimsReportView = () => {
                     ? page.approvers
                     : Object.keys(signatureMap).length > 0 ? [Object.keys(signatureMap)[0]] : [];
                   
-                  // Collect snapshot signature data from test results on this page
+                  // Collect snapshot signature metadata from test results on this page.
+                  // Image comes from live pathologist_signatures (by name) when snapshot URL is empty.
                   const snapshotSigMap: Record<string, SignatureInfo> = {};
                   if (page.testBlocks) {
                     page.testBlocks.forEach(block => {
                       block.params.forEach(p => {
                         if (p.approved_by && p.approved_by_qualification !== undefined) {
-                          snapshotSigMap[p.approved_by.toLowerCase()] = {
+                          const key = p.approved_by.toLowerCase();
+                          const live = signatureMap[key];
+                          snapshotSigMap[key] = {
                             pathologist_name: p.approved_by,
-                            qualification: p.approved_by_qualification || null,
-                            designation: p.approved_by_designation || null,
-                            signatureUrl: p.approved_by_signature_url || null,
+                            qualification: p.approved_by_qualification || live?.qualification || null,
+                            designation: p.approved_by_designation || live?.designation || null,
+                            signatureUrl: p.approved_by_signature_url || live?.signatureUrl || null,
                           };
+                        } else if (p.approved_by) {
+                          const key = p.approved_by.toLowerCase();
+                          const live = signatureMap[key];
+                          if (!snapshotSigMap[key]) {
+                            snapshotSigMap[key] = {
+                              pathologist_name: p.approved_by,
+                              qualification: p.approved_by_qualification || live?.qualification || null,
+                              designation: p.approved_by_designation || live?.designation || null,
+                              signatureUrl: p.approved_by_signature_url || live?.signatureUrl || null,
+                            };
+                          }
                         }
                       });
                     });
@@ -2484,8 +2524,17 @@ const LimsReportView = () => {
                   const resolvedSigs = pageApprovers
                     .map(name => {
                       const key = name.toLowerCase();
-                      // Prefer immutable snapshot data, fall back to live lookup
-                      return snapshotSigMap[key] || signatureMap[key];
+                      const snap = snapshotSigMap[key];
+                      const live = signatureMap[key];
+                      if (snap && live) {
+                        return {
+                          ...snap,
+                          signatureUrl: snap.signatureUrl || live.signatureUrl,
+                          qualification: snap.qualification || live.qualification,
+                          designation: snap.designation || live.designation,
+                        };
+                      }
+                      return snap || live;
                     })
                     .filter(Boolean);
                   // Deduplicate by pathologist_name
