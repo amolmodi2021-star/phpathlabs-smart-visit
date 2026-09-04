@@ -51,18 +51,6 @@ const SignatureManagement = () => {
       toast({ title: "Name is required", variant: "destructive" });
       return;
     }
-    const code = form.doctor_code.trim().toUpperCase();
-    if (!code) {
-      toast({ title: "Doctor code is required", variant: "destructive" });
-      return;
-    }
-    const clash = signatures.find(
-      (s) => s.id !== editId && String(s.doctor_code || "").trim().toUpperCase() === code,
-    );
-    if (clash) {
-      toast({ title: `Doctor code ${code} already used`, variant: "destructive" });
-      return;
-    }
 
     setSaving(true);
     let sigPath = "";
@@ -81,18 +69,27 @@ const SignatureManagement = () => {
       }
     }
 
+    // Name/qual/desig/mapping/signature only — doctor_code is system-allotted and immutable.
     const payload: any = {
-      doctor_code: code,
-      pathologist_name: form.pathologist_name,
+      pathologist_name: form.pathologist_name.trim(),
       designation: form.designation,
       qualification: form.qualification,
       mapped_user_id: form.mapped_user_id || null,
     };
     if (sigPath) payload.signature_image_path = sigPath;
 
-    const { error } = editId
-      ? await supabase.from("pathologist_signatures").update(payload).eq("id", editId)
-      : await supabase.from("pathologist_signatures").insert(payload);
+    let error: any = null;
+    if (editId) {
+      ({ error } = await supabase.from("pathologist_signatures").update(payload).eq("id", editId));
+    } else {
+      // Fresh next code from DB so concurrent adds stay unique; DB trigger also auto-fills if omitted.
+      const { data: latest } = await supabase
+        .from("pathologist_signatures")
+        .select("doctor_code")
+        .order("created_at", { ascending: false });
+      payload.doctor_code = nextDoctorCode(latest || signatures);
+      ({ error } = await supabase.from("pathologist_signatures").insert(payload));
+    }
 
     if (error) {
       toast({ title: error.message || "Save failed", variant: "destructive" });
@@ -201,14 +198,18 @@ const SignatureManagement = () => {
           <DialogHeader><DialogTitle>{editId ? "Edit" : "Add"} Pathologist</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div>
-              <Label>Doctor Code *</Label>
+              <Label>Doctor Code</Label>
               <Input
-                value={form.doctor_code}
-                onChange={(e) => setForm({ ...form, doctor_code: e.target.value.toUpperCase() })}
-                placeholder="e.g. DR001"
-                className="font-mono"
+                value={form.doctor_code || "—"}
+                readOnly
+                disabled
+                className="font-mono bg-muted"
               />
-              <p className="text-xs text-muted-foreground mt-1">Stable unique code used on report signatures (survives name edits).</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                {editId
+                  ? "System code — not editable (used for PDF signature lookup)."
+                  : "Unique code is allotted automatically and cannot be changed later."}
+              </p>
             </div>
             <div><Label>Pathologist Name *</Label><Input value={form.pathologist_name} onChange={(e) => setForm({ ...form, pathologist_name: e.target.value })} /></div>
             <div><Label>Qualification</Label><Input value={form.qualification} onChange={(e) => setForm({ ...form, qualification: e.target.value })} placeholder="e.g. MD Pathology" /></div>
