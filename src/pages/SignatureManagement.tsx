@@ -11,21 +11,32 @@ import { useToast } from "@/hooks/use-toast";
 import { Plus, Pencil, Trash2, Loader2, Upload } from "lucide-react";
 import { invalidateCachedAsset } from "@/lib/reportAssetCache";
 
+const emptyForm = { doctor_code: "", pathologist_name: "", designation: "", qualification: "", mapped_user_id: "" };
+
 const SignatureManagement = () => {
   const [signatures, setSignatures] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
-  const [form, setForm] = useState({ pathologist_name: "", designation: "", qualification: "", mapped_user_id: "" });
+  const [form, setForm] = useState({ ...emptyForm });
   const [sigFile, setSigFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
   const { toast } = useToast();
 
+  const nextDoctorCode = (existing: any[]) => {
+    let max = 0;
+    for (const s of existing) {
+      const m = String(s.doctor_code || "").trim().toUpperCase().match(/^DR(\d+)$/);
+      if (m) max = Math.max(max, parseInt(m[1], 10));
+    }
+    return `DR${String(max + 1).padStart(3, "0")}`;
+  };
+
   const load = async () => {
     setLoading(true);
     const [{ data: sigs }, { data: appUsers }] = await Promise.all([
-      supabase.from("pathologist_signatures").select("*").order("created_at"),
+      supabase.from("pathologist_signatures").select("*").order("doctor_code"),
       supabase.from("app_users").select("id, username, display_name, is_active").order("display_name"),
     ]);
     setSignatures(sigs || []);
@@ -36,7 +47,23 @@ const SignatureManagement = () => {
   useEffect(() => { load(); }, []);
 
   const handleSave = async () => {
-    if (!form.pathologist_name.trim()) return;
+    if (!form.pathologist_name.trim()) {
+      toast({ title: "Name is required", variant: "destructive" });
+      return;
+    }
+    const code = form.doctor_code.trim().toUpperCase();
+    if (!code) {
+      toast({ title: "Doctor code is required", variant: "destructive" });
+      return;
+    }
+    const clash = signatures.find(
+      (s) => s.id !== editId && String(s.doctor_code || "").trim().toUpperCase() === code,
+    );
+    if (clash) {
+      toast({ title: `Doctor code ${code} already used`, variant: "destructive" });
+      return;
+    }
+
     setSaving(true);
     let sigPath = "";
 
@@ -47,7 +74,6 @@ const SignatureManagement = () => {
       sigPath = path;
     }
 
-    // If replacing signature on edit, drop old cached bytes
     if (editId && sigPath) {
       const existing = signatures.find((s) => s.id === editId);
       if (existing?.signature_image_path) {
@@ -56,6 +82,7 @@ const SignatureManagement = () => {
     }
 
     const payload: any = {
+      doctor_code: code,
       pathologist_name: form.pathologist_name,
       designation: form.designation,
       qualification: form.qualification,
@@ -63,10 +90,14 @@ const SignatureManagement = () => {
     };
     if (sigPath) payload.signature_image_path = sigPath;
 
-    if (editId) {
-      await supabase.from("pathologist_signatures").update(payload).eq("id", editId);
-    } else {
-      await supabase.from("pathologist_signatures").insert(payload);
+    const { error } = editId
+      ? await supabase.from("pathologist_signatures").update(payload).eq("id", editId)
+      : await supabase.from("pathologist_signatures").insert(payload);
+
+    if (error) {
+      toast({ title: error.message || "Save failed", variant: "destructive" });
+      setSaving(false);
+      return;
     }
 
     setDialogOpen(false);
@@ -80,6 +111,7 @@ const SignatureManagement = () => {
   const handleEdit = (s: any) => {
     setEditId(s.id);
     setForm({
+      doctor_code: s.doctor_code || "",
       pathologist_name: s.pathologist_name,
       designation: s.designation || "",
       qualification: s.qualification || "",
@@ -111,7 +143,12 @@ const SignatureManagement = () => {
     <div className="max-w-5xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Pathologist Signature Management</h1>
-        <Button onClick={() => { setEditId(null); setForm({ pathologist_name: "", designation: "", qualification: "", mapped_user_id: "" }); setSigFile(null); setDialogOpen(true); }}>
+        <Button onClick={() => {
+          setEditId(null);
+          setForm({ ...emptyForm, doctor_code: nextDoctorCode(signatures) });
+          setSigFile(null);
+          setDialogOpen(true);
+        }}>
           <Plus className="h-4 w-4 mr-2" />Add Pathologist
         </Button>
       </div>
@@ -122,6 +159,7 @@ const SignatureManagement = () => {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead>Code</TableHead>
                   <TableHead>Signature</TableHead>
                   <TableHead>Name</TableHead>
                   <TableHead>Qualification</TableHead>
@@ -133,6 +171,7 @@ const SignatureManagement = () => {
               <TableBody>
                 {signatures.map((s) => (
                   <TableRow key={s.id}>
+                    <TableCell className="font-mono text-sm">{s.doctor_code || "-"}</TableCell>
                     <TableCell>
                       {s.signature_image_path ? (
                         <img src={getSignatureUrl(s.signature_image_path)} alt="Signature" className="h-10 max-w-[120px] object-contain" />
@@ -150,7 +189,7 @@ const SignatureManagement = () => {
                     </TableCell>
                   </TableRow>
                 ))}
-                {signatures.length === 0 && <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">No pathologists added yet</TableCell></TableRow>}
+                {signatures.length === 0 && <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">No pathologists added yet</TableCell></TableRow>}
               </TableBody>
             </Table>
           )}
@@ -161,6 +200,16 @@ const SignatureManagement = () => {
         <DialogContent>
           <DialogHeader><DialogTitle>{editId ? "Edit" : "Add"} Pathologist</DialogTitle></DialogHeader>
           <div className="space-y-4">
+            <div>
+              <Label>Doctor Code *</Label>
+              <Input
+                value={form.doctor_code}
+                onChange={(e) => setForm({ ...form, doctor_code: e.target.value.toUpperCase() })}
+                placeholder="e.g. DR001"
+                className="font-mono"
+              />
+              <p className="text-xs text-muted-foreground mt-1">Stable unique code used on report signatures (survives name edits).</p>
+            </div>
             <div><Label>Pathologist Name *</Label><Input value={form.pathologist_name} onChange={(e) => setForm({ ...form, pathologist_name: e.target.value })} /></div>
             <div><Label>Qualification</Label><Input value={form.qualification} onChange={(e) => setForm({ ...form, qualification: e.target.value })} placeholder="e.g. MD Pathology" /></div>
             <div><Label>Designation</Label><Input value={form.designation} onChange={(e) => setForm({ ...form, designation: e.target.value })} placeholder="e.g. Consultant Pathologist" /></div>

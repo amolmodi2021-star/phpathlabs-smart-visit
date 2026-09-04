@@ -378,11 +378,21 @@ export async function healApprovedReportSnapshotFromLive(
 
   // Reuse signature metadata from an existing snapshot row for the same approver.
   const metaByApprover = new Map<string, any>();
+  let anyMeta: any = null;
   for (const r of existing) {
+    if (!anyMeta && (r?.approved_by_doctor_code || r?.approved_by_qualification || r?.approved_by_designation || r?.approved_by)) {
+      anyMeta = {
+        approved_by_doctor_code: r.approved_by_doctor_code || null,
+        approved_by_qualification: r.approved_by_qualification || null,
+        approved_by_designation: r.approved_by_designation || null,
+        approved_by_signature_url: null,
+      };
+    }
     const by = String(r?.approved_by || "").trim();
     if (!by || metaByApprover.has(by)) continue;
-    if (r?.approved_by_qualification || r?.approved_by_designation || r?.approved_by) {
+    if (r?.approved_by_qualification || r?.approved_by_designation || r?.approved_by || r?.approved_by_doctor_code) {
       metaByApprover.set(by, {
+        approved_by_doctor_code: r.approved_by_doctor_code || null,
         approved_by_qualification: r.approved_by_qualification || null,
         approved_by_designation: r.approved_by_designation || null,
         approved_by_signature_url: null,
@@ -396,7 +406,7 @@ export async function healApprovedReportSnapshotFromLive(
     const key = `${row.test_id}||${row.parameter_id}`;
     if (existingKeys.has(key)) continue;
     const by = String(row.approved_by || "").trim();
-    const meta = metaByApprover.get(by) || {};
+    const meta = metaByApprover.get(by) || anyMeta || {};
     missing.push({
       test_id: row.test_id,
       test_name: testNameById[row.test_id] || "",
@@ -413,6 +423,7 @@ export async function healApprovedReportSnapshotFromLive(
       is_outsourced: false,
       outsource_lab_name: null,
       approved_by: row.approved_by || primary?.approved_by || null,
+      approved_by_doctor_code: meta.approved_by_doctor_code || null,
       approved_by_qualification: meta.approved_by_qualification || null,
       approved_by_designation: meta.approved_by_designation || null,
       approved_by_signature_url: null,

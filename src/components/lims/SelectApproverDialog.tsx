@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Loader2, AlertTriangle } from "lucide-react";
 
 export interface ApproverChoice {
+  doctorCode: string;
   pathologistName: string;
   qualification: string | null;
   designation: string | null;
@@ -15,6 +16,7 @@ export interface ApproverChoice {
 
 interface ActiveDoctor {
   id: string;
+  doctor_code: string;
   pathologist_name: string;
   qualification: string | null;
   designation: string | null;
@@ -39,13 +41,11 @@ const SelectApproverDialog = ({ open, onOpenChange, onConfirm }: SelectApproverD
     (async () => {
       setLoading(true);
       try {
-        // Get pathologists mapped to active app_users
         const { data: sigs } = await supabase
           .from("pathologist_signatures")
-          .select("id, pathologist_name, qualification, designation, signature_image_path, mapped_user_id")
+          .select("id, doctor_code, pathologist_name, qualification, designation, signature_image_path, mapped_user_id")
           .order("pathologist_name");
         const list = (sigs || []) as ActiveDoctor[];
-        // Keep only ones whose mapped user is active (or unmapped, in case lab keeps signature without login user)
         const userIds = list.map(d => d.mapped_user_id).filter(Boolean) as string[];
         let activeIds = new Set<string>();
         if (userIds.length > 0) {
@@ -69,9 +69,10 @@ const SelectApproverDialog = ({ open, onOpenChange, onConfirm }: SelectApproverD
 
   const handleConfirm = async () => {
     const doc = doctors.find(d => d.id === selectedId);
-    if (!doc) return;
-    // Signature image is resolved at report render by pathologist name — do not embed.
+    if (!doc?.doctor_code) return;
+    // Signature image is resolved at report render by doctor_code — do not embed.
     onConfirm({
+      doctorCode: doc.doctor_code,
       pathologistName: doc.pathologist_name,
       qualification: doc.qualification,
       designation: doc.designation,
@@ -98,33 +99,29 @@ const SelectApproverDialog = ({ open, onOpenChange, onConfirm }: SelectApproverD
             </div>
           ) : doctors.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground text-sm">
-              No active doctor signatures available.
+              No active pathologists found. Add one under Signature Management.
             </div>
           ) : (
-            <RadioGroup value={selectedId} onValueChange={setSelectedId} className="gap-3">
-              {doctors.map(d => (
-                <Label
-                  key={d.id}
-                  htmlFor={`doc-${d.id}`}
-                  className="flex items-start gap-3 rounded-md border p-3 cursor-pointer hover:bg-muted/40"
-                >
-                  <RadioGroupItem value={d.id} id={`doc-${d.id}`} className="mt-1" />
-                  <div className="flex-1">
+            <RadioGroup value={selectedId} onValueChange={setSelectedId} className="space-y-2">
+              {doctors.map((d) => (
+                <div key={d.id} className="flex items-center space-x-3 rounded-md border px-3 py-2">
+                  <RadioGroupItem value={d.id} id={`approver-${d.id}`} />
+                  <Label htmlFor={`approver-${d.id}`} className="flex-1 cursor-pointer">
                     <div className="font-medium">{d.pathologist_name}</div>
-                    {(d.qualification || d.designation) && (
-                      <div className="text-xs text-muted-foreground">
-                        {[d.qualification, d.designation].filter(Boolean).join(" • ")}
-                      </div>
-                    )}
-                  </div>
-                </Label>
+                    <div className="text-xs text-muted-foreground">
+                      Code {d.doctor_code}
+                      {d.qualification ? ` · ${d.qualification}` : ""}
+                      {d.designation ? ` · ${d.designation}` : ""}
+                    </div>
+                  </Label>
+                </div>
               ))}
             </RadioGroup>
           )}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button onClick={() => void handleConfirm()} disabled={!selectedId || loading}>Confirm Approval</Button>
+          <Button onClick={handleConfirm} disabled={!selectedId || loading}>Confirm</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

@@ -1467,6 +1467,7 @@ export type Database = {
         Row: {
           created_at: string | null
           designation: string | null
+          doctor_code: string
           id: string
           mapped_user_id: string | null
           pathologist_name: string
@@ -1477,6 +1478,7 @@ export type Database = {
         Insert: {
           created_at?: string | null
           designation?: string | null
+          doctor_code: string
           id?: string
           mapped_user_id?: string | null
           pathologist_name: string
@@ -1487,6 +1489,7 @@ export type Database = {
         Update: {
           created_at?: string | null
           designation?: string | null
+          doctor_code?: string
           id?: string
           mapped_user_id?: string | null
           pathologist_name?: string

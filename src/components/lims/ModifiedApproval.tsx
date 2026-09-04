@@ -500,6 +500,7 @@ const ModifiedApproval = () => {
             // Keep original approval signature metadata so reprints/WhatsApp years later
             // still show the approving pathologist after a Modified Approval edit.
             approved_by: p.approved_by || report.approved_by || null,
+            approved_by_doctor_code: p.approved_by_doctor_code || null,
             approved_by_qualification: p.approved_by_qualification || null,
             approved_by_designation: p.approved_by_designation || null,
             approved_by_signature_url: null,
@@ -545,6 +546,7 @@ const ModifiedApproval = () => {
         return {
           ...r,
           approved_by: r.approved_by || prev.approved_by || report.approved_by || null,
+          approved_by_doctor_code: r.approved_by_doctor_code || prev.approved_by_doctor_code || null,
           approved_by_qualification: r.approved_by_qualification || prev.approved_by_qualification || null,
           approved_by_designation: r.approved_by_designation || prev.approved_by_designation || null,
           approved_by_signature_url: null,

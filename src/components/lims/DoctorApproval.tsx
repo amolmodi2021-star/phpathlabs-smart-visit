@@ -135,14 +135,14 @@ const DoctorApproval = () => {
       if (!currentUserSigCacheRef.current.checked || currentUserSigCacheRef.current.userId !== currentUser.id) {
         const { data: sigData } = await supabase
           .from("pathologist_signatures")
-          .select("pathologist_name, qualification, designation, signature_image_path")
+          .select("doctor_code, pathologist_name, qualification, designation, signature_image_path")
           .eq("mapped_user_id", currentUser.id)
           .maybeSingle();
         let choice: ApproverChoice | null = null;
-        if (sigData) {
-          // Do NOT load/embed signature image into report snapshots — resolve by
-          // pathologist name at PDF/print time from pathologist_signatures.
+        if (sigData?.doctor_code) {
+          // Do NOT embed signature image — resolve by stable doctor_code at PDF time.
           choice = {
+            doctorCode: sigData.doctor_code,
             pathologistName: sigData.pathologist_name || currentUser.display_name || "Doctor",
             qualification: sigData.qualification || null,
             designation: sigData.designation || null,
@@ -660,7 +660,7 @@ const DoctorApproval = () => {
           .eq("status", "verified");
         await supabase.from("patient_results").insert(upserts as any);
       }
-      await supabase.from("outsourced_test_snips").update({ outsource_status: "approved", approved_at: new Date().toISOString(), approved_by: approver.pathologistName } as any).eq("registration_id", reg.id).eq("test_id", testId).eq("outsource_status", "verified");
+      await supabase.from("outsourced_test_snips").update({ outsource_status: "approved", approved_at: new Date().toISOString(), approved_by: approver.pathologistName, approved_by_doctor_code: approver.doctorCode } as any).eq("registration_id", reg.id).eq("test_id", testId).eq("outsource_status", "verified");
 
       // Atomic DB merge (row lock) — prevents concurrent approvals from dropping tests.
       const snipKey = `${reg.id}||${testId}`;
@@ -674,6 +674,7 @@ const DoctorApproval = () => {
         flag: u.flag, is_calculated: u.is_calculated, is_outsourced: testParams[0]?.isOutsourced || false,
         outsource_lab_name: snipDetail?.labName || null,
         approved_by: approver.pathologistName,
+        approved_by_doctor_code: approver.doctorCode,
         approved_by_qualification: approver.qualification,
         approved_by_designation: approver.designation,
         approved_by_signature_url: null,
@@ -776,7 +777,7 @@ const DoctorApproval = () => {
             .eq("status", "verified");
           await supabase.from("patient_results").insert(upserts as any);
         }
-        await supabase.from("outsourced_test_snips").update({ outsource_status: "approved", approved_at: new Date().toISOString(), approved_by: approver.pathologistName } as any).eq("registration_id", reg.id).eq("test_id", testId).eq("outsource_status", "verified");
+        await supabase.from("outsourced_test_snips").update({ outsource_status: "approved", approved_at: new Date().toISOString(), approved_by: approver.pathologistName, approved_by_doctor_code: approver.doctorCode } as any).eq("registration_id", reg.id).eq("test_id", testId).eq("outsource_status", "verified");
 
         const snipKey = `${reg.id}||${testId}`;
         const snipDetail = outsourcedSnipDetails[snipKey];
@@ -790,6 +791,7 @@ const DoctorApproval = () => {
           flag: u.flag, is_calculated: u.is_calculated, is_outsourced: testParams[0]?.isOutsourced || false,
           outsource_lab_name: snipDetail?.labName || null,
           approved_by: approver.pathologistName,
+          approved_by_doctor_code: approver.doctorCode,
           approved_by_qualification: approver.qualification,
           approved_by_designation: approver.designation,
           approved_by_signature_url: null,
@@ -803,12 +805,14 @@ const DoctorApproval = () => {
           outsource_status: "approved",
           approved_at: new Date().toISOString(),
           approved_by: approver.pathologistName,
+          approved_by_doctor_code: approver.doctorCode,
         } as any).eq("registration_id", reg.id).eq("test_id", st.testId).eq("outsource_status", "verified");
         allSnipUrls.push(...(st.snipUrls || []));
         allTestResults.push({
           test_id: st.testId, test_name: st.testName, is_outsourced: true,
           outsource_lab_name: st.labName,
           approved_by: approver.pathologistName,
+          approved_by_doctor_code: approver.doctorCode,
           approved_by_qualification: approver.qualification,
           approved_by_designation: approver.designation,
           approved_by_signature_url: null,
@@ -1129,7 +1133,7 @@ const DoctorApproval = () => {
                   if (!snipApproverChoice) return;
                   setActionKey(`${testKey}||approve`);
                   try {
-                    await supabase.from("outsourced_test_snips").update({ outsource_status: "approved", approved_at: new Date().toISOString(), approved_by: snipApproverChoice.pathologistName } as any).eq("registration_id", reg.id).eq("test_id", st.testId).eq("outsource_status", "verified");
+                    await supabase.from("outsourced_test_snips").update({ outsource_status: "approved", approved_at: new Date().toISOString(), approved_by: snipApproverChoice.pathologistName, approved_by_doctor_code: snipApproverChoice.doctorCode } as any).eq("registration_id", reg.id).eq("test_id", st.testId).eq("outsource_status", "verified");
                     // Promote any typed results for this test into approved + snapshot (params then crop).
                     const { data: liveTyped } = await supabase
                       .from("patient_results")
@@ -1165,6 +1169,7 @@ const DoctorApproval = () => {
                           is_outsourced: true,
                           outsource_lab_name: st.labName,
                           approved_by: snipApproverChoice.pathologistName,
+                          approved_by_doctor_code: snipApproverChoice.doctorCode,
                           approved_by_qualification: snipApproverChoice.qualification,
                           approved_by_designation: snipApproverChoice.designation,
                           approved_by_signature_url: null,
@@ -1177,6 +1182,7 @@ const DoctorApproval = () => {
                           is_outsourced: true,
                           outsource_lab_name: st.labName,
                           approved_by: snipApproverChoice.pathologistName,
+                          approved_by_doctor_code: snipApproverChoice.doctorCode,
                           approved_by_qualification: snipApproverChoice.qualification,
                           approved_by_designation: snipApproverChoice.designation,
                           approved_by_signature_url: null,

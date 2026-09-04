@@ -409,9 +409,11 @@ function snipPageToContent(
     approvers?: string[];
   },
 ): PageContent {
-  const approvers = snip.approvedBy
-    ? [snip.approvedBy]
-    : (fallback?.approvers?.length ? fallback.approvers : undefined);
+  const approvers = snip.approvedByDoctorCode
+    ? [snip.approvedByDoctorCode]
+    : snip.approvedBy
+      ? [snip.approvedBy]
+      : (fallback?.approvers?.length ? fallback.approvers : undefined);
   return {
     type: "snip",
     departmentName: snip.departmentName || fallback?.departmentName || "Results",
@@ -516,6 +518,7 @@ interface TestResultEntry {
   param_code?: string;
   is_calculated?: boolean;
   approved_by?: string;
+  approved_by_doctor_code?: string | null;
   approved_by_qualification?: string | null;
   approved_by_designation?: string | null;
   approved_by_signature_url?: string | null;
@@ -557,6 +560,8 @@ interface SnipPage {
   fullBleed?: boolean;
   /** Who approved this snipped/outsourced test (from snip row or snapshot). */
   approvedBy?: string | null;
+  /** Stable doctor code for signature lookup (preferred over name). */
+  approvedByDoctorCode?: string | null;
 }
 
 interface PageContent {
@@ -577,6 +582,7 @@ interface PageContent {
 }
 
 interface SignatureInfo {
+  doctor_code?: string | null;
   pathologist_name: string;
   qualification: string | null;
   designation: string | null;
@@ -951,10 +957,9 @@ const LimsReportView = () => {
       return getOrFetchUrlAsDataUrl(url, cacheKey);
     };
 
-    // Build signature map: approver display_name → signature info
+    // Build signature map keyed by doctor_code (preferred) and name (legacy fallback).
     const sigMap: Record<string, SignatureInfo> = {};
     if (signatures && signatures.length > 0) {
-      // Build mapped user lookup
       const mappedSigs = signatures.filter((s: any) => s.mapped_user_id);
       let userDisplayMap: Record<string, string> = {};
       if (mappedSigs.length > 0) {
@@ -971,20 +976,20 @@ const LimsReportView = () => {
         let sigUrl: string | null = null;
         if (sig.signature_image_path) {
           const { data: sigUrlData } = supabase.storage.from("signatures").getPublicUrl(sig.signature_image_path);
-          // Inline as data URL for reliable canvas rasterization in PDF/print capture
           sigUrl =
             (await getCachedSignatureDataUrl(sig.signature_image_path, sigUrlData.publicUrl)) ||
             sigUrlData.publicUrl;
         }
+        const code = String(sig.doctor_code || "").trim();
         const info: SignatureInfo = {
+          doctor_code: code || null,
           pathologist_name: sig.pathologist_name,
           qualification: sig.qualification,
           designation: sig.designation,
           signatureUrl: sigUrl,
         };
-        // Index by pathologist_name
-        sigMap[sig.pathologist_name.toLowerCase()] = info;
-        // Also index by mapped user's display_name
+        if (code) sigMap[code.toLowerCase()] = info;
+        if (sig.pathologist_name) sigMap[sig.pathologist_name.toLowerCase()] = info;
         if (sig.mapped_user_id && userDisplayMap[sig.mapped_user_id]) {
           sigMap[userDisplayMap[sig.mapped_user_id].toLowerCase()] = info;
         }
@@ -994,6 +999,7 @@ const LimsReportView = () => {
     // Outsourced visuals: store high-res crops only; letterhead + demographics from report shell.
     // Resolve approver per test from snip row and/or approved snapshot (snip-only markers).
     const approverByTestId: Record<string, string> = {};
+    const doctorCodeByTestId: Record<string, string> = {};
     let reportHeaderApprover: string | null = null;
     for (const r of filteredReports) {
       const headerBy = typeof (r as any)?.approved_by === "string" ? String((r as any).approved_by).trim() : "";
@@ -1001,7 +1007,9 @@ const LimsReportView = () => {
       for (const tr of (r.test_results || []) as any[]) {
         const tid = tr?.test_id;
         const by = typeof tr?.approved_by === "string" ? tr.approved_by.trim() : "";
+        const code = typeof tr?.approved_by_doctor_code === "string" ? tr.approved_by_doctor_code.trim() : "";
         if (tid && by && !approverByTestId[tid]) approverByTestId[tid] = by;
+        if (tid && code && !doctorCodeByTestId[tid]) doctorCodeByTestId[tid] = code;
       }
     }
     const snipPages: SnipPage[] = [];
@@ -1026,6 +1034,10 @@ const LimsReportView = () => {
       }
       if (urls.length === 0) continue;
       const legacyFullBleed = snipImageUrlsFromRow(s).length === 0 && !!composedPdfUrlFromRow(s);
+      const snipApprovedByCode =
+        (typeof s.approved_by_doctor_code === "string" && s.approved_by_doctor_code.trim()) ||
+        doctorCodeByTestId[s.test_id] ||
+        null;
       const snipApprovedBy =
         (typeof s.approved_by === "string" && s.approved_by.trim()) ||
         approverByTestId[s.test_id] ||
@@ -1060,6 +1072,7 @@ const LimsReportView = () => {
               topMarginPct: 0,
               fullBleed: legacyFullBleed,
               approvedBy: snipApprovedBy,
+              approvedByDoctorCode: snipApprovedByCode,
             });
           }
         } catch (e) {
@@ -1069,7 +1082,7 @@ const LimsReportView = () => {
       }
     }
     // Inline / normalize snapshot signature URLs in approved_reports.test_results.
-    // Prefer live pathologist_signatures by approved_by name (no embedded base64 in DB).
+    // Prefer live pathologist_signatures by approved_by_doctor_code (stable), then name.
     // Legacy rows may still have data:/http URLs — keep those working until healed.
     const inlineSignatureUrl = async (raw: unknown): Promise<string | null> => {
       if (typeof raw !== "string" || !raw.trim()) return null;
@@ -1080,9 +1093,16 @@ const LimsReportView = () => {
       const cacheKey = sigPath ? reportAssetCacheKey("signatures", sigPath) : `url:${raw}`;
       return (await urlToDataUrl(raw, cacheKey)) || null;
     };
-    const resolveSignatureForApprover = (approvedBy: unknown, embeddedUrl: unknown): string | null => {
+    const liveSigFor = (doctorCode: unknown, approvedBy: unknown): SignatureInfo | null => {
+      const code = String(doctorCode || "").trim().toLowerCase();
+      if (code && sigMap[code]) return sigMap[code];
       const name = String(approvedBy || "").trim().toLowerCase();
-      if (name && sigMap[name]?.signatureUrl) return sigMap[name].signatureUrl;
+      if (name && sigMap[name]) return sigMap[name];
+      return null;
+    };
+    const resolveSignatureForApprover = (doctorCode: unknown, approvedBy: unknown, embeddedUrl: unknown): string | null => {
+      const live = liveSigFor(doctorCode, approvedBy);
+      if (live?.signatureUrl) return live.signatureUrl;
       if (typeof embeddedUrl === "string" && embeddedUrl.trim()) return embeddedUrl.trim();
       return null;
     };
@@ -1090,33 +1110,39 @@ const LimsReportView = () => {
       const trs = (r.test_results || []) as any[];
       for (const tr of trs) {
         const by = tr.approved_by;
-        const fromLive = resolveSignatureForApprover(by, null);
+        const code = tr.approved_by_doctor_code;
+        const fromLive = resolveSignatureForApprover(code, by, null);
         if (fromLive) {
           tr.approved_by_signature_url = fromLive;
         } else if (tr.approved_by_signature_url) {
           const fixed = await inlineSignatureUrl(tr.approved_by_signature_url);
           if (fixed) tr.approved_by_signature_url = fixed;
         }
-        // Also fill qualification/designation from live master when snapshot omitted them
-        if (by && sigMap[String(by).toLowerCase()]) {
-          const live = sigMap[String(by).toLowerCase()];
-          if (!tr.approved_by_qualification && live.qualification) tr.approved_by_qualification = live.qualification;
-          if (!tr.approved_by_designation && live.designation) tr.approved_by_designation = live.designation;
+        const live = liveSigFor(code, by);
+        if (live) {
+          if (!tr.approved_by_doctor_code && live.doctor_code) tr.approved_by_doctor_code = live.doctor_code;
+          // Prefer live display name/qual/desig so renamed doctors still print correctly.
+          if (live.pathologist_name) tr.approved_by = live.pathologist_name;
+          if (live.qualification) tr.approved_by_qualification = live.qualification;
+          if (live.designation) tr.approved_by_designation = live.designation;
         }
         const params = (tr.parameters || []) as any[];
         for (const p of params) {
           const pBy = p.approved_by || by;
-          const pLive = resolveSignatureForApprover(pBy, null);
-          if (pLive) {
-            p.approved_by_signature_url = pLive;
+          const pCode = p.approved_by_doctor_code || code;
+          const pLiveUrl = resolveSignatureForApprover(pCode, pBy, null);
+          if (pLiveUrl) {
+            p.approved_by_signature_url = pLiveUrl;
           } else if (p.approved_by_signature_url) {
             const fixed = await inlineSignatureUrl(p.approved_by_signature_url);
             if (fixed) p.approved_by_signature_url = fixed;
           }
-          if (pBy && sigMap[String(pBy).toLowerCase()]) {
-            const live = sigMap[String(pBy).toLowerCase()];
-            if (!p.approved_by_qualification && live.qualification) p.approved_by_qualification = live.qualification;
-            if (!p.approved_by_designation && live.designation) p.approved_by_designation = live.designation;
+          const pLive = liveSigFor(pCode, pBy);
+          if (pLive) {
+            if (!p.approved_by_doctor_code && pLive.doctor_code) p.approved_by_doctor_code = pLive.doctor_code;
+            if (pLive.pathologist_name) p.approved_by = pLive.pathologist_name;
+            if (pLive.qualification) p.approved_by_qualification = pLive.qualification;
+            if (pLive.designation) p.approved_by_designation = pLive.designation;
           }
         }
       }
@@ -1351,8 +1377,11 @@ const LimsReportView = () => {
         interpretationMm(testInfo?.interpretation) +
         SAFETY_PAD_MM;
 
-      // Collect unique approvers for this test block
-      const blockApprovers = [...new Set(sortedParams.map(p => p.approved_by).filter(Boolean))] as string[];
+      // Collect unique approvers for this test block (prefer stable doctor_code).
+      const blockApprovers = [...new Set(sortedParams.map(p =>
+        (p.approved_by_doctor_code && String(p.approved_by_doctor_code).trim())
+        || p.approved_by
+      ).filter(Boolean))] as string[];
 
       const collectionDateIso = collectionDateByTestId[testId]
         || approvedReports[0]?.sample_collection_date
@@ -1628,7 +1657,18 @@ const LimsReportView = () => {
           scalePct: pg.snipScalePct,
           topMarginPct: pg.snipTopMarginPct,
           fullBleed: pg.snipFullBleed,
-          approvedBy: pg.approvers?.[0] || null,
+          approvedBy: (() => {
+            const a = pg.approvers?.[0];
+            if (!a) return null;
+            const live = signatureMap[a.toLowerCase()];
+            return live?.pathologist_name || a;
+          })(),
+          approvedByDoctorCode: (() => {
+            const a = pg.approvers?.[0];
+            if (!a) return null;
+            const live = signatureMap[a.toLowerCase()];
+            return live?.doctor_code || null;
+          })(),
         });
         snipsMap.set(key, list);
         if (key !== "__orphan__" && !seenTests.has(key)) {
@@ -2517,73 +2557,82 @@ const LimsReportView = () => {
                     barcodePng={invoiceBarcodePng}
                   />
                   {!isProvisional && page.type !== "trends" && (() => {
-                  // Prefer page-specific approvers (incl. snip pages). Never default snip pages
-                  // to "first pathologist in map" — that incorrectly shows e.g. Dr Hemang.
+                  // Prefer page-specific approvers (doctor_code or legacy name). Never default snip pages
+                  // to "first pathologist in map".
                   const pageApprovers = page.approvers && page.approvers.length > 0
                     ? page.approvers
                     : (page.type === "snip"
                         ? []
-                        : (Object.keys(signatureMap).length > 0 ? [Object.keys(signatureMap)[0]] : []));
-                  
-                  // Collect snapshot signature metadata from test results on this page.
-                  // Image comes from live pathologist_signatures (by name) when snapshot URL is empty.
+                        : (() => {
+                            const uniq = new Map<string, SignatureInfo>();
+                            Object.values(signatureMap).forEach((s) => {
+                              const k = (s.doctor_code || s.pathologist_name || "").toLowerCase();
+                              if (k && !uniq.has(k)) uniq.set(k, s);
+                            });
+                            const first = [...uniq.values()][0];
+                            return first ? [first.doctor_code || first.pathologist_name] : [];
+                          })());
+
+                  // Snapshot meta keyed by doctor_code and name; live lookup preferred for image/name.
                   const snapshotSigMap: Record<string, SignatureInfo> = {};
                   if (page.testBlocks) {
                     page.testBlocks.forEach(block => {
                       block.params.forEach(p => {
-                        if (p.approved_by && p.approved_by_qualification !== undefined) {
-                          const key = p.approved_by.toLowerCase();
-                          const live = signatureMap[key];
-                          snapshotSigMap[key] = {
-                            pathologist_name: p.approved_by,
-                            qualification: p.approved_by_qualification || live?.qualification || null,
-                            designation: p.approved_by_designation || live?.designation || null,
-                            signatureUrl: p.approved_by_signature_url || live?.signatureUrl || null,
-                          };
-                        } else if (p.approved_by) {
-                          const key = p.approved_by.toLowerCase();
-                          const live = signatureMap[key];
-                          if (!snapshotSigMap[key]) {
-                            snapshotSigMap[key] = {
-                              pathologist_name: p.approved_by,
-                              qualification: p.approved_by_qualification || live?.qualification || null,
-                              designation: p.approved_by_designation || live?.designation || null,
-                              signatureUrl: p.approved_by_signature_url || live?.signatureUrl || null,
-                            };
-                          }
-                        }
+                        const code = String(p.approved_by_doctor_code || "").trim();
+                        const name = String(p.approved_by || "").trim();
+                        const live = (code && signatureMap[code.toLowerCase()])
+                          || (name && signatureMap[name.toLowerCase()])
+                          || null;
+                        const info: SignatureInfo = {
+                          doctor_code: code || live?.doctor_code || null,
+                          pathologist_name: live?.pathologist_name || name || "Doctor",
+                          qualification: live?.qualification || p.approved_by_qualification || null,
+                          designation: live?.designation || p.approved_by_designation || null,
+                          signatureUrl: live?.signatureUrl || p.approved_by_signature_url || null,
+                        };
+                        if (code) snapshotSigMap[code.toLowerCase()] = info;
+                        if (name) snapshotSigMap[name.toLowerCase()] = info;
                       });
                     });
                   }
 
                   const resolvedSigs = pageApprovers
-                    .map(name => {
-                      const key = name.toLowerCase();
+                    .map(keyRaw => {
+                      const key = String(keyRaw || "").trim().toLowerCase();
+                      if (!key) return null;
                       const snap = snapshotSigMap[key];
                       const live = signatureMap[key];
-                      if (snap && live) {
+                      if (live) {
                         return {
-                          ...snap,
-                          signatureUrl: snap.signatureUrl || live.signatureUrl,
-                          qualification: snap.qualification || live.qualification,
-                          designation: snap.designation || live.designation,
-                        };
+                          doctor_code: live.doctor_code || snap?.doctor_code || null,
+                          pathologist_name: live.pathologist_name,
+                          qualification: live.qualification || snap?.qualification || null,
+                          designation: live.designation || snap?.designation || null,
+                          signatureUrl: live.signatureUrl || snap?.signatureUrl || null,
+                        } as SignatureInfo;
                       }
-                      return snap || live || (name
-                        ? {
-                            pathologist_name: name,
-                            qualification: null,
-                            designation: null,
-                            signatureUrl: null,
-                          }
-                        : null);
+                      return snap || {
+                        doctor_code: null,
+                        pathologist_name: keyRaw,
+                        qualification: null,
+                        designation: null,
+                        signatureUrl: null,
+                      } as SignatureInfo;
                     })
-                    .filter(Boolean);
-                  // Deduplicate by pathologist_name
-                  const uniqueSigs = resolvedSigs.filter((s, i, arr) => arr.findIndex(x => x.pathologist_name === s.pathologist_name) === i);
-                  if (uniqueSigs.length === 0 && page.type !== "snip" && Object.keys(signatureMap).length > 0) {
-                    // Fallback for structured pages only: show first signature
-                    const fallback = Object.values(signatureMap)[0];
+                    .filter(Boolean) as SignatureInfo[];
+                  // Deduplicate by doctor_code when present, else pathologist_name
+                  const uniqueSigs = resolvedSigs.filter((s, i, arr) => {
+                    const id = (s.doctor_code || s.pathologist_name || "").toLowerCase();
+                    return arr.findIndex(x => (x.doctor_code || x.pathologist_name || "").toLowerCase() === id) === i;
+                  });
+                  if (uniqueSigs.length === 0 && page.type !== "snip") {
+                    const uniq = new Map<string, SignatureInfo>();
+                    Object.values(signatureMap).forEach((s) => {
+                      const k = (s.doctor_code || s.pathologist_name || "").toLowerCase();
+                      if (k && !uniq.has(k)) uniq.set(k, s);
+                    });
+                    const fallback = [...uniq.values()][0];
+                    if (!fallback) return null;
                     return (
                       <div className="ml-auto">
                         <ReportSignatureBlock
