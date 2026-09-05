@@ -201,18 +201,37 @@ const LimsDemo = () => {
     refetchOnMount: "always",
   });
 
-  const { data: logs = [] } = useQuery({
+  const { data: logs = [], refetch: refetchLogs, isRefetching: isLogsRefetching } = useQuery({
     queryKey: ["lims-logs"],
     queryFn: async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("lims_interface_logs")
         .select("id, sample_id, direction, event_type, created_at, machine_id")
         .order("created_at", { ascending: false })
         .limit(500);
+      if (error) throw error;
       return data || [];
     },
+    // Interface logs must always be pullable via Refresh (global staleTime is 10 min).
+    staleTime: 0,
     refetchOnMount: "always",
   });
+
+  const handleRefreshLogs = async () => {
+    const result = await refetchLogs({ cancelRefetch: false });
+    if (result.error) {
+      toast({
+        title: "Refresh failed",
+        description: (result.error as Error)?.message || "Could not reload interface logs",
+        variant: "destructive",
+      });
+      return;
+    }
+    toast({
+      title: "Logs refreshed",
+      description: `${(result.data || []).length} log(s) loaded`,
+    });
+  };
 
   const { data: unmappedResults = [] } = useQuery({
     queryKey: ["lims-unmapped"],
@@ -851,8 +870,14 @@ const LimsDemo = () => {
                   Interface Logs ({filteredLogs.length}{logInvoiceSearch || logMachineFilter !== "all" ? ` of ${logs.length}` : ""})
                 </CardTitle>
                 <div className="flex gap-2">
-                  <Button size="sm" variant="outline" onClick={() => queryClient.invalidateQueries({ queryKey: ["lims-logs"] })}>
-                    <RefreshCw className="h-4 w-4 mr-1" /> Refresh
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => void handleRefreshLogs()}
+                    disabled={isLogsRefetching}
+                  >
+                    <RefreshCw className={`h-4 w-4 mr-1 ${isLogsRefetching ? "animate-spin" : ""}`} />
+                    {isLogsRefetching ? "Refreshing…" : "Refresh"}
                   </Button>
                   <Button size="sm" variant="destructive" onClick={() => clearLogs.mutate()}>Clear All</Button>
                 </div>

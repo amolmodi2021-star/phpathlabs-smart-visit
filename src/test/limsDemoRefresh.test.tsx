@@ -77,6 +77,8 @@ describe("LimsDemo refresh strategy", () => {
     expect(source).toContain(
       '.select("id, sample_id, machine_code, machine_id, result_value, unit, flag, received_at")',
     );
+    expect(source).toContain("handleRefreshLogs");
+    expect(source).toContain("refetchLogs");
   });
 
   it("loads one log payload on demand and reuses it when reopened", async () => {
