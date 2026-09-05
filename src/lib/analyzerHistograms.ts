@@ -54,7 +54,19 @@ export function mergeHistogramSnapshots(
 }
 
 export function hasRenderableHistograms(histograms: AnalyzerHistogram[] | null | undefined): boolean {
-  return (histograms || []).some((h) => Array.isArray(h.bins) && h.bins.length >= 10);
+  /**
+   * PDF safety net: show CBC histograms only when WBC, RBC, and PLT are all present.
+   * A partial set (e.g. PLT-only) must not appear on the report.
+   */
+  const rows = histograms || [];
+  const byKind = new Map<string, AnalyzerHistogram>();
+  for (const item of rows) {
+    const kind = String(item.kind || "").trim().toUpperCase();
+    if (!KIND_ORDER.includes(kind)) continue;
+    if (!Array.isArray(item.bins) || item.bins.length < 10) continue;
+    byKind.set(kind, item);
+  }
+  return KIND_ORDER.every((kind) => byKind.has(kind));
 }
 
 /** Persist missing live histogram kinds onto approved_reports.histograms. */

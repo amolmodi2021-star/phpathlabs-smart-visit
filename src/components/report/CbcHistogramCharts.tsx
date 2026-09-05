@@ -167,7 +167,8 @@ const CbcHistogramCharts = ({
     (histograms || []).map((h) => [String(h.kind).toUpperCase(), h]),
   );
   const visible = order.filter((kind) => (byKind[kind]?.bins?.length || 0) >= 10);
-  if (visible.length === 0) return null;
+  // Safety net: never render a partial CBC histogram page (e.g. PLT-only).
+  if (visible.length !== order.length) return null;
 
   return (
     <div className="px-1 pb-2 print:break-inside-avoid" data-pdf-section="cbc-histograms" style={{ paddingBottom: "8mm" }}>

@@ -13,6 +13,24 @@ describe("analyzerHistograms", () => {
     expect(hasRenderableHistograms([])).toBe(false);
   });
 
+  it("requires all three CBC kinds before PDF histograms are renderable", () => {
+    const pltOnly = normalizeHistogramRows([{ kind: "PLT", bins: Array(40).fill(1) }]);
+    expect(hasRenderableHistograms(pltOnly)).toBe(false);
+
+    const wbcRbc = normalizeHistogramRows([
+      { kind: "WBC", bins: Array(50).fill(1) },
+      { kind: "RBC", bins: Array(50).fill(2) },
+    ]);
+    expect(hasRenderableHistograms(wbcRbc)).toBe(false);
+
+    const full = normalizeHistogramRows([
+      { kind: "WBC", bins: Array(50).fill(1) },
+      { kind: "RBC", bins: Array(50).fill(2) },
+      { kind: "PLT", bins: Array(40).fill(3) },
+    ]);
+    expect(hasRenderableHistograms(full)).toBe(true);
+  });
+
   it("merges live kinds without overwriting an existing snapshot", () => {
     const existing = normalizeHistogramRows([
       { kind: "WBC", bins: Array(50).fill(1) },
