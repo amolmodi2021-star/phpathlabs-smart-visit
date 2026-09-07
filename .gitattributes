@@ -9,3 +9,5 @@
 *.json text
 *.md text
 *.sql text
+
+*.woff2 binary

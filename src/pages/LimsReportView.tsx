@@ -7,6 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Loader2, Printer, ArrowLeft, Download, Share2 } from "lucide-react";
 import { toPng, toJpeg } from "html-to-image";
+import { getCachedReportFontEmbedCSS, reportCaptureStyle, REPORT_CAPTURE_FONT } from "@/lib/htmlCaptureFonts";
 import jsPDF from "jspdf";
 import * as pdfjsLib from "pdfjs-dist";
 import LimsReportHeader from "@/components/report/LimsReportHeader";
@@ -73,6 +74,8 @@ const waitForCaptureReady = async (root: HTMLElement) => {
       await (document as any).fonts.ready;
     }
   } catch {}
+  // Prefetch embed CSS in parallel with images so PDF/WhatsApp reuse the View Reports face.
+  void getCachedReportFontEmbedCSS(root);
   const imgs = Array.from(root.querySelectorAll("img")) as HTMLImageElement[];
   await Promise.all(
     imgs.map((img) => {
@@ -134,7 +137,7 @@ type PageCaptureOptions = {
   attempts?: number;
   /** Skip expensive pixel blank-check when data URL looks non-empty (dispatch/fast). */
   fastBlankCheck?: boolean;
-  /** Skip font embedding in html-to-image (much faster; webfonts already painted). */
+  /** Skip webfont embed. Only for snip photo pages (no live text). Structured PDF must embed IBM Plex. */
   skipFonts?: boolean;
 };
 
@@ -180,6 +183,17 @@ const captureWithRetry = async (
   const layoutW = el.offsetWidth || A4_WIDTH_CSS_PX;
   const layoutH = el.offsetHeight || A4_HEIGHT_CSS_PX;
   const scale = Math.min(width / layoutW, height / layoutH);
+  // Snip photos have no live text. Structured pages must embed IBM Plex — skipFonts
+  // made download/WhatsApp fall back to a system face and changed CREATININE / Enzymatic spacing.
+  const skipFonts = captureOpts?.skipFonts ?? isSnipPage;
+  let fontEmbedCSS: string | undefined;
+  if (!skipFonts) {
+    try {
+      fontEmbedCSS = (await getCachedReportFontEmbedCSS(el)) || undefined;
+    } catch {
+      fontEmbedCSS = undefined;
+    }
+  }
   const opts = {
     pixelRatio,
     backgroundColor: "#ffffff",
@@ -188,14 +202,15 @@ const captureWithRetry = async (
     // Never default-bust: html-to-image appends ?t=… which breaks data: signature/letterhead URLs
     // and hung Dispatch WhatsApp PDF generation on multi-page reports.
     cacheBust: captureOpts?.cacheBust ?? false,
-    skipFonts: captureOpts?.skipFonts ?? false,
-    style: {
+    skipFonts: skipFonts && !fontEmbedCSS,
+    fontEmbedCSS,
+    style: reportCaptureStyle({
       // Clear previewScale; only downscale if caller asked for a smaller canvas (avoid crop).
       transform: scale < 0.999 ? `scale(${scale})` : "none",
       transformOrigin: "top left",
       width: `${layoutW}px`,
       height: `${layoutH}px`,
-    } as Record<string, string>,
+    }),
   };
   let lastUrl = "";
   let lastErr: unknown = null;
@@ -1788,8 +1803,6 @@ const LimsReportView = () => {
         quality: 0.9,
         cacheBust: false,
         fastBlankCheck: true,
-        // Fonts are already painted in the DOM; re-embedding them is very costly.
-        skipFonts: true,
       };
 
       const wrappers = pageElements.map((el) => el.parentElement as HTMLElement | null);
@@ -2359,6 +2372,7 @@ const LimsReportView = () => {
                 maxHeight: `${PAGE_HEIGHT_MM}mm`,
                 transform: previewScale < 1 ? `scale(${previewScale})` : undefined,
                 transformOrigin: "top left",
+                fontFamily: REPORT_CAPTURE_FONT,
               }}
             >
             {/* Background letterhead */}
