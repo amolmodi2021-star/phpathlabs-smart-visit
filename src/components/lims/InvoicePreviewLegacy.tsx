@@ -871,19 +871,27 @@ const InvoicePreviewLegacy = ({
         }
         leftInner += `</div></div></div>`;
 
-        const preparedByLine = `${data.registered_by || "—"} · ${format(createdAt, "dd-MM-yyyy hh:mm a")}`;
-        const printedByLine = `${getCurrentUserName() || "—"} · ${format(new Date(), "dd-MM-yyyy hh:mm a")}`;
+        const preparedByName = data.registered_by || "—";
+        const printedByName = getCurrentUserName() || "—";
+        const preparedAt = format(createdAt, "dd-MM-yyyy hh:mm a");
+        const printedAt = format(new Date(), "dd-MM-yyyy hh:mm a");
+        const metaCell = (extra = "") =>
+          `padding:1px 0;font-size:11px;line-height:1.55;border:0;vertical-align:baseline;white-space:nowrap;${extra}`;
         const prepPrintMeta = `
           <table style="width:auto;border-collapse:collapse;margin-top:8px;text-align:left">
             <tr>
-              <td style="padding:1px 0;font-size:11px;color:${PALETTE.muted};white-space:nowrap;line-height:1.55;border:0;vertical-align:baseline">Prepared by</td>
+              <td style="${metaCell(`color:${PALETTE.muted}`)}">Prepared by</td>
               <td style="padding:1px 6px;font-size:11px;color:${PALETTE.muted};line-height:1.55;border:0;vertical-align:baseline">:</td>
-              <td style="padding:1px 0;font-size:11px;color:${PALETTE.ink};line-height:1.55;border:0;vertical-align:baseline;white-space:nowrap">${preparedByLine}</td>
+              <td style="${metaCell(`color:${PALETTE.ink};padding-right:8px`)}">${preparedByName}</td>
+              <td style="padding:1px 6px;font-size:11px;color:${PALETTE.muted};line-height:1.55;border:0;vertical-align:baseline;text-align:center">·</td>
+              <td style="${metaCell(`color:${PALETTE.ink}`)}">${preparedAt}</td>
             </tr>
             <tr>
-              <td style="padding:1px 0;font-size:11px;color:${PALETTE.muted};white-space:nowrap;line-height:1.55;border:0;vertical-align:baseline">Printed by</td>
+              <td style="${metaCell(`color:${PALETTE.muted}`)}">Printed by</td>
               <td style="padding:1px 6px;font-size:11px;color:${PALETTE.muted};line-height:1.55;border:0;vertical-align:baseline">:</td>
-              <td style="padding:1px 0;font-size:11px;color:${PALETTE.ink};line-height:1.55;border:0;vertical-align:baseline;white-space:nowrap">${printedByLine}</td>
+              <td style="${metaCell(`color:${PALETTE.ink};padding-right:8px`)}">${printedByName}</td>
+              <td style="padding:1px 6px;font-size:11px;color:${PALETTE.muted};line-height:1.55;border:0;vertical-align:baseline;text-align:center">·</td>
+              <td style="${metaCell(`color:${PALETTE.ink}`)}">${printedAt}</td>
             </tr>
           </table>`;
         const leftHtml = `
@@ -1373,15 +1381,23 @@ const InvoicePreviewLegacy = ({
                     <tr>
                       <td style={{ padding: "1px 0", fontSize: 11, color: PALETTE.muted, whiteSpace: "nowrap", lineHeight: 1.55, border: "none", verticalAlign: "baseline" }}>Prepared by</td>
                       <td style={{ padding: "1px 6px", fontSize: 11, color: PALETTE.muted, lineHeight: 1.55, border: "none", verticalAlign: "baseline" }}>:</td>
+                      <td style={{ padding: "1px 8px 1px 0", fontSize: 11, color: PALETTE.ink, lineHeight: 1.55, border: "none", verticalAlign: "baseline", whiteSpace: "nowrap" }}>
+                        {data.registered_by || "—"}
+                      </td>
+                      <td style={{ padding: "1px 6px", fontSize: 11, color: PALETTE.muted, lineHeight: 1.55, border: "none", verticalAlign: "baseline", textAlign: "center" }}>·</td>
                       <td style={{ padding: "1px 0", fontSize: 11, color: PALETTE.ink, lineHeight: 1.55, border: "none", verticalAlign: "baseline", whiteSpace: "nowrap" }}>
-                        {data.registered_by || "—"} · {format(createdAt, "dd-MM-yyyy hh:mm a")}
+                        {format(createdAt, "dd-MM-yyyy hh:mm a")}
                       </td>
                     </tr>
                     <tr>
                       <td style={{ padding: "1px 0", fontSize: 11, color: PALETTE.muted, whiteSpace: "nowrap", lineHeight: 1.55, border: "none", verticalAlign: "baseline" }}>Printed by</td>
                       <td style={{ padding: "1px 6px", fontSize: 11, color: PALETTE.muted, lineHeight: 1.55, border: "none", verticalAlign: "baseline" }}>:</td>
+                      <td style={{ padding: "1px 8px 1px 0", fontSize: 11, color: PALETTE.ink, lineHeight: 1.55, border: "none", verticalAlign: "baseline", whiteSpace: "nowrap" }}>
+                        {getCurrentUserName() || "—"}
+                      </td>
+                      <td style={{ padding: "1px 6px", fontSize: 11, color: PALETTE.muted, lineHeight: 1.55, border: "none", verticalAlign: "baseline", textAlign: "center" }}>·</td>
                       <td style={{ padding: "1px 0", fontSize: 11, color: PALETTE.ink, lineHeight: 1.55, border: "none", verticalAlign: "baseline", whiteSpace: "nowrap" }}>
-                        {getCurrentUserName() || "—"} · {format(new Date(), "dd-MM-yyyy hh:mm a")}
+                        {format(new Date(), "dd-MM-yyyy hh:mm a")}
                       </td>
                     </tr>
                   </tbody>
