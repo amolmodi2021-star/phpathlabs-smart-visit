@@ -827,21 +827,21 @@ const InvoicePreviewLegacy = ({
 
         const th = (label: string, align = "left", width?: string) =>
           `<th style="padding:3px 4px;font-size:7px;font-weight:700;letter-spacing:0.02em;text-transform:uppercase;color:${PALETTE.blue};background:${PALETTE.blueSoft};border-bottom:1px solid ${PALETTE.blueLine};text-align:${align};white-space:nowrap;${width ? `width:${width};` : ""}">${label}</th>`;
-        const td = (val: string, align = "left", color = PALETTE.ink, weight = "500", width?: string) =>
-          `<td style="padding:3px 4px;font-size:8px;font-weight:${weight};color:${color};border-bottom:1px solid ${PALETTE.line};text-align:${align};white-space:nowrap;line-height:1.2;${width ? `width:${width};` : ""}">${val}</td>`;
+        const td = (val: string, align = "left", color = PALETTE.ink, weight = "500", width?: string, allowWrap = false) =>
+          `<td style="padding:3px 4px;font-size:8px;font-weight:${weight};color:${color};border-bottom:1px solid ${PALETTE.line};text-align:${align};white-space:${allowWrap ? "normal" : "nowrap"};line-height:1.2;word-break:${allowWrap ? "break-word" : "normal"};${width ? `width:${width};` : ""}">${val}</td>`;
 
         let payRows = "";
         if (payments.length === 0 && !(Number(data.refund_amount || 0) > 0)) {
           payRows = `<tr><td colspan="3" style="padding:6px;font-size:9px;color:${PALETTE.muted};text-align:left;border-bottom:1px solid ${PALETTE.line}">No payments</td></tr>`;
         } else {
           payments.forEach((pay: any) => {
-            payRows += `<tr>${td(paymentDetailsDateLabel(pay, createdAt), "left", PALETTE.ink, "500", "52%")}${td(pay.mode || "Payment", "left", PALETTE.ink, "500", "22%")}${td(`₹${pay.amount}`, "right", PALETTE.ink, "700", "26%")}</tr>`;
+            payRows += `<tr>${td(paymentDetailsDateLabel(pay, createdAt), "left", PALETTE.ink, "500", "46%")}${td(pay.mode || "Payment", "left", PALETTE.ink, "500", "30%", true)}${td(`₹${pay.amount}`, "right", PALETTE.ink, "700", "24%")}</tr>`;
           });
           if (Number(data.refund_amount || 0) > 0) {
             const refundDate = data.refund_date
               ? format(new Date(data.refund_date), "dd MMM yyyy hh:mm a")
               : "—";
-            payRows += `<tr>${td(refundDate, "left", PALETTE.ink, "500", "52%")}${td(refundModeLabel(data.refund_mode), "left", PALETTE.ink, "500", "22%")}${td(`-₹${data.refund_amount}`, "right", PALETTE.orange, "700", "26%")}</tr>`;
+            payRows += `<tr>${td(refundDate, "left", PALETTE.ink, "500", "46%")}${td(refundModeLabel(data.refund_mode), "left", PALETTE.ink, "500", "30%", true)}${td(`-₹${data.refund_amount}`, "right", PALETTE.orange, "700", "24%")}</tr>`;
           }
         }
         const rightHtml = `
@@ -850,7 +850,7 @@ const InvoicePreviewLegacy = ({
               <span style="font-size:9px;font-weight:800;color:${PALETTE.blue}">Payment Details</span>
             </div>
             <table style="width:100%;border-collapse:collapse;table-layout:fixed">
-              <thead><tr>${th("Date", "left", "52%")}${th("Mode", "left", "22%")}${th("Amount", "right", "26%")}</tr></thead>
+              <thead><tr>${th("Date", "left", "46%")}${th("Mode", "left", "30%")}${th("Amount", "right", "24%")}</tr></thead>
               <tbody>${payRows}</tbody>
               <tfoot>
                 <tr>
@@ -1288,9 +1288,9 @@ const InvoicePreviewLegacy = ({
                 <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
                   <thead>
                     <tr>
-                      <th style={{ padding: "4px 6px", fontSize: 8, fontWeight: 700, letterSpacing: "0.03em", textTransform: "uppercase", color: PALETTE.blue, background: PALETTE.blueSoft, borderBottom: `1px solid ${PALETTE.blueLine}`, textAlign: "left", whiteSpace: "nowrap", width: "52%" }}>Date</th>
-                      <th style={{ padding: "4px 6px", fontSize: 8, fontWeight: 700, letterSpacing: "0.03em", textTransform: "uppercase", color: PALETTE.blue, background: PALETTE.blueSoft, borderBottom: `1px solid ${PALETTE.blueLine}`, textAlign: "left", whiteSpace: "nowrap", width: "22%" }}>Mode</th>
-                      <th style={{ padding: "4px 6px", fontSize: 8, fontWeight: 700, letterSpacing: "0.03em", textTransform: "uppercase", color: PALETTE.blue, background: PALETTE.blueSoft, borderBottom: `1px solid ${PALETTE.blueLine}`, textAlign: "right", whiteSpace: "nowrap", width: "26%" }}>Amount</th>
+                      <th style={{ padding: "4px 6px", fontSize: 8, fontWeight: 700, letterSpacing: "0.03em", textTransform: "uppercase", color: PALETTE.blue, background: PALETTE.blueSoft, borderBottom: `1px solid ${PALETTE.blueLine}`, textAlign: "left", whiteSpace: "nowrap", width: "46%" }}>Date</th>
+                      <th style={{ padding: "4px 6px", fontSize: 8, fontWeight: 700, letterSpacing: "0.03em", textTransform: "uppercase", color: PALETTE.blue, background: PALETTE.blueSoft, borderBottom: `1px solid ${PALETTE.blueLine}`, textAlign: "left", whiteSpace: "nowrap", width: "30%" }}>Mode</th>
+                      <th style={{ padding: "4px 6px", fontSize: 8, fontWeight: 700, letterSpacing: "0.03em", textTransform: "uppercase", color: PALETTE.blue, background: PALETTE.blueSoft, borderBottom: `1px solid ${PALETTE.blueLine}`, textAlign: "right", whiteSpace: "nowrap", width: "24%" }}>Amount</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1303,7 +1303,7 @@ const InvoicePreviewLegacy = ({
                         {payments.map((pay: any, i: number) => (
                           <tr key={`pay-${i}`}>
                             <td style={{ padding: "4px 6px", fontSize: 9, color: PALETTE.ink, borderBottom: `1px solid ${PALETTE.line}`, whiteSpace: "nowrap", lineHeight: 1.25 }}>{paymentDetailsDateLabel(pay, createdAt)}</td>
-                            <td style={{ padding: "4px 6px", fontSize: 9, color: PALETTE.ink, borderBottom: `1px solid ${PALETTE.line}`, whiteSpace: "nowrap", lineHeight: 1.25 }}>{pay.mode || "Payment"}</td>
+                            <td style={{ padding: "4px 6px", fontSize: 9, color: PALETTE.ink, borderBottom: `1px solid ${PALETTE.line}`, whiteSpace: "normal", wordBreak: "break-word", lineHeight: 1.25 }}>{pay.mode || "Payment"}</td>
                             <td style={{ padding: "4px 6px", fontSize: 9, fontWeight: 700, color: PALETTE.ink, borderBottom: `1px solid ${PALETTE.line}`, textAlign: "right", whiteSpace: "nowrap", lineHeight: 1.25 }}>₹{pay.amount}</td>
                           </tr>
                         ))}
@@ -1312,7 +1312,7 @@ const InvoicePreviewLegacy = ({
                             <td style={{ padding: "4px 6px", fontSize: 9, color: PALETTE.ink, borderBottom: `1px solid ${PALETTE.line}`, whiteSpace: "nowrap", lineHeight: 1.25 }}>
                               {data.refund_date ? format(new Date(data.refund_date), "dd MMM yyyy hh:mm a") : "—"}
                             </td>
-                            <td style={{ padding: "4px 6px", fontSize: 9, color: PALETTE.ink, borderBottom: `1px solid ${PALETTE.line}`, whiteSpace: "nowrap", lineHeight: 1.25 }}>
+                            <td style={{ padding: "4px 6px", fontSize: 9, color: PALETTE.ink, borderBottom: `1px solid ${PALETTE.line}`, whiteSpace: "normal", wordBreak: "break-word", lineHeight: 1.25 }}>
                               {refundModeLabel(data.refund_mode)}
                             </td>
                             <td style={{ padding: "4px 6px", fontSize: 9, fontWeight: 700, color: PALETTE.orange, borderBottom: `1px solid ${PALETTE.line}`, textAlign: "right", whiteSpace: "nowrap", lineHeight: 1.25 }}>
