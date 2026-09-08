@@ -153,8 +153,38 @@ const PALETTE = {
 const INVOICE_FONT =
   '"Noto Sans", "IBM Plex Sans", "Segoe UI", system-ui, sans-serif';
 
+/** Preview/WhatsApp sheet width; address must fit inside with a little side padding. */
+const INVOICE_SHEET_WIDTH_PX = 560;
+const INVOICE_ADDRESS_MAX_WIDTH_PX = 540;
+
 const INVOICE_FONT_CSS_HREF =
   "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Noto+Sans:wght@400;500;600;700&display=swap";
+
+/** Shrink address font until the one-line text fits maxWidthPx (print + WhatsApp). */
+function fitInvoiceAddressFontSize(
+  text: string,
+  preferredPx: number,
+  maxWidthPx: number,
+  bold = false,
+  minPx = 6.5,
+): number {
+  const line = invoiceAddressOneLine(text);
+  if (!line) return preferredPx;
+  let size = Math.max(minPx, Number(preferredPx) || minPx);
+  const weight = bold ? "700" : "400";
+  const measure = (px: number) => {
+    if (typeof document === "undefined") return line.length * px * 0.55;
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return line.length * px * 0.55;
+    ctx.font = `${weight} ${px}px ${INVOICE_FONT}`;
+    return ctx.measureText(line).width;
+  };
+  while (size > minPx && measure(size) > maxWidthPx) size -= 0.25;
+  return Math.round(size * 4) / 4;
+}
+
+
 
 /** Force-download the unicode-range file that contains ₹ (lazy-loaded otherwise). */
 async function ensureInvoiceFontsReady(): Promise<void> {
@@ -653,7 +683,12 @@ const InvoicePreviewLegacy = ({
       }
       if (brand.invoice_address) {
         const addressLine = invoiceAddressOneLine(brand.invoice_address);
-        h += `<p style="margin:0;${textStyleCss(brand, "invoice_address", "8", PALETTE.muted)};white-space:nowrap;overflow:hidden;text-overflow:clip;text-align:${brand.invoice_address_align};line-height:1.2;max-width:100%">${addressLine}</p>`;
+        const preferredAddr = Number(brand.invoice_address_size || 8) || 8;
+        const addrBold = brand.invoice_address_bold !== "false" && brand.invoice_address_bold !== "";
+        // Printable A5 width ~132mm ≈ 499px @96dpi; keep a small safety margin.
+        const addrPx = fitInvoiceAddressFontSize(addressLine, preferredAddr, 490, addrBold);
+        const addrCss = textStyleCss(brand, "invoice_address", "8", PALETTE.muted).replace(/font-size:\s*[\d.]+px/i, `font-size:${addrPx}px`);
+        h += `<p style="margin:0;${addrCss};white-space:nowrap;overflow:visible;text-align:${brand.invoice_address_align};line-height:1.25;max-width:100%">${addressLine}</p>`;
       }
       h += `</div><div style="height:2px;background:${PALETTE.red};width:100%;margin:0 0 6px;padding:0;border:0"></div>`;
       return h;
@@ -1026,22 +1061,34 @@ const InvoicePreviewLegacy = ({
                 {brand.invoice_contact}
               </p>
             )}
-            {brand.invoice_address && (
+            {brand.invoice_address && (() => {
+              const addressLine = invoiceAddressOneLine(brand.invoice_address);
+              const preferredAddr = Number(brand.invoice_address_size || 8) || 8;
+              const addrBold = brand.invoice_address_bold !== "false" && !!brand.invoice_address_bold;
+              const addrPx = fitInvoiceAddressFontSize(
+                addressLine,
+                preferredAddr,
+                INVOICE_ADDRESS_MAX_WIDTH_PX,
+                addrBold,
+              );
+              const base = textStyle(brand, "invoice_address", "8", PALETTE.muted);
+              return (
               <p
                 style={{
+                  ...base,
                   margin: 0,
+                  fontSize: addrPx,
                   whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "clip",
+                  overflow: "visible",
                   maxWidth: "100%",
-                  lineHeight: 1.2,
+                  lineHeight: 1.25,
                   textAlign: brand.invoice_address_align as any,
-                  ...textStyle(brand, "invoice_address", "8", PALETTE.muted),
                 }}
               >
-                {invoiceAddressOneLine(brand.invoice_address)}
+                {addressLine}
               </p>
-            )}
+              );
+            })()}
           </div>
           <div style={{ height: 2, background: PALETTE.red, width: "100%", margin: "0 0 6px", padding: 0, border: "none" }} />
 
