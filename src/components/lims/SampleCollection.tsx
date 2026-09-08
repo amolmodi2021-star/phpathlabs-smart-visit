@@ -148,6 +148,35 @@ const SampleCollection = () => {
     staleTime: 120_000,
   });
 
+  // Tube index can still include cancelled bills (orphan pending tubes). Exclude them so
+  // Pending/Collect Later badges match the rows that can actually render.
+  const indexRegIds = useMemo(
+    () => [...new Set(tubeIndex.map((t) => t.registration_id))],
+    [tubeIndex]
+  );
+
+  const { data: openRegIds, isLoading: loadingOpenRegs } = useQuery({
+    queryKey: ["sample_collection_open_regs", shortIdsKey(indexRegIds, "sc-open")],
+    enabled: tabActive && indexRegIds.length > 0,
+    queryFn: async () => {
+      const open = new Set<string>();
+      const chunkSize = 100;
+      for (let i = 0; i < indexRegIds.length; i += chunkSize) {
+        const chunk = indexRegIds.slice(i, i + chunkSize);
+        const { data, error } = await supabase
+          .from("patient_registrations")
+          .select("id")
+          .in("id", chunk)
+          .eq("bill_cancelled", false)
+          .neq("status", "cancelled");
+        if (error) throw error;
+        (data || []).forEach((r: { id: string }) => open.add(r.id));
+      }
+      return open;
+    },
+    staleTime: 120_000,
+  });
+
   const idsByStatus = useMemo(() => {
     const pending: string[] = [];
     const deferred: string[] = [];
@@ -155,8 +184,14 @@ const SampleCollection = () => {
     const seenP = new Set<string>();
     const seenD = new Set<string>();
     const seenC = new Set<string>();
+    // Wait for cancelled-bill filter before counting — avoids Pending N with fewer rows.
+    if (indexRegIds.length > 0 && !openRegIds) {
+      return { pending, deferred, collected };
+    }
+    const allow = openRegIds;
     // tubeIndex is newest-first — preserve first-seen order
     for (const t of tubeIndex) {
+      if (allow && !allow.has(t.registration_id)) continue;
       if (t.status === "pending" && !seenP.has(t.registration_id)) {
         seenP.add(t.registration_id);
         pending.push(t.registration_id);
@@ -169,7 +204,7 @@ const SampleCollection = () => {
       }
     }
     return { pending, deferred, collected };
-  }, [tubeIndex]);
+  }, [tubeIndex, openRegIds, indexRegIds.length]);
 
   const activeCandidateIds = idsByStatus[activeTab];
 
@@ -411,6 +446,7 @@ const SampleCollection = () => {
 
   const isLoading =
     loadingIndex
+    || (indexRegIds.length > 0 && (loadingOpenRegs || openRegIds === undefined))
     || (!!appliedSearch && searchingIds && searchMatchedIds === undefined)
     || (pageIds.length > 0 && (loadingRegs || loadingTubes));
   const isFetching = searchingIds || fetchingRegs || fetchingTubes;

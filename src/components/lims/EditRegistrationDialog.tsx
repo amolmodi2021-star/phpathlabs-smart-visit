@@ -820,7 +820,21 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
         due_amount: 0,
       } as any).eq("id", reg.id);
       if (error) throw error;
+
+      // Drop leftover collection-queue tubes so cancelled bills never inflate Pending counts.
+      await supabase
+        .from("sample_tubes" as any)
+        .delete()
+        .eq("registration_id", reg.id)
+        .in("status", ["pending", "deferred", "collected"]);
+
       qc.invalidateQueries({ queryKey: ["patient_registrations"] });
+      qc.invalidateQueries({ queryKey: ["sample_tubes_collection"] });
+      qc.invalidateQueries({ queryKey: ["sample_collection_open_regs"] });
+      qc.invalidateQueries({ queryKey: ["sample_collection_page_tubes"] });
+      qc.invalidateQueries({ queryKey: ["sample_collection_regs"] });
+      qc.invalidateQueries({ queryKey: ["sample_tubes_acceptance_pending"] });
+      qc.invalidateQueries({ queryKey: ["sample_acceptance_regs"] });
 
       // Log TWO entries dated today — both audit-correct and cash-drawer-correct.
       // 1) Refund row: actual cash outflow in chosen mode (Cash or NEFT only).
