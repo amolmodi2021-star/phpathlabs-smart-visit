@@ -99,14 +99,15 @@ function refundModeLabel(mode?: string | null): string {
   return `Refund (${m})`;
 }
 
-function paymentStatusBadge(data: any): { label: string; tone: "paid" | "partial" | "due" | "cancelled" } {
+function paymentStatusBadge(data: any): { label: string; tone: "paid" | "partial" | "due" | "cancelled" } | null {
   if (data?.bill_cancelled) return { label: "CANCELLED", tone: "cancelled" };
   const due = Number(data?.due_amount || 0);
   const paid = Number(data?.paid_amount || 0);
   if (due > 0 && paid > 0) return { label: "PARTIALLY PAID", tone: "partial" };
   if (due > 0) return { label: "DUE", tone: "due" };
   if (paid > 0) return { label: "PAID", tone: "paid" };
-  return { label: "DUE", tone: "due" };
+  // Net payable / due is already zero (e.g. 100% discount) — no badge.
+  return null;
 }
 
 
@@ -826,7 +827,8 @@ const InvoicePreviewLegacy = ({
       let summaryHtml = '';
       if (isLast) {
         const status = paymentStatusBadge(data);
-        const statusFg = status.tone === "paid" || status.tone === "partial" ? PALETTE.discount : PALETTE.red;
+        const showStatusBadge = !!status && (status.tone === "cancelled" || activeFinal > 0);
+        const statusFg = status && (status.tone === "paid" || status.tone === "partial") ? PALETTE.discount : PALETTE.red;
         const dueAmt = Number(data.due_amount || 0);
         const paidAmt = Number(data.paid_amount || 0);
 
@@ -863,13 +865,16 @@ const InvoicePreviewLegacy = ({
           leftInner += sumRow("Balance Due", `₹${dueAmt}`, { color: PALETTE.red, weight: "700", size: "10px" });
         }
         leftInner += `</table>`;
-        leftInner += `<div style="margin-top:8px;display:inline-flex;align-items:center;gap:6px;background:${PALETTE.white};border:1px solid ${PALETTE.blueLine};border-radius:8px;padding:5px 8px">`;
-        leftInner += `<span style="display:inline-block;width:14px;height:14px;border-radius:999px;background:${statusFg};color:#fff;font-size:9px;line-height:14px;text-align:center;font-weight:800">✓</span>`;
-        leftInner += `<div style="line-height:1.15"><div style="font-size:9px;font-weight:800;color:${statusFg};letter-spacing:0.04em">${status.label}</div>`;
-        if (dueAmt > 0 && status.tone !== "cancelled") {
-          leftInner += `<div style="font-size:10px;font-weight:800;color:${statusFg}">₹${dueAmt} DUE</div>`;
+        if (showStatusBadge && status) {
+          leftInner += `<div style="margin-top:8px;display:inline-flex;align-items:center;gap:6px;background:${PALETTE.white};border:1px solid ${PALETTE.blueLine};border-radius:8px;padding:5px 8px">`;
+          leftInner += `<span style="display:inline-block;width:14px;height:14px;border-radius:999px;background:${statusFg};color:#fff;font-size:9px;line-height:14px;text-align:center;font-weight:800">✓</span>`;
+          leftInner += `<div style="line-height:1.15"><div style="font-size:9px;font-weight:800;color:${statusFg};letter-spacing:0.04em">${status.label}</div>`;
+          if (dueAmt > 0 && status.tone !== "cancelled") {
+            leftInner += `<div style="font-size:10px;font-weight:800;color:${statusFg}">₹${dueAmt} DUE</div>`;
+          }
+          leftInner += `</div></div>`;
         }
-        leftInner += `</div></div></div>`;
+        leftInner += `</div>`;
 
         const preparedByName = data.registered_by || "—";
         const printedByName = getCurrentUserName() || "—";
@@ -1286,7 +1291,8 @@ const InvoicePreviewLegacy = ({
               <div style={{ flex: "0 0 188px", display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
                 {(() => {
                   const status = paymentStatusBadge(data);
-                  const statusFg = status.tone === "paid" || status.tone === "partial" ? PALETTE.discount : PALETTE.red;
+                  const showStatusBadge = !!status && (status.tone === "cancelled" || activeFinal > 0);
+                  const statusFg = status && (status.tone === "paid" || status.tone === "partial") ? PALETTE.discount : PALETTE.red;
                   const dueAmt = Number(data.due_amount || 0);
                   const paidAmt = Number(data.paid_amount || 0);
                   return (
@@ -1354,6 +1360,7 @@ const InvoicePreviewLegacy = ({
                         )}
                       </tbody>
                     </table>
+                    {showStatusBadge && status && (
                     <div
                       style={{
                         marginTop: 8,
@@ -1374,6 +1381,7 @@ const InvoicePreviewLegacy = ({
                         )}
                       </div>
                     </div>
+                    )}
                   </div>
                 </div>
                   );
