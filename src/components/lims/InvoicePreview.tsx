@@ -724,8 +724,7 @@ const InvoicePreview = ({
         tableRows += totalsRowHtml(pageTests, isLast);
       }
 
-      // Payment summary only on last page — each row is independent so a long
-      // label (Home Visit Charges) cannot stretch the gap on Gross Amount.
+      // Payment summary — compact 2-col table so all ₹ amounts share one vertical line.
       let summaryHtml = '';
       if (isLast) {
         const moneyRow = (
@@ -738,13 +737,15 @@ const InvoicePreview = ({
           const bg = opts?.bg || "transparent";
           const size = opts?.size || "11px";
           const amountSize = opts?.amountSize || size;
-          return `<div style="font-size:${size};font-weight:${weight};color:${color};background:${bg};line-height:1.35;white-space:nowrap;margin:0">` +
-            `<span>${label}</span>` +
-            `<span style="padding-left:10px;font-size:${amountSize}">${amount}</span>` +
-            `</div>`;
+          const pad = "1px 0";
+          return `<tr>
+            <td style="padding:${pad};padding-right:16px;font-size:${size};font-weight:${weight};color:${color};background:${bg};text-align:left;vertical-align:middle;border:0;white-space:nowrap;line-height:1.35">${label}</td>
+            <td style="padding:${pad};font-size:${amountSize};font-weight:${weight};color:${color};background:${bg};text-align:right;vertical-align:middle;white-space:nowrap;border:0;line-height:1.35">${amount}</td>
+          </tr>`;
         };
 
         summaryHtml = `<div style="margin-top:14px;padding:0;text-align:left">`;
+        summaryHtml += `<table style="width:auto;border-collapse:collapse">`;
         if (showGross) {
           summaryHtml += moneyRow("Gross Amount", `₹${activeGross}`, { color: PALETTE.muted, weight: "500", size: "10px" });
           if (activeDiscount > 0) {
@@ -779,6 +780,7 @@ const InvoicePreview = ({
             });
           }
         }
+        summaryHtml += `</table>`;
         if (Number(data.paid_amount || 0) > 0) {
           summaryHtml += `<div style="font-size:10px;margin-top:6px;color:${PALETTE.muted};line-height:1.25;text-align:left">Received with thanks from <strong style="color:${PALETTE.ink}">${patientDisplayName(data)}</strong> a sum of Rs. ${Number(data.paid_amount).toFixed(2)}/- (${numberToWords(Number(data.paid_amount))} Rupees)</div>`;
         }
@@ -1077,68 +1079,76 @@ const InvoicePreview = ({
           </table>
 
           <div style={{ marginTop: 14, padding: 0, textAlign: "left" }}>
-            {showGross && (
-              <>
-                <div style={{ fontSize: 11, fontWeight: 500, color: PALETTE.muted, lineHeight: 1.35, whiteSpace: "nowrap" }}>
-                  <span>Gross Amount</span>
-                  <span style={{ paddingLeft: 10, color: PALETTE.ink }}>₹{activeGross}</span>
-                </div>
-                {activeDiscount > 0 && (
-                  <div style={{ fontSize: 11, fontWeight: 600, color: PALETTE.discount, lineHeight: 1.35, whiteSpace: "nowrap" }}>
-                    <span>Discount</span>
-                    <span style={{ paddingLeft: 10 }}>-₹{activeDiscount}</span>
-                  </div>
+            <table style={{ width: "auto", borderCollapse: "collapse" }}>
+              <tbody>
+                {showGross && (
+                  <>
+                    <tr>
+                      <td style={{ padding: "1px 16px 1px 0", fontSize: 11, color: PALETTE.muted, textAlign: "left", border: "none", lineHeight: 1.35, whiteSpace: "nowrap" }}>Gross Amount</td>
+                      <td style={{ padding: "1px 0", fontSize: 11, color: PALETTE.ink, textAlign: "right", whiteSpace: "nowrap", border: "none", lineHeight: 1.35 }}>₹{activeGross}</td>
+                    </tr>
+                    {activeDiscount > 0 && (
+                      <tr>
+                        <td style={{ padding: "1px 16px 1px 0", fontSize: 11, color: PALETTE.discount, fontWeight: 600, textAlign: "left", border: "none", lineHeight: 1.35, whiteSpace: "nowrap" }}>Discount</td>
+                        <td style={{ padding: "1px 0", fontSize: 11, color: PALETTE.discount, fontWeight: 600, textAlign: "right", whiteSpace: "nowrap", border: "none", lineHeight: 1.35 }}>-₹{activeDiscount}</td>
+                      </tr>
+                    )}
+                    {Number(data.home_visit_charges || 0) > 0 && (
+                      <tr>
+                        <td style={{ padding: "1px 16px 1px 0", fontSize: 11, color: PALETTE.muted, textAlign: "left", border: "none", lineHeight: 1.35, whiteSpace: "nowrap" }}>Home Visit Charges</td>
+                        <td style={{ padding: "1px 0", fontSize: 11, color: PALETTE.ink, textAlign: "right", whiteSpace: "nowrap", border: "none", lineHeight: 1.35 }}>+₹{data.home_visit_charges}</td>
+                      </tr>
+                    )}
+                  </>
                 )}
-                {Number(data.home_visit_charges || 0) > 0 && (
-                  <div style={{ fontSize: 11, fontWeight: 500, color: PALETTE.muted, lineHeight: 1.35, whiteSpace: "nowrap" }}>
-                    <span>Home Visit Charges</span>
-                    <span style={{ paddingLeft: 10, color: PALETTE.ink }}>+₹{data.home_visit_charges}</span>
-                  </div>
+                <tr>
+                  <td style={{ padding: "1px 16px 1px 0", fontSize: 12, fontWeight: 800, color: PALETTE.ink, textAlign: "left", border: "none", lineHeight: 1.35, whiteSpace: "nowrap" }}>Final Amount</td>
+                  <td style={{ padding: "1px 0", fontSize: 12, fontWeight: 800, color: PALETTE.ink, textAlign: "right", whiteSpace: "nowrap", border: "none", lineHeight: 1.35 }}>₹{activeFinal}</td>
+                </tr>
+                {payments.map((p: any, i: number) => (
+                  <tr key={i}>
+                    <td style={{ padding: "1px 16px 1px 0", fontSize: 10, color: PALETTE.muted, textAlign: "left", border: "none", lineHeight: 1.35, whiteSpace: "nowrap" }}>
+                      {p.mode || "Payment"}
+                    </td>
+                    <td style={{ padding: "1px 0", fontSize: 10, color: PALETTE.ink, textAlign: "right", whiteSpace: "nowrap", border: "none", lineHeight: 1.35 }}>₹{p.amount}</td>
+                  </tr>
+                ))}
+                <tr>
+                  <td style={{ padding: "1px 16px 1px 0", fontSize: 11, fontWeight: 700, color: PALETTE.ink, textAlign: "left", border: "none", lineHeight: 1.35, whiteSpace: "nowrap" }}>Paid</td>
+                  <td style={{ padding: "1px 0", fontSize: 11, fontWeight: 700, color: PALETTE.ink, textAlign: "right", whiteSpace: "nowrap", border: "none", lineHeight: 1.35 }}>₹{data.paid_amount}</td>
+                </tr>
+                {data.due_amount > 0 && (
+                  <tr>
+                    <td style={{ padding: "1px 16px 1px 0", fontSize: 11, fontWeight: 800, color: PALETTE.red, background: "#FEF2F2", textAlign: "left", border: "none", lineHeight: 1.35, whiteSpace: "nowrap" }}>Due</td>
+                    <td style={{ padding: "1px 0", fontSize: 11, fontWeight: 800, color: PALETTE.red, background: "#FEF2F2", textAlign: "right", whiteSpace: "nowrap", border: "none", lineHeight: 1.35 }}>₹{data.due_amount}</td>
+                  </tr>
                 )}
-              </>
-            )}
-            <div style={{ fontSize: 12, fontWeight: 800, color: PALETTE.ink, lineHeight: 1.35, whiteSpace: "nowrap" }}>
-              <span>Final Amount</span>
-              <span style={{ paddingLeft: 10 }}>₹{activeFinal}</span>
-            </div>
-            {payments.map((p: any, i: number) => (
-              <div key={i} style={{ fontSize: 10, fontWeight: 500, color: PALETTE.muted, lineHeight: 1.35, whiteSpace: "nowrap" }}>
-                <span>{p.mode || "Payment"}</span>
-                <span style={{ paddingLeft: 10, color: PALETTE.ink }}>₹{p.amount}</span>
-              </div>
-            ))}
-            <div style={{ fontSize: 11, fontWeight: 700, color: PALETTE.ink, lineHeight: 1.35, whiteSpace: "nowrap" }}>
-              <span>Paid</span>
-              <span style={{ paddingLeft: 10 }}>₹{data.paid_amount}</span>
-            </div>
-            {data.due_amount > 0 && (
-              <div style={{ fontSize: 11, fontWeight: 800, color: PALETTE.red, background: "#FEF2F2", lineHeight: 1.35, whiteSpace: "nowrap" }}>
-                <span>Due</span>
-                <span style={{ paddingLeft: 10 }}>₹{data.due_amount}</span>
-              </div>
-            )}
+              </tbody>
+            </table>
             {Number(data.paid_amount || 0) > 0 && (
               <div style={{ fontSize: 10, marginTop: 6, color: PALETTE.muted, lineHeight: 1.25, textAlign: "left" }}>
                 Received with thanks from <strong style={{ color: PALETTE.ink }}>{patientDisplayName(data)}</strong> a sum of Rs. {Number(data.paid_amount).toFixed(2)}/- ({numberToWords(Number(data.paid_amount))} Rupees)
               </div>
             )}
             {data.refund_amount > 0 && (
-              <div style={{ marginTop: 4, borderTop: `1px solid ${PALETTE.line}`, paddingTop: 4 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: PALETTE.orange, lineHeight: 1.35, whiteSpace: "nowrap" }}>
-                  <span>Refund Amount</span>
-                  <span style={{ paddingLeft: 10 }}>₹{data.refund_amount}</span>
-                </div>
-                <div style={{ fontSize: 10, color: PALETTE.muted, lineHeight: 1.35, whiteSpace: "nowrap" }}>
-                  <span>Refund Mode</span>
-                  <span style={{ paddingLeft: 10 }}>{data.refund_mode || "—"}</span>
-                </div>
-                {data.refund_date && (
-                  <div style={{ fontSize: 10, color: PALETTE.muted, lineHeight: 1.35, whiteSpace: "nowrap" }}>
-                    <span>Refund Date</span>
-                    <span style={{ paddingLeft: 10 }}>{format(new Date(data.refund_date), "dd-MM-yyyy hh:mm a")}</span>
-                  </div>
-                )}
-              </div>
+              <table style={{ width: "auto", borderCollapse: "collapse", marginTop: 4, borderTop: `1px solid ${PALETTE.line}` }}>
+                <tbody>
+                  <tr>
+                    <td style={{ padding: "4px 16px 1px 0", fontSize: 11, fontWeight: 700, color: PALETTE.orange, textAlign: "left", border: "none", whiteSpace: "nowrap" }}>Refund Amount</td>
+                    <td style={{ padding: "4px 0 1px", fontSize: 11, fontWeight: 700, color: PALETTE.orange, textAlign: "right", whiteSpace: "nowrap", border: "none" }}>₹{data.refund_amount}</td>
+                  </tr>
+                  <tr>
+                    <td style={{ padding: "1px 16px 1px 0", fontSize: 10, color: PALETTE.muted, textAlign: "left", border: "none", whiteSpace: "nowrap" }}>Refund Mode</td>
+                    <td style={{ padding: "1px 0", fontSize: 10, color: PALETTE.muted, textAlign: "right", border: "none" }}>{data.refund_mode || "—"}</td>
+                  </tr>
+                  {data.refund_date && (
+                    <tr>
+                      <td style={{ padding: "1px 16px 1px 0", fontSize: 10, color: PALETTE.muted, textAlign: "left", border: "none", whiteSpace: "nowrap" }}>Refund Date</td>
+                      <td style={{ padding: "1px 0", fontSize: 10, color: PALETTE.muted, textAlign: "right", border: "none" }}>{format(new Date(data.refund_date), "dd-MM-yyyy hh:mm a")}</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
             )}
             {cancelledTests.length > 0 && (
               <div style={{ fontSize: 9, color: PALETTE.muted, marginTop: 2, textAlign: "left" }}>
