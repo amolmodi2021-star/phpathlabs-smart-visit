@@ -358,7 +358,7 @@ const ResultsEntry = () => {
   const detailEnabled = tabActive && !!expandedPatient;
 
   // ─── Masters only after expand (cached; shared across Results/Verify/Doctor) ───
-  const { data: testsMap = {} } = useQuery({
+  const { data: testsMap = {}, isFetched: testsMapFetched } = useQuery({
     queryKey: ["results_tests_map"],
     enabled: detailEnabled,
     queryFn: async () => {
@@ -370,7 +370,7 @@ const ResultsEntry = () => {
     staleTime: 600_000,
   });
 
-  const { data: testParamsMap = {} } = useQuery({
+  const { data: testParamsMap = {}, isFetched: testParamsMapFetched } = useQuery({
     queryKey: ["results_test_params_full"],
     enabled: detailEnabled,
     queryFn: async () => {
@@ -496,7 +496,12 @@ const ResultsEntry = () => {
   }, [acceptedTubes]);
   // Apply tube filter only after expanded patient's tube query has completed once.
   const tubesReady = !detailEnabled || tubesFetched;
-  const detailReady = !detailEnabled || (resultsFetched && tubesFetched && detailRegFetched && !!detailReg);
+  // Wait for test masters too — otherwise machine-wise expand sees empty instrument_name
+  // and auto-collapses before Sysmex params can match.
+  const mastersReady = !detailEnabled || (testsMapFetched && testParamsMapFetched);
+  const detailReady =
+    !detailEnabled ||
+    (resultsFetched && tubesFetched && detailRegFetched && !!detailReg && mastersReady);
 
   // ─── Fetch outsourced_test_snips for expanded patient only ───
   const { data: outsourcedSnips = [] } = useQuery({
@@ -1007,7 +1012,7 @@ const ResultsEntry = () => {
             testId: t.test_id,
             testName: t.test_name || testInfo.test_name || "",
             departmentId: testInfo.department_id || "",
-            machineName: testInfo.instrument_name || "",
+            machineName: String(testInfo.instrument_name || testsInstrumentMap[t.test_id] || "").trim(),
             displayOrder: tp.display_order || 0,
             rangeType: resolved.rangeType,
             descriptiveOptions: resolved.descriptiveOptions,
@@ -1024,7 +1029,7 @@ const ResultsEntry = () => {
       }
       return { registration: fullReg, parameters, incompleteTests, snipOnlyTests };
     });
-  }, [acceptedRegs, expandedPatient, detailReady, detailReg, testsMap, testParamsMap, existingResults, resolveNormalRange, transferredTestKeys, outsourcedParamSets, outsourcedSnipDetails, acceptedTestIdsByReg, tubesReady]);
+  }, [acceptedRegs, expandedPatient, detailReady, detailReg, testsMap, testsInstrumentMap, testParamsMap, existingResults, resolveNormalRange, transferredTestKeys, outsourcedParamSets, outsourcedSnipDetails, acceptedTestIdsByReg, tubesReady]);
 
   // ─── Loaded test-level notes: first non-null test_note per (reg, test) ───
   const loadedTestNotes = useMemo(() => {
@@ -1577,43 +1582,37 @@ const ResultsEntry = () => {
 
     const filterMachine = selectedMachine === "others" ? "" : selectedMachine;
     const matchesMachine = (testId: string, machineName?: string) => {
-      if (machineName !== undefined) return (machineName || "") === filterMachine;
-      const inst = (testsMap[testId]?.instrument_name || testsInstrumentMap[testId] || "").trim();
-      return inst === filterMachine;
+      // Prefer non-empty param machineName; otherwise fall back to test masters.
+      // Empty "" used to win over testsInstrumentMap and strip every Sysmex row on expand.
+      const fromParam = machineName !== undefined ? String(machineName).trim() : "";
+      const fromMaps = String(
+        testsMap[testId]?.instrument_name || testsInstrumentMap[testId] || "",
+      ).trim();
+      const resolved = fromParam || fromMaps;
+      return resolved === String(filterMachine).trim();
     };
 
-    return activeEntries
-      .map((e) => {
-        if (e.registration.id !== expandedPatient) return e;
-        return {
-          ...e,
-          parameters: e.parameters.filter((p) => matchesMachine(p.testId, p.machineName)),
-          incompleteTests: e.incompleteTests.filter((t) => matchesMachine(t.testId)),
-          snipOnlyTests: e.snipOnlyTests.filter((t) => matchesMachine(t.testId)),
-        };
-      })
-      // Expanded with nothing left for this machine → drop the card (already past Results)
-      .filter((e) => {
-        if (e.registration.id !== expandedPatient || !detailReady) return true;
-        return (
-          e.parameters.length > 0 ||
-          e.incompleteTests.length > 0 ||
-          e.snipOnlyTests.length > 0
-        );
-      });
+    return activeEntries.map((e) => {
+      if (e.registration.id !== expandedPatient) return e;
+      return {
+        ...e,
+        parameters: e.parameters.filter((p) => matchesMachine(p.testId, p.machineName)),
+        incompleteTests: e.incompleteTests.filter((t) => matchesMachine(t.testId)),
+        snipOnlyTests: e.snipOnlyTests.filter((t) => matchesMachine(t.testId)),
+      };
+    });
   }, [patientEntries, mode, selectedMachine, expandedPatient, testsMap, testsInstrumentMap, detailReady]);
 
-  // If expand reveals nothing left in Results for this machine, drop selection and refresh queue.
+  // Soft refresh: if expanded patient left the machine queue entirely, clear selection.
+  // Do NOT collapse merely because machine filter temporarily emptied params (that
+  // made Sysmex cards look like they "won't open").
   useEffect(() => {
     if (!expandedPatient || !detailReady) return;
-    const stillVisible = filteredEntries.some((e) => e.registration.id === expandedPatient);
-    if (stillVisible) return;
+    const stillInList = filteredEntries.some((e) => e.registration.id === expandedPatient);
+    if (stillInList) return;
     setExpandedPatient(null);
     setExpandedTestKey(null);
-    if (machineFilterActive) {
-      qc.invalidateQueries({ queryKey: ["results_machine_filtered_ids"] });
-    }
-  }, [filteredEntries, expandedPatient, detailReady, machineFilterActive, qc]);
+  }, [filteredEntries, expandedPatient, detailReady]);
 
   // ─── NEW arrivals badge tracker ───
   const filteredRegIds = useMemo(() => filteredEntries.map(e => e.registration.id), [filteredEntries]);
@@ -2032,6 +2031,12 @@ const ResultsEntry = () => {
                 <span className="text-amber-600">— No parameters configured. Please complete test setup in Report Parameters to enter results.</span>
               </div>
             ))}
+          </div>
+        )}
+
+        {entry.parameters.length === 0 && entry.incompleteTests.length === 0 && entry.snipOnlyTests.length === 0 && (
+          <div className="py-4 text-center text-sm text-muted-foreground">
+            No pending parameters for this machine filter. Switch to Patient Wise or All machines to review.
           </div>
         )}
 
