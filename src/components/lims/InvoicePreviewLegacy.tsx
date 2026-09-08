@@ -63,6 +63,11 @@ function invoiceLineDiscount(t: any): number {
 }
 
 /** Prefer payment timestamp; fall back to registration time (registration-time payments). */
+/** Collapse address to a single printable line (no mid-pin wraps). */
+function invoiceAddressOneLine(address?: string | null): string {
+  return String(address || "").replace(/\s+/g, " ").trim();
+}
+
 function paymentTimestamp(
   p: { date?: string; payment_date?: string; collected_at?: string } | null | undefined,
   registrationAt?: Date | string | null,
@@ -647,7 +652,8 @@ const InvoicePreviewLegacy = ({
         h += `<p style="margin:1px 0 0;${textStyleCss(brand, "invoice_contact", "9", PALETTE.muted)};text-align:${brand.invoice_lab_name_align};line-height:1.2">${brand.invoice_contact}</p>`;
       }
       if (brand.invoice_address) {
-        h += `<p style="margin:0;${textStyleCss(brand, "invoice_address", "8", PALETTE.muted)};white-space:pre-line;text-align:${brand.invoice_address_align};line-height:1.2">${brand.invoice_address}</p>`;
+        const addressLine = invoiceAddressOneLine(brand.invoice_address);
+        h += `<p style="margin:0;${textStyleCss(brand, "invoice_address", "8", PALETTE.muted)};white-space:nowrap;overflow:hidden;text-overflow:clip;text-align:${brand.invoice_address_align};line-height:1.2;max-width:100%">${addressLine}</p>`;
       }
       h += `</div><div style="height:2px;background:${PALETTE.red};width:100%;margin:0 0 6px;padding:0;border:0"></div>`;
       return h;
@@ -1028,8 +1034,19 @@ const InvoicePreviewLegacy = ({
               </p>
             )}
             {brand.invoice_address && (
-              <p style={{ margin: 0, whiteSpace: "pre-line", lineHeight: 1.2, textAlign: brand.invoice_address_align as any, ...textStyle(brand, "invoice_address", "8", PALETTE.muted) }}>
-                {brand.invoice_address}
+              <p
+                style={{
+                  margin: 0,
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "clip",
+                  maxWidth: "100%",
+                  lineHeight: 1.2,
+                  textAlign: brand.invoice_address_align as any,
+                  ...textStyle(brand, "invoice_address", "8", PALETTE.muted),
+                }}
+              >
+                {invoiceAddressOneLine(brand.invoice_address)}
               </p>
             )}
           </div>
