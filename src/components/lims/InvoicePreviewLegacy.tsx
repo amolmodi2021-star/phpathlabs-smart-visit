@@ -686,7 +686,7 @@ const InvoicePreviewLegacy = ({
         const preferredAddr = Number(brand.invoice_address_size || 8) || 8;
         const addrBold = brand.invoice_address_bold !== "false" && brand.invoice_address_bold !== "";
         // Printable A5 width ~132mm ≈ 499px @96dpi; keep a small safety margin.
-        const addrPx = fitInvoiceAddressFontSize(addressLine, preferredAddr, 490, addrBold);
+        const addrPx = fitInvoiceAddressFontSize(addressLine, preferredAddr, 520, addrBold);
         const addrCss = textStyleCss(brand, "invoice_address", "8", PALETTE.muted).replace(/font-size:\s*[\d.]+px/i, `font-size:${addrPx}px`);
         h += `<p style="margin:0;${addrCss};white-space:nowrap;overflow:visible;text-align:${brand.invoice_address_align};line-height:1.25;max-width:100%">${addressLine}</p>`;
       }
@@ -942,7 +942,7 @@ const InvoicePreviewLegacy = ({
         summaryHtml += `</div>`;
       }
 
-      const preparedPrintedFooter = `<div style="margin-top:6px;padding-top:4px;border-top:1px solid ${PALETTE.line};text-align:center;font-size:11px;color:${PALETTE.muted};line-height:1.55;padding-bottom:3px">This is an electronically generated receipt and does not require a signature</div>`;
+      const preparedPrintedFooter = `<div style="margin-top:6px;padding-top:5px;border-top:1px solid ${PALETTE.line};text-align:center;font-size:11px;color:${PALETTE.muted};line-height:1.7;padding-bottom:10px;overflow:visible">This is an electronically generated receipt and does not require a signature</div>`;
 
       pagesHtml += `<div id="invoice-page"><div id="invoice-sheet">`;
       pagesHtml += headerHtml();
@@ -961,14 +961,14 @@ const InvoicePreviewLegacy = ({
       <style>
         /* Side margins ≥12mm: preview can look fine at 5mm, but most printers clip
            the outer ~5–10mm (hardware non-printable area) on left/right. */
-        @page { size: A5; margin: 8mm 8mm; }
+        @page { size: A5; margin: 6mm 7mm 5mm 7mm; }
         * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; box-sizing: border-box; }
         html, body { margin: 0; padding: 0; }
         body { font-family: ${INVOICE_FONT}; color: ${PALETTE.ink}; }
-        /* A5 148×210mm − @page margins → 124×194mm. Clip so scale never creates page 2. */
+        /* A5 148×210mm − @page margins → ~134×199mm. Use full box so tall invoices scale less. */
         #invoice-page {
-          width: 124mm;
-          height: 194mm;
+          width: 134mm;
+          height: 199mm;
           overflow: hidden;
           margin: 0 auto;
           page-break-after: avoid;
@@ -977,7 +977,7 @@ const InvoicePreviewLegacy = ({
         #invoice-sheet {
           width: 100%;
           transform-origin: top left;
-          padding: 0 1mm;
+          padding: 0 1mm 2mm;
         }
         table { width: 100%; border-collapse: collapse; }
         td, th { vertical-align: middle; }
@@ -993,8 +993,10 @@ const InvoicePreviewLegacy = ({
             if (!page || !sheet) return;
             sheet.style.transform = "none";
             sheet.style.width = "100%";
-            var maxH = page.clientHeight || Math.round((194 / 25.4) * 96);
-            var h = sheet.scrollHeight;
+            // Prefer full client height (199mm) so tall bills use the blank area under the footer.
+            var maxH = page.clientHeight || Math.round((199 / 25.4) * 96);
+            // Include a few px so descenders on the last line are not clipped by overflow:hidden.
+            var h = sheet.scrollHeight + 6;
             var scale = h > maxH ? Math.max(0.38, maxH / h) : 1;
             if (scale < 1) {
               sheet.style.transformOrigin = "top left";
@@ -1450,9 +1452,10 @@ const InvoicePreviewLegacy = ({
               fontSize: 11,
               color: PALETTE.muted,
               marginTop: 4,
-              marginBottom: 2,
-              lineHeight: 1.55,
-              paddingBottom: 3,
+              marginBottom: 0,
+              lineHeight: 1.7,
+              paddingTop: 2,
+              paddingBottom: 10,
               overflow: "visible",
             }}
           >
