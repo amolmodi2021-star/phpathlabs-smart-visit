@@ -1,7 +1,7 @@
 import { useRef, useState, useEffect, useCallback } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Printer, Send, Loader2, Wallet } from "lucide-react";
+import { Printer, Send, Loader2, Wallet, CheckCircle2 } from "lucide-react";
 import { format } from "date-fns";
 import { toJpeg, getFontEmbedCSS } from "html-to-image";
 import JsBarcode from "jsbarcode";
@@ -94,20 +94,16 @@ function refundModeLabel(mode?: string | null): string {
   return `Refund (${m})`;
 }
 
-function primaryModesLabel(payments: Array<{ mode?: string }> | null | undefined): string {
-  const list = Array.isArray(payments) ? payments : [];
-  if (!list.length) return "—";
-  const seen = new Set<string>();
-  const modes: string[] = [];
-  for (const p of list) {
-    const mode = String(p?.mode || "Payment").trim() || "Payment";
-    const key = mode.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    modes.push(mode);
-  }
-  return modes.join(" + ") || "—";
+function paymentStatusBadge(data: any): { label: string; tone: "paid" | "partial" | "due" | "cancelled" } {
+  if (data?.bill_cancelled) return { label: "CANCELLED", tone: "cancelled" };
+  const due = Number(data?.due_amount || 0);
+  const paid = Number(data?.paid_amount || 0);
+  if (due > 0 && paid > 0) return { label: "PARTIALLY PAID", tone: "partial" };
+  if (due > 0) return { label: "DUE", tone: "due" };
+  if (paid > 0) return { label: "PAID", tone: "paid" };
+  return { label: "DUE", tone: "due" };
 }
+
 
 function isInvoicePackageLine(t: any, packageTestsById: Map<string, string[]>): boolean {
   if (String(t?.item_type || "").toLowerCase() === "package") return true;
@@ -774,40 +770,60 @@ const InvoicePreviewLegacy = ({
       // Payment summary (left) + Payment Details table (right).
       let summaryHtml = '';
       if (isLast) {
-        const moneyRow = (
-          label: string,
-          amount: string,
-          opts?: { color?: string; weight?: string; bg?: string; size?: string; amountSize?: string },
-        ) => {
-          const color = opts?.color || PALETTE.ink;
-          const weight = opts?.weight || "600";
-          const bg = opts?.bg || "transparent";
-          const size = opts?.size || "11px";
+        const status = paymentStatusBadge(data);
+        const statusFg = status.tone === "paid" || status.tone === "partial" ? PALETTE.discount : PALETTE.red;
+        const dueAmt = Number(data.due_amount || 0);
+        const paidAmt = Number(data.paid_amount || 0);
+
+        const sumRow = (label: string, amount: string, opts?: { color?: string; weight?: string; size?: string; amountSize?: string }) => {
+          const color = opts?.color || PALETTE.blue;
+          const weight = opts?.weight || "500";
+          const size = opts?.size || "10px";
           const amountSize = opts?.amountSize || size;
-          const pad = "1px 0";
           return `<tr>
-            <td style="padding:${pad};padding-right:16px;font-size:${size};font-weight:${weight};color:${color};background:${bg};text-align:left;vertical-align:middle;border:0;white-space:nowrap;line-height:1.35">${label}</td>
-            <td style="padding:${pad};font-size:${amountSize};font-weight:${weight};color:${color};background:${bg};text-align:right;vertical-align:middle;white-space:nowrap;border:0;line-height:1.35">${amount}</td>
+            <td style="padding:3px 0;font-size:${size};font-weight:${weight};color:${color};text-align:left;border:0;white-space:nowrap;line-height:1.35">${label}</td>
+            <td style="padding:3px 0;padding-left:16px;font-size:${amountSize};font-weight:${weight};color:${color};text-align:right;border:0;white-space:nowrap;line-height:1.35">${amount}</td>
           </tr>`;
         };
 
-        let leftHtml = `<table style="width:auto;border-collapse:collapse">`;
+        let leftInner = `<table style="width:100%;border-collapse:collapse">`;
         if (showGross) {
-          leftHtml += moneyRow("Gross Amount", `₹${activeGross}`, { color: PALETTE.muted, weight: "500", size: "10px" });
+          leftInner += sumRow("Gross Amount", `₹${activeGross}`, { color: PALETTE.blue, weight: "500", size: "10px" });
           if (activeDiscount > 0) {
-            leftHtml += moneyRow("Discount", `-₹${activeDiscount}`, { color: PALETTE.discount, weight: "600", size: "10px" });
+            leftInner += sumRow("Total Discount", `– ₹${activeDiscount}`, { color: PALETTE.discount, weight: "600", size: "10px" });
           }
           if (Number(data.home_visit_charges || 0) > 0) {
-            leftHtml += moneyRow("Home Visit Charges", `+₹${data.home_visit_charges}`, { color: PALETTE.muted, weight: "500", size: "10px" });
+            leftInner += sumRow("Home Visit Charges", `+ ₹${data.home_visit_charges}`, { color: PALETTE.blue, weight: "500", size: "10px" });
           }
         }
-        leftHtml += moneyRow("Final Amount", `₹${activeFinal}`, { color: PALETTE.ink, weight: "800", size: "11px", amountSize: "11px" });
-        leftHtml += moneyRow("Mode of Payment", primaryModesLabel(payments), { color: PALETTE.muted, weight: "500", size: "10px" });
-        leftHtml += moneyRow("Paid Amount", `₹${data.paid_amount}`, { color: PALETTE.ink, weight: "700", size: "10px" });
-        if (data.due_amount > 0) {
-          leftHtml += moneyRow("Due", `₹${data.due_amount}`, { color: PALETTE.red, weight: "800", size: "10px", bg: "#FEF2F2" });
+        leftInner += `<tr><td colspan="2" style="padding-top:6px;border:0"></td></tr>`;
+        leftInner += sumRow("Net Payable", `₹${activeFinal}`, { color: PALETTE.blueDark, weight: "800", size: "12px", amountSize: "13px" });
+        leftInner += `</table>`;
+
+        leftInner += `<div style="margin-top:8px;background:#E8ECF8;border-radius:8px;padding:8px 10px">`;
+        leftInner += `<table style="width:100%;border-collapse:collapse">`;
+        leftInner += sumRow("Paid Amount", `₹${paidAmt}`, { color: PALETTE.blue, weight: "600", size: "10px" });
+        if (dueAmt > 0) {
+          leftInner += `<tr><td colspan="2" style="padding:4px 0;border:0"><div style="height:1px;background:${PALETTE.blueLine}"></div></td></tr>`;
+          leftInner += sumRow("Balance Due", `₹${dueAmt}`, { color: PALETTE.red, weight: "700", size: "10px" });
         }
-        leftHtml += `</table>`;
+        leftInner += `</table>`;
+        leftInner += `<div style="margin-top:8px;display:inline-flex;align-items:center;gap:6px;background:${PALETTE.white};border:1px solid ${PALETTE.blueLine};border-radius:8px;padding:5px 8px">`;
+        leftInner += `<span style="display:inline-block;width:14px;height:14px;border-radius:999px;background:${statusFg};color:#fff;font-size:9px;line-height:14px;text-align:center;font-weight:800">✓</span>`;
+        leftInner += `<div style="line-height:1.15"><div style="font-size:9px;font-weight:800;color:${statusFg};letter-spacing:0.04em">${status.label}</div>`;
+        if (dueAmt > 0 && status.tone !== "cancelled") {
+          leftInner += `<div style="font-size:10px;font-weight:800;color:${statusFg}">₹${dueAmt} DUE</div>`;
+        }
+        leftInner += `</div></div></div>`;
+
+        const leftHtml = `
+          <div style="background:${PALETTE.blueSoft};border:1px solid ${PALETTE.blueLine};border-radius:10px;padding:10px 12px;min-width:200px;max-width:260px">
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
+              <span style="font-size:11px;font-weight:800;color:${PALETTE.blue}">Payment Summary</span>
+            </div>
+            ${leftInner}
+          </div>`;
+
 
         const th = (label: string, align = "left") =>
           `<th style="padding:4px 6px;font-size:8px;font-weight:700;letter-spacing:0.03em;text-transform:uppercase;color:${PALETTE.blue};background:${PALETTE.blueSoft};border-bottom:1px solid ${PALETTE.blueLine};text-align:${align};white-space:nowrap">${label}</th>`;
@@ -1149,49 +1165,99 @@ const InvoicePreviewLegacy = ({
 
           <div style={{ marginTop: 14, padding: 0, textAlign: "left" }}>
             <div style={{ display: "flex", gap: 14, alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap" }}>
-              <div style={{ flex: "0 0 auto" }}>
-                <table style={{ width: "auto", borderCollapse: "collapse" }}>
-                  <tbody>
-                    {showGross && (
-                      <>
-                        <tr>
-                          <td style={{ padding: "1px 16px 1px 0", fontSize: 11, color: PALETTE.muted, textAlign: "left", border: "none", lineHeight: 1.35, whiteSpace: "nowrap" }}>Gross Amount</td>
-                          <td style={{ padding: "1px 0", fontSize: 11, color: PALETTE.ink, textAlign: "right", whiteSpace: "nowrap", border: "none", lineHeight: 1.35 }}>₹{activeGross}</td>
-                        </tr>
-                        {activeDiscount > 0 && (
+              <div style={{ flex: "0 0 auto", minWidth: 200, maxWidth: 260 }}>
+                {(() => {
+                  const status = paymentStatusBadge(data);
+                  const statusFg = status.tone === "paid" || status.tone === "partial" ? PALETTE.discount : PALETTE.red;
+                  const dueAmt = Number(data.due_amount || 0);
+                  const paidAmt = Number(data.paid_amount || 0);
+                  return (
+                <div
+                  style={{
+                    background: PALETTE.blueSoft,
+                    border: `1px solid ${PALETTE.blueLine}`,
+                    borderRadius: 10,
+                    padding: "10px 12px",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+                    <Wallet style={{ width: 13, height: 13, color: PALETTE.blue }} />
+                    <span style={{ fontSize: 11, fontWeight: 800, color: PALETTE.blue }}>Payment Summary</span>
+                  </div>
+                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                    <tbody>
+                      {showGross && (
+                        <>
                           <tr>
-                            <td style={{ padding: "1px 16px 1px 0", fontSize: 11, color: PALETTE.discount, fontWeight: 600, textAlign: "left", border: "none", lineHeight: 1.35, whiteSpace: "nowrap" }}>Discount</td>
-                            <td style={{ padding: "1px 0", fontSize: 11, color: PALETTE.discount, fontWeight: 600, textAlign: "right", whiteSpace: "nowrap", border: "none", lineHeight: 1.35 }}>-₹{activeDiscount}</td>
+                            <td style={{ padding: "3px 0", fontSize: 10, color: PALETTE.blue, textAlign: "left", border: "none", whiteSpace: "nowrap" }}>Gross Amount</td>
+                            <td style={{ padding: "3px 0 3px 16px", fontSize: 10, color: PALETTE.blue, textAlign: "right", border: "none", whiteSpace: "nowrap" }}>₹{activeGross}</td>
                           </tr>
-                        )}
-                        {Number(data.home_visit_charges || 0) > 0 && (
-                          <tr>
-                            <td style={{ padding: "1px 16px 1px 0", fontSize: 11, color: PALETTE.muted, textAlign: "left", border: "none", lineHeight: 1.35, whiteSpace: "nowrap" }}>Home Visit Charges</td>
-                            <td style={{ padding: "1px 0", fontSize: 11, color: PALETTE.ink, textAlign: "right", whiteSpace: "nowrap", border: "none", lineHeight: 1.35 }}>+₹{data.home_visit_charges}</td>
-                          </tr>
-                        )}
-                      </>
-                    )}
-                    <tr>
-                      <td style={{ padding: "1px 16px 1px 0", fontSize: 12, fontWeight: 800, color: PALETTE.ink, textAlign: "left", border: "none", lineHeight: 1.35, whiteSpace: "nowrap" }}>Final Amount</td>
-                      <td style={{ padding: "1px 0", fontSize: 12, fontWeight: 800, color: PALETTE.ink, textAlign: "right", whiteSpace: "nowrap", border: "none", lineHeight: 1.35 }}>₹{activeFinal}</td>
-                    </tr>
-                    <tr>
-                      <td style={{ padding: "1px 16px 1px 0", fontSize: 11, color: PALETTE.muted, textAlign: "left", border: "none", lineHeight: 1.35, whiteSpace: "nowrap" }}>Mode of Payment</td>
-                      <td style={{ padding: "1px 0", fontSize: 11, color: PALETTE.ink, textAlign: "right", whiteSpace: "nowrap", border: "none", lineHeight: 1.35 }}>{primaryModesLabel(payments)}</td>
-                    </tr>
-                    <tr>
-                      <td style={{ padding: "1px 16px 1px 0", fontSize: 11, fontWeight: 700, color: PALETTE.ink, textAlign: "left", border: "none", lineHeight: 1.35, whiteSpace: "nowrap" }}>Paid Amount</td>
-                      <td style={{ padding: "1px 0", fontSize: 11, fontWeight: 700, color: PALETTE.ink, textAlign: "right", whiteSpace: "nowrap", border: "none", lineHeight: 1.35 }}>₹{data.paid_amount}</td>
-                    </tr>
-                    {data.due_amount > 0 && (
+                          {activeDiscount > 0 && (
+                            <tr>
+                              <td style={{ padding: "3px 0", fontSize: 10, fontWeight: 600, color: PALETTE.discount, textAlign: "left", border: "none", whiteSpace: "nowrap" }}>Total Discount</td>
+                              <td style={{ padding: "3px 0 3px 16px", fontSize: 10, fontWeight: 600, color: PALETTE.discount, textAlign: "right", border: "none", whiteSpace: "nowrap" }}>– ₹{activeDiscount}</td>
+                            </tr>
+                          )}
+                          {Number(data.home_visit_charges || 0) > 0 && (
+                            <tr>
+                              <td style={{ padding: "3px 0", fontSize: 10, color: PALETTE.blue, textAlign: "left", border: "none", whiteSpace: "nowrap" }}>Home Visit Charges</td>
+                              <td style={{ padding: "3px 0 3px 16px", fontSize: 10, color: PALETTE.blue, textAlign: "right", border: "none", whiteSpace: "nowrap" }}>+ ₹{data.home_visit_charges}</td>
+                            </tr>
+                          )}
+                        </>
+                      )}
                       <tr>
-                        <td style={{ padding: "1px 16px 1px 0", fontSize: 11, fontWeight: 800, color: PALETTE.red, background: "#FEF2F2", textAlign: "left", border: "none", lineHeight: 1.35, whiteSpace: "nowrap" }}>Due</td>
-                        <td style={{ padding: "1px 0", fontSize: 11, fontWeight: 800, color: PALETTE.red, background: "#FEF2F2", textAlign: "right", whiteSpace: "nowrap", border: "none", lineHeight: 1.35 }}>₹{data.due_amount}</td>
+                        <td style={{ padding: "8px 0 3px", fontSize: 12, fontWeight: 800, color: PALETTE.blueDark, textAlign: "left", border: "none", whiteSpace: "nowrap" }}>Net Payable</td>
+                        <td style={{ padding: "8px 0 3px 16px", fontSize: 13, fontWeight: 800, color: PALETTE.blueDark, textAlign: "right", border: "none", whiteSpace: "nowrap" }}>₹{activeFinal}</td>
                       </tr>
-                    )}
-                  </tbody>
-                </table>
+                    </tbody>
+                  </table>
+                  <div style={{ marginTop: 8, background: "#E8ECF8", borderRadius: 8, padding: "8px 10px" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                      <tbody>
+                        <tr>
+                          <td style={{ padding: "2px 0", fontSize: 10, fontWeight: 600, color: PALETTE.blue, textAlign: "left", border: "none", whiteSpace: "nowrap" }}>Paid Amount</td>
+                          <td style={{ padding: "2px 0 2px 12px", fontSize: 10, fontWeight: 600, color: PALETTE.blue, textAlign: "right", border: "none", whiteSpace: "nowrap" }}>₹{paidAmt}</td>
+                        </tr>
+                        {dueAmt > 0 && (
+                          <>
+                            <tr>
+                              <td colSpan={2} style={{ padding: "4px 0", border: "none" }}>
+                                <div style={{ height: 1, background: PALETTE.blueLine }} />
+                              </td>
+                            </tr>
+                            <tr>
+                              <td style={{ padding: "2px 0", fontSize: 10, fontWeight: 700, color: PALETTE.blue, textAlign: "left", border: "none", whiteSpace: "nowrap" }}>Balance Due</td>
+                              <td style={{ padding: "2px 0 2px 12px", fontSize: 10, fontWeight: 700, color: PALETTE.red, textAlign: "right", border: "none", whiteSpace: "nowrap" }}>₹{dueAmt}</td>
+                            </tr>
+                          </>
+                        )}
+                      </tbody>
+                    </table>
+                    <div
+                      style={{
+                        marginTop: 8,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6,
+                        background: PALETTE.white,
+                        border: `1px solid ${PALETTE.blueLine}`,
+                        borderRadius: 8,
+                        padding: "5px 8px",
+                      }}
+                    >
+                      <CheckCircle2 style={{ width: 14, height: 14, color: statusFg }} />
+                      <div style={{ lineHeight: 1.15 }}>
+                        <div style={{ fontSize: 9, fontWeight: 800, color: statusFg, letterSpacing: "0.04em" }}>{status.label}</div>
+                        {dueAmt > 0 && status.tone !== "cancelled" && (
+                          <div style={{ fontSize: 10, fontWeight: 800, color: statusFg }}>₹{dueAmt} DUE</div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                  );
+                })()}
               </div>
 
               <div
