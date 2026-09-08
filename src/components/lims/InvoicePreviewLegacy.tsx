@@ -913,7 +913,7 @@ const InvoicePreviewLegacy = ({
       <style>
         /* Side margins ≥12mm: preview can look fine at 5mm, but most printers clip
            the outer ~5–10mm (hardware non-printable area) on left/right. */
-        @page { size: A5; margin: 8mm 15mm; }
+        @page { size: A5; margin: 8mm 8mm; }
         * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; box-sizing: border-box; }
         html, body { margin: 0; padding: 0; }
         body { font-family: ${INVOICE_FONT}; color: ${PALETTE.ink}; }
