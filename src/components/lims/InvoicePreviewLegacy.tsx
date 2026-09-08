@@ -882,16 +882,16 @@ const InvoicePreviewLegacy = ({
             <tr>
               <td style="${metaCell(`color:${PALETTE.muted}`)}">Prepared by</td>
               <td style="padding:1px 6px;font-size:11px;color:${PALETTE.muted};line-height:1.55;border:0;vertical-align:baseline">:</td>
-              <td style="${metaCell(`color:${PALETTE.ink};padding-right:8px`)}">${preparedByName}</td>
+              <td style="${metaCell(`color:${PALETTE.ink};padding-right:8px`)}">${preparedAt}</td>
               <td style="padding:1px 6px;font-size:11px;color:${PALETTE.muted};line-height:1.55;border:0;vertical-align:baseline;text-align:center">·</td>
-              <td style="${metaCell(`color:${PALETTE.ink}`)}">${preparedAt}</td>
+              <td style="${metaCell(`color:${PALETTE.ink}`)}">${preparedByName}</td>
             </tr>
             <tr>
               <td style="${metaCell(`color:${PALETTE.muted}`)}">Printed by</td>
               <td style="padding:1px 6px;font-size:11px;color:${PALETTE.muted};line-height:1.55;border:0;vertical-align:baseline">:</td>
-              <td style="${metaCell(`color:${PALETTE.ink};padding-right:8px`)}">${printedByName}</td>
+              <td style="${metaCell(`color:${PALETTE.ink};padding-right:8px`)}">${printedAt}</td>
               <td style="padding:1px 6px;font-size:11px;color:${PALETTE.muted};line-height:1.55;border:0;vertical-align:baseline;text-align:center">·</td>
-              <td style="${metaCell(`color:${PALETTE.ink}`)}">${printedAt}</td>
+              <td style="${metaCell(`color:${PALETTE.ink}`)}">${printedByName}</td>
             </tr>
           </table>`;
         const leftHtml = `
@@ -1382,22 +1382,22 @@ const InvoicePreviewLegacy = ({
                       <td style={{ padding: "1px 0", fontSize: 11, color: PALETTE.muted, whiteSpace: "nowrap", lineHeight: 1.55, border: "none", verticalAlign: "baseline" }}>Prepared by</td>
                       <td style={{ padding: "1px 6px", fontSize: 11, color: PALETTE.muted, lineHeight: 1.55, border: "none", verticalAlign: "baseline" }}>:</td>
                       <td style={{ padding: "1px 8px 1px 0", fontSize: 11, color: PALETTE.ink, lineHeight: 1.55, border: "none", verticalAlign: "baseline", whiteSpace: "nowrap" }}>
-                        {data.registered_by || "—"}
+                        {format(createdAt, "dd-MM-yyyy hh:mm a")}
                       </td>
                       <td style={{ padding: "1px 6px", fontSize: 11, color: PALETTE.muted, lineHeight: 1.55, border: "none", verticalAlign: "baseline", textAlign: "center" }}>·</td>
                       <td style={{ padding: "1px 0", fontSize: 11, color: PALETTE.ink, lineHeight: 1.55, border: "none", verticalAlign: "baseline", whiteSpace: "nowrap" }}>
-                        {format(createdAt, "dd-MM-yyyy hh:mm a")}
+                        {data.registered_by || "—"}
                       </td>
                     </tr>
                     <tr>
                       <td style={{ padding: "1px 0", fontSize: 11, color: PALETTE.muted, whiteSpace: "nowrap", lineHeight: 1.55, border: "none", verticalAlign: "baseline" }}>Printed by</td>
                       <td style={{ padding: "1px 6px", fontSize: 11, color: PALETTE.muted, lineHeight: 1.55, border: "none", verticalAlign: "baseline" }}>:</td>
                       <td style={{ padding: "1px 8px 1px 0", fontSize: 11, color: PALETTE.ink, lineHeight: 1.55, border: "none", verticalAlign: "baseline", whiteSpace: "nowrap" }}>
-                        {getCurrentUserName() || "—"}
+                        {format(new Date(), "dd-MM-yyyy hh:mm a")}
                       </td>
                       <td style={{ padding: "1px 6px", fontSize: 11, color: PALETTE.muted, lineHeight: 1.55, border: "none", verticalAlign: "baseline", textAlign: "center" }}>·</td>
                       <td style={{ padding: "1px 0", fontSize: 11, color: PALETTE.ink, lineHeight: 1.55, border: "none", verticalAlign: "baseline", whiteSpace: "nowrap" }}>
-                        {format(new Date(), "dd-MM-yyyy hh:mm a")}
+                        {getCurrentUserName() || "—"}
                       </td>
                     </tr>
                   </tbody>
