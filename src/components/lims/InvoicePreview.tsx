@@ -16,6 +16,7 @@ import {
   fetchPackageIncludedTestNamesFromLines,
   formatPackageIncludedTests,
 } from "@/lib/invoicePackageTests";
+import { computeHvcRefundAmount } from "@/lib/invoiceRefundDisplay";
 import {
   shouldFireBoundInvoiceQueue,
   type InvoiceQueueToken,
@@ -574,8 +575,7 @@ const InvoicePreview = ({
   const activeDiscount = activeGross - activeNet;
   const activeFinal = activeNet + Number(data.home_visit_charges || 0);
 
-  const cancelledTestRefundTotal = cancelledTests.reduce((sum: number, ct: any) => sum + Number(ct.price || 0), 0);
-  const hvcRefund = Math.max(0, Number(data.refund_amount || 0) - cancelledTestRefundTotal);
+  const hvcRefund = computeHvcRefundAmount(data);
 
   const labVisible = brand.invoice_lab_name_visible !== "false";
   const hasAnyDiscount = tests.some((t: any) => Number(t.discount || 0) > 0);
