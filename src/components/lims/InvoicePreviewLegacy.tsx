@@ -817,7 +817,7 @@ const InvoicePreviewLegacy = ({
         leftInner += `</div></div></div>`;
 
         const leftHtml = `
-          <div style="background:${PALETTE.blueSoft};border:1px solid ${PALETTE.blueLine};border-radius:10px;padding:10px 12px;min-width:200px;max-width:260px">
+          <div style="background:${PALETTE.blueSoft};border:1px solid ${PALETTE.blueLine};border-radius:10px;padding:10px 12px;min-width:0;max-width:100%;width:100%">
             <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
               <span style="font-size:11px;font-weight:800;color:${PALETTE.blue}">Payment Summary</span>
             </div>
@@ -826,9 +826,9 @@ const InvoicePreviewLegacy = ({
 
 
         const th = (label: string, align = "left") =>
-          `<th style="padding:4px 6px;font-size:8px;font-weight:700;letter-spacing:0.03em;text-transform:uppercase;color:${PALETTE.blue};background:${PALETTE.blueSoft};border-bottom:1px solid ${PALETTE.blueLine};text-align:${align};white-space:nowrap">${label}</th>`;
+          `<th style="padding:3px 4px;font-size:7px;font-weight:700;letter-spacing:0.02em;text-transform:uppercase;color:${PALETTE.blue};background:${PALETTE.blueSoft};border-bottom:1px solid ${PALETTE.blueLine};text-align:${align};white-space:nowrap">${label}</th>`;
         const td = (val: string, align = "left", color = PALETTE.ink, weight = "500") =>
-          `<td style="padding:4px 6px;font-size:9px;font-weight:${weight};color:${color};border-bottom:1px solid ${PALETTE.line};text-align:${align};white-space:nowrap;line-height:1.25">${val}</td>`;
+          `<td style="padding:3px 4px;font-size:8px;font-weight:${weight};color:${color};border-bottom:1px solid ${PALETTE.line};text-align:${align};white-space:nowrap;line-height:1.2;overflow:hidden;text-overflow:ellipsis">${val}</td>`;
 
         let payRows = "";
         if (payments.length === 0 && !(Number(data.refund_amount || 0) > 0)) {
@@ -845,17 +845,17 @@ const InvoicePreviewLegacy = ({
           }
         }
         const rightHtml = `
-          <div style="border:1px solid ${PALETTE.blueLine};border-radius:8px;overflow:hidden;background:${PALETTE.white};min-width:220px">
-            <div style="display:flex;align-items:center;gap:5px;padding:5px 8px;background:${PALETTE.blueSoft};border-bottom:1px solid ${PALETTE.blueLine}">
-              <span style="font-size:10px;font-weight:800;color:${PALETTE.blue}">Payment Details</span>
+          <div style="border:1px solid ${PALETTE.blueLine};border-radius:8px;overflow:hidden;background:${PALETTE.white};max-width:100%">
+            <div style="display:flex;align-items:center;gap:4px;padding:4px 6px;background:${PALETTE.blueSoft};border-bottom:1px solid ${PALETTE.blueLine}">
+              <span style="font-size:9px;font-weight:800;color:${PALETTE.blue}">Payment Details</span>
             </div>
-            <table style="width:100%;border-collapse:collapse">
+            <table style="width:100%;border-collapse:collapse;table-layout:fixed">
               <thead><tr>${th("Date")}${th("Mode")}${th("Amount", "right")}</tr></thead>
               <tbody>${payRows}</tbody>
               <tfoot>
                 <tr>
-                  <td colspan="2" style="padding:5px 6px;font-size:9px;font-weight:800;color:${PALETTE.blue};background:${PALETTE.blueSoft};border-top:1px solid ${PALETTE.blueLine}">Total Paid</td>
-                  <td style="padding:5px 6px;font-size:10px;font-weight:800;color:${PALETTE.blue};background:${PALETTE.blueSoft};border-top:1px solid ${PALETTE.blueLine};text-align:right">₹${data.paid_amount || 0}</td>
+                  <td colspan="2" style="padding:4px 5px;font-size:8px;font-weight:800;color:${PALETTE.blue};background:${PALETTE.blueSoft};border-top:1px solid ${PALETTE.blueLine}">Total Paid</td>
+                  <td style="padding:4px 5px;font-size:9px;font-weight:800;color:${PALETTE.blue};background:${PALETTE.blueSoft};border-top:1px solid ${PALETTE.blueLine};text-align:right">₹${data.paid_amount || 0}</td>
                 </tr>
               </tfoot>
             </table>
@@ -864,8 +864,8 @@ const InvoicePreviewLegacy = ({
         summaryHtml = `<div style="margin-top:14px;padding:0;text-align:left">`;
         // Table layout is more reliable than flex for print engines (avoids stacking).
         summaryHtml += `<table style="width:100%;border-collapse:collapse;table-layout:fixed"><tr>`;
-        summaryHtml += `<td style="width:40%;vertical-align:top;padding-right:12px;border:0">${leftHtml}</td>`;
-        summaryHtml += `<td style="width:60%;vertical-align:top;border:0">`;
+        summaryHtml += `<td style="width:44%;vertical-align:top;padding-right:14px;border:0">${leftHtml}</td>`;
+        summaryHtml += `<td style="width:56%;vertical-align:top;padding-left:2px;border:0">`;
         summaryHtml += rightHtml;
         if (Number(data.paid_amount || 0) > 0) {
           summaryHtml += `<div style="font-size:9px;margin-top:8px;color:${PALETTE.muted};line-height:1.3;text-align:left">Received with thanks from <strong style="color:${PALETTE.ink}">${patientDisplayName(data)}</strong> a sum of Rs. ${Number(data.paid_amount).toFixed(2)}/- (${numberToWords(Number(data.paid_amount))} Rupees)</div>`;
@@ -913,7 +913,7 @@ const InvoicePreviewLegacy = ({
       <style>
         /* Side margins ≥12mm: preview can look fine at 5mm, but most printers clip
            the outer ~5–10mm (hardware non-printable area) on left/right. */
-        @page { size: A5; margin: 8mm 12mm; }
+        @page { size: A5; margin: 8mm 15mm; }
         * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; box-sizing: border-box; }
         html, body { margin: 0; padding: 0; }
         body { font-family: ${INVOICE_FONT}; color: ${PALETTE.ink}; }
@@ -1167,7 +1167,7 @@ const InvoicePreviewLegacy = ({
           </table>
 
           <div style={{ marginTop: 14, padding: 0, textAlign: "left" }}>
-            <div style={{ display: "flex", gap: 14, alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap" }}>
+            <div style={{ display: "flex", gap: 16, alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap" }}>
               <div style={{ flex: "0 0 auto", minWidth: 200, maxWidth: 260 }}>
                 {(() => {
                   const status = paymentStatusBadge(data);
@@ -1263,7 +1263,7 @@ const InvoicePreviewLegacy = ({
                 })()}
               </div>
 
-              <div style={{ flex: "1 1 220px", maxWidth: 360, minWidth: 220 }}>
+              <div style={{ flex: "1 1 220px", maxWidth: 300, minWidth: 200 }}>
                 <div
                   style={{
                     border: `1px solid ${PALETTE.blueLine}`,
