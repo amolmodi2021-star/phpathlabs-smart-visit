@@ -1282,8 +1282,8 @@ const InvoicePreviewLegacy = ({
           </table>
 
           <div style={{ marginTop: 14, padding: 0, textAlign: "left" }}>
-            <div style={{ display: "flex", gap: 12, alignItems: "flex-start", justifyContent: "flex-start" }}>
-              <div style={{ flex: "0 0 auto", display: "flex", flexDirection: "column", alignItems: "flex-start", maxWidth: "42%" }}>
+            <div style={{ display: "flex", gap: 6, alignItems: "flex-start", justifyContent: "flex-start" }}>
+              <div style={{ flex: "0 0 188px", display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
                 {(() => {
                   const status = paymentStatusBadge(data);
                   const statusFg = status.tone === "paid" || status.tone === "partial" ? PALETTE.discount : PALETTE.red;
