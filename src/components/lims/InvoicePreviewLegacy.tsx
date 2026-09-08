@@ -825,23 +825,23 @@ const InvoicePreviewLegacy = ({
           </div>`;
 
 
-        const th = (label: string, align = "left") =>
-          `<th style="padding:3px 4px;font-size:7px;font-weight:700;letter-spacing:0.02em;text-transform:uppercase;color:${PALETTE.blue};background:${PALETTE.blueSoft};border-bottom:1px solid ${PALETTE.blueLine};text-align:${align};white-space:nowrap">${label}</th>`;
-        const td = (val: string, align = "left", color = PALETTE.ink, weight = "500") =>
-          `<td style="padding:3px 4px;font-size:8px;font-weight:${weight};color:${color};border-bottom:1px solid ${PALETTE.line};text-align:${align};white-space:nowrap;line-height:1.2;overflow:hidden;text-overflow:ellipsis">${val}</td>`;
+        const th = (label: string, align = "left", width?: string) =>
+          `<th style="padding:3px 4px;font-size:7px;font-weight:700;letter-spacing:0.02em;text-transform:uppercase;color:${PALETTE.blue};background:${PALETTE.blueSoft};border-bottom:1px solid ${PALETTE.blueLine};text-align:${align};white-space:nowrap;${width ? `width:${width};` : ""}">${label}</th>`;
+        const td = (val: string, align = "left", color = PALETTE.ink, weight = "500", width?: string) =>
+          `<td style="padding:3px 4px;font-size:8px;font-weight:${weight};color:${color};border-bottom:1px solid ${PALETTE.line};text-align:${align};white-space:nowrap;line-height:1.2;${width ? `width:${width};` : ""}">${val}</td>`;
 
         let payRows = "";
         if (payments.length === 0 && !(Number(data.refund_amount || 0) > 0)) {
           payRows = `<tr><td colspan="3" style="padding:6px;font-size:9px;color:${PALETTE.muted};text-align:left;border-bottom:1px solid ${PALETTE.line}">No payments</td></tr>`;
         } else {
           payments.forEach((pay: any) => {
-            payRows += `<tr>${td(paymentDetailsDateLabel(pay, createdAt))}${td(pay.mode || "Payment")}${td(`₹${pay.amount}`, "right", PALETTE.ink, "700")}</tr>`;
+            payRows += `<tr>${td(paymentDetailsDateLabel(pay, createdAt), "left", PALETTE.ink, "500", "52%")}${td(pay.mode || "Payment", "left", PALETTE.ink, "500", "22%")}${td(`₹${pay.amount}`, "right", PALETTE.ink, "700", "26%")}</tr>`;
           });
           if (Number(data.refund_amount || 0) > 0) {
             const refundDate = data.refund_date
               ? format(new Date(data.refund_date), "dd MMM yyyy hh:mm a")
               : "—";
-            payRows += `<tr>${td(refundDate)}${td(refundModeLabel(data.refund_mode))}${td(`-₹${data.refund_amount}`, "right", PALETTE.orange, "700")}</tr>`;
+            payRows += `<tr>${td(refundDate, "left", PALETTE.ink, "500", "52%")}${td(refundModeLabel(data.refund_mode), "left", PALETTE.ink, "500", "22%")}${td(`-₹${data.refund_amount}`, "right", PALETTE.orange, "700", "26%")}</tr>`;
           }
         }
         const rightHtml = `
@@ -850,7 +850,7 @@ const InvoicePreviewLegacy = ({
               <span style="font-size:9px;font-weight:800;color:${PALETTE.blue}">Payment Details</span>
             </div>
             <table style="width:100%;border-collapse:collapse;table-layout:fixed">
-              <thead><tr>${th("Date")}${th("Mode")}${th("Amount", "right")}</tr></thead>
+              <thead><tr>${th("Date", "left", "52%")}${th("Mode", "left", "22%")}${th("Amount", "right", "26%")}</tr></thead>
               <tbody>${payRows}</tbody>
               <tfoot>
                 <tr>
@@ -1285,12 +1285,12 @@ const InvoicePreviewLegacy = ({
                   <Wallet style={{ width: 12, height: 12, color: PALETTE.blue }} />
                   <span style={{ fontSize: 10, fontWeight: 800, color: PALETTE.blue }}>Payment Details</span>
                 </div>
-                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
                   <thead>
                     <tr>
-                      <th style={{ padding: "4px 6px", fontSize: 8, fontWeight: 700, letterSpacing: "0.03em", textTransform: "uppercase", color: PALETTE.blue, background: PALETTE.blueSoft, borderBottom: `1px solid ${PALETTE.blueLine}`, textAlign: "left", whiteSpace: "nowrap" }}>Date</th>
-                      <th style={{ padding: "4px 6px", fontSize: 8, fontWeight: 700, letterSpacing: "0.03em", textTransform: "uppercase", color: PALETTE.blue, background: PALETTE.blueSoft, borderBottom: `1px solid ${PALETTE.blueLine}`, textAlign: "left", whiteSpace: "nowrap" }}>Mode</th>
-                      <th style={{ padding: "4px 6px", fontSize: 8, fontWeight: 700, letterSpacing: "0.03em", textTransform: "uppercase", color: PALETTE.blue, background: PALETTE.blueSoft, borderBottom: `1px solid ${PALETTE.blueLine}`, textAlign: "right", whiteSpace: "nowrap" }}>Amount</th>
+                      <th style={{ padding: "4px 6px", fontSize: 8, fontWeight: 700, letterSpacing: "0.03em", textTransform: "uppercase", color: PALETTE.blue, background: PALETTE.blueSoft, borderBottom: `1px solid ${PALETTE.blueLine}`, textAlign: "left", whiteSpace: "nowrap", width: "52%" }}>Date</th>
+                      <th style={{ padding: "4px 6px", fontSize: 8, fontWeight: 700, letterSpacing: "0.03em", textTransform: "uppercase", color: PALETTE.blue, background: PALETTE.blueSoft, borderBottom: `1px solid ${PALETTE.blueLine}`, textAlign: "left", whiteSpace: "nowrap", width: "22%" }}>Mode</th>
+                      <th style={{ padding: "4px 6px", fontSize: 8, fontWeight: 700, letterSpacing: "0.03em", textTransform: "uppercase", color: PALETTE.blue, background: PALETTE.blueSoft, borderBottom: `1px solid ${PALETTE.blueLine}`, textAlign: "right", whiteSpace: "nowrap", width: "26%" }}>Amount</th>
                     </tr>
                   </thead>
                   <tbody>
