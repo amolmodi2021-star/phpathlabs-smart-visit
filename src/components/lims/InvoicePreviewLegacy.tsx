@@ -84,23 +84,12 @@ function paymentTimestamp(
   return null;
 }
 
-function paymentDetailsDateParts(
-  p: { date?: string; payment_date?: string; collected_at?: string } | null | undefined,
-  registrationAt?: Date | string | null,
-): { date: string; time: string } {
-  const d = paymentTimestamp(p, registrationAt);
-  if (!d) return { date: "—", time: "" };
-  return { date: format(d, "dd MMM yyyy"), time: format(d, "hh:mm a") };
-}
-
-/** Date on first line, time on second — keeps Mode from colliding in narrow columns. */
-function paymentDetailsDateHtml(
+function paymentDetailsDateLabel(
   p: { date?: string; payment_date?: string; collected_at?: string } | null | undefined,
   registrationAt?: Date | string | null,
 ): string {
-  const { date, time } = paymentDetailsDateParts(p, registrationAt);
-  if (!time) return date;
-  return `${date}<br/><span style="font-size:9px;color:#6B7280">${time}</span>`;
+  const d = paymentTimestamp(p, registrationAt);
+  return d ? format(d, "dd MMM yyyy hh:mm a") : "—";
 }
 
 function refundModeLabel(mode?: string | null): string {
@@ -927,16 +916,13 @@ const InvoicePreviewLegacy = ({
           payRows = `<tr><td colspan="3" style="padding:6px;font-size:9px;color:${PALETTE.muted};text-align:left;border-bottom:1px solid ${PALETTE.line}">No payments</td></tr>`;
         } else {
           payments.forEach((pay: any) => {
-            payRows += `<tr>${td(paymentDetailsDateHtml(pay, createdAt), "left", PALETTE.ink, "500", "40%", true)}${td(pay.mode || "Payment", "left", PALETTE.ink, "500", "36%", true)}${td(`₹${pay.amount}`, "right", PALETTE.ink, "700", "24%")}</tr>`;
+            payRows += `<tr>${td(paymentDetailsDateLabel(pay, createdAt), "left", PALETTE.ink, "500", "56%")}${td(pay.mode || "Payment", "left", PALETTE.ink, "500", "22%", true)}${td(`₹${pay.amount}`, "right", PALETTE.ink, "700", "22%")}</tr>`;
           });
           if (Number(data.refund_amount || 0) > 0) {
-            const refundParts = data.refund_date
-              ? { date: format(new Date(data.refund_date), "dd MMM yyyy"), time: format(new Date(data.refund_date), "hh:mm a") }
-              : { date: "—", time: "" };
-            const refundDateHtml = refundParts.time
-              ? `${refundParts.date}<br/><span style="font-size:9px;color:${PALETTE.muted}">${refundParts.time}</span>`
-              : refundParts.date;
-            payRows += `<tr>${td(refundDateHtml, "left", PALETTE.ink, "500", "40%", true)}${td(refundModeLabel(data.refund_mode), "left", PALETTE.ink, "500", "36%", true)}${td(`-₹${data.refund_amount}`, "right", PALETTE.orange, "700", "24%")}</tr>`;
+            const refundDate = data.refund_date
+              ? format(new Date(data.refund_date), "dd MMM yyyy hh:mm a")
+              : "—";
+            payRows += `<tr>${td(refundDate, "left", PALETTE.ink, "500", "56%")}${td(refundModeLabel(data.refund_mode), "left", PALETTE.ink, "500", "22%", true)}${td(`-₹${data.refund_amount}`, "right", PALETTE.orange, "700", "22%")}</tr>`;
           }
         }
         const rightHtml = `
@@ -945,7 +931,7 @@ const InvoicePreviewLegacy = ({
               <span style="font-size:11px;font-weight:800;color:${PALETTE.blue}">Payment Details</span>
             </div>
             <table style="width:100%;border-collapse:collapse;table-layout:fixed">
-              <thead><tr>${th("Date", "left", "40%")}${th("Mode", "left", "36%")}${th("Amount", "right", "24%")}</tr></thead>
+              <thead><tr>${th("Date", "left", "56%")}${th("Mode", "left", "22%")}${th("Amount", "right", "22%")}</tr></thead>
               <tbody>${payRows}</tbody>
               <tfoot>
                 <tr>
@@ -1297,7 +1283,7 @@ const InvoicePreviewLegacy = ({
 
           <div style={{ marginTop: 14, padding: 0, textAlign: "left" }}>
             <div style={{ display: "flex", gap: 12, alignItems: "flex-start", justifyContent: "flex-start" }}>
-              <div style={{ flex: "0 0 38%", maxWidth: 200, minWidth: 160 }}>
+              <div style={{ flex: "0 0 auto", display: "flex", flexDirection: "column", alignItems: "flex-start", maxWidth: "42%" }}>
                 {(() => {
                   const status = paymentStatusBadge(data);
                   const statusFg = status.tone === "paid" || status.tone === "partial" ? PALETTE.discount : PALETTE.red;
@@ -1310,7 +1296,7 @@ const InvoicePreviewLegacy = ({
                     border: `1px solid ${PALETTE.blueLine}`,
                     borderRadius: 10,
                     padding: "10px 12px",
-                    width: "100%",
+                    width: 188,
                     boxSizing: "border-box",
                   }}
                 >
@@ -1392,29 +1378,27 @@ const InvoicePreviewLegacy = ({
                 </div>
                   );
                 })()}
-                <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 8, textAlign: "left", tableLayout: "fixed" }}>
+                <table style={{ width: "auto", borderCollapse: "collapse", marginTop: 8, textAlign: "left" }}>
                   <tbody>
                     <tr>
-                      <td style={{ padding: "1px 0", fontSize: 10, color: PALETTE.muted, whiteSpace: "nowrap", lineHeight: 1.4, border: "none", verticalAlign: "top", width: "30%" }}>Prepared by</td>
-                      <td style={{ padding: "1px 3px", fontSize: 10, color: PALETTE.muted, lineHeight: 1.4, border: "none", verticalAlign: "top", width: "5%" }}>:</td>
-                      <td style={{ padding: "1px 2px 1px 0", fontSize: 10, color: PALETTE.ink, lineHeight: 1.3, border: "none", verticalAlign: "top", width: "40%" }}>
-                        <div>{format(createdAt, "dd-MM-yyyy")}</div>
-                        <div style={{ color: PALETTE.muted }}>{format(createdAt, "hh:mm a")}</div>
+                      <td style={{ padding: "1px 0", fontSize: 10, color: PALETTE.muted, whiteSpace: "nowrap", lineHeight: 1.5, border: "none", verticalAlign: "baseline" }}>Prepared by</td>
+                      <td style={{ padding: "1px 5px", fontSize: 10, color: PALETTE.muted, lineHeight: 1.5, border: "none", verticalAlign: "baseline" }}>:</td>
+                      <td style={{ padding: "1px 6px 1px 0", fontSize: 10, color: PALETTE.ink, lineHeight: 1.5, border: "none", verticalAlign: "baseline", whiteSpace: "nowrap" }}>
+                        {format(createdAt, "dd-MM-yyyy hh:mm a")}
                       </td>
-                      <td style={{ padding: "1px 3px", fontSize: 10, color: PALETTE.muted, lineHeight: 1.4, border: "none", verticalAlign: "top", textAlign: "center", width: "5%" }}>·</td>
-                      <td style={{ padding: "1px 0", fontSize: 10, color: PALETTE.ink, lineHeight: 1.4, border: "none", verticalAlign: "top", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      <td style={{ padding: "1px 5px", fontSize: 10, color: PALETTE.muted, lineHeight: 1.5, border: "none", verticalAlign: "baseline", textAlign: "center" }}>·</td>
+                      <td style={{ padding: "1px 0", fontSize: 10, color: PALETTE.ink, lineHeight: 1.5, border: "none", verticalAlign: "baseline", whiteSpace: "nowrap" }}>
                         {data.registered_by || "—"}
                       </td>
                     </tr>
                     <tr>
-                      <td style={{ padding: "1px 0", fontSize: 10, color: PALETTE.muted, whiteSpace: "nowrap", lineHeight: 1.4, border: "none", verticalAlign: "top" }}>Printed by</td>
-                      <td style={{ padding: "1px 3px", fontSize: 10, color: PALETTE.muted, lineHeight: 1.4, border: "none", verticalAlign: "top" }}>:</td>
-                      <td style={{ padding: "1px 2px 1px 0", fontSize: 10, color: PALETTE.ink, lineHeight: 1.3, border: "none", verticalAlign: "top" }}>
-                        <div>{format(new Date(), "dd-MM-yyyy")}</div>
-                        <div style={{ color: PALETTE.muted }}>{format(new Date(), "hh:mm a")}</div>
+                      <td style={{ padding: "1px 0", fontSize: 10, color: PALETTE.muted, whiteSpace: "nowrap", lineHeight: 1.5, border: "none", verticalAlign: "baseline" }}>Printed by</td>
+                      <td style={{ padding: "1px 5px", fontSize: 10, color: PALETTE.muted, lineHeight: 1.5, border: "none", verticalAlign: "baseline" }}>:</td>
+                      <td style={{ padding: "1px 6px 1px 0", fontSize: 10, color: PALETTE.ink, lineHeight: 1.5, border: "none", verticalAlign: "baseline", whiteSpace: "nowrap" }}>
+                        {format(new Date(), "dd-MM-yyyy hh:mm a")}
                       </td>
-                      <td style={{ padding: "1px 3px", fontSize: 10, color: PALETTE.muted, lineHeight: 1.4, border: "none", verticalAlign: "top", textAlign: "center" }}>·</td>
-                      <td style={{ padding: "1px 0", fontSize: 10, color: PALETTE.ink, lineHeight: 1.4, border: "none", verticalAlign: "top", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      <td style={{ padding: "1px 5px", fontSize: 10, color: PALETTE.muted, lineHeight: 1.5, border: "none", verticalAlign: "baseline", textAlign: "center" }}>·</td>
+                      <td style={{ padding: "1px 0", fontSize: 10, color: PALETTE.ink, lineHeight: 1.5, border: "none", verticalAlign: "baseline", whiteSpace: "nowrap" }}>
                         {getCurrentUserName() || "—"}
                       </td>
                     </tr>
@@ -1448,9 +1432,9 @@ const InvoicePreviewLegacy = ({
                 <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
                   <thead>
                     <tr>
-                      <th style={{ padding: "5px 6px", fontSize: 10, fontWeight: 700, letterSpacing: "0.03em", textTransform: "uppercase", color: PALETTE.blue, background: PALETTE.blueSoft, borderBottom: `1px solid ${PALETTE.blueLine}`, textAlign: "left", whiteSpace: "nowrap", width: "40%" }}>Date</th>
-                      <th style={{ padding: "5px 6px", fontSize: 10, fontWeight: 700, letterSpacing: "0.03em", textTransform: "uppercase", color: PALETTE.blue, background: PALETTE.blueSoft, borderBottom: `1px solid ${PALETTE.blueLine}`, textAlign: "left", whiteSpace: "nowrap", width: "36%" }}>Mode</th>
-                      <th style={{ padding: "5px 6px", fontSize: 10, fontWeight: 700, letterSpacing: "0.03em", textTransform: "uppercase", color: PALETTE.blue, background: PALETTE.blueSoft, borderBottom: `1px solid ${PALETTE.blueLine}`, textAlign: "right", whiteSpace: "nowrap", width: "24%" }}>Amount</th>
+                      <th style={{ padding: "5px 6px", fontSize: 10, fontWeight: 700, letterSpacing: "0.03em", textTransform: "uppercase", color: PALETTE.blue, background: PALETTE.blueSoft, borderBottom: `1px solid ${PALETTE.blueLine}`, textAlign: "left", whiteSpace: "nowrap", width: "56%" }}>Date</th>
+                      <th style={{ padding: "5px 6px", fontSize: 10, fontWeight: 700, letterSpacing: "0.03em", textTransform: "uppercase", color: PALETTE.blue, background: PALETTE.blueSoft, borderBottom: `1px solid ${PALETTE.blueLine}`, textAlign: "left", whiteSpace: "nowrap", width: "22%" }}>Mode</th>
+                      <th style={{ padding: "5px 6px", fontSize: 10, fontWeight: 700, letterSpacing: "0.03em", textTransform: "uppercase", color: PALETTE.blue, background: PALETTE.blueSoft, borderBottom: `1px solid ${PALETTE.blueLine}`, textAlign: "right", whiteSpace: "nowrap", width: "22%" }}>Amount</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1460,28 +1444,19 @@ const InvoicePreviewLegacy = ({
                       </tr>
                     ) : (
                       <>
-                        {payments.map((pay: any, i: number) => {
-                          const { date, time } = paymentDetailsDateParts(pay, createdAt);
-                          return (
+                        {payments.map((pay: any, i: number) => (
                           <tr key={`pay-${i}`}>
-                            <td style={{ padding: "5px 6px", fontSize: 11, color: PALETTE.ink, borderBottom: `1px solid ${PALETTE.line}`, whiteSpace: "normal", lineHeight: 1.25, verticalAlign: "top" }}>
-                              <div>{date}</div>
-                              {time ? <div style={{ fontSize: 10, color: PALETTE.muted }}>{time}</div> : null}
+                            <td style={{ padding: "5px 6px", fontSize: 11, color: PALETTE.ink, borderBottom: `1px solid ${PALETTE.line}`, whiteSpace: "nowrap", lineHeight: 1.25, verticalAlign: "top" }}>
+                              {paymentDetailsDateLabel(pay, createdAt)}
                             </td>
                             <td style={{ padding: "5px 6px", fontSize: 11, color: PALETTE.ink, borderBottom: `1px solid ${PALETTE.line}`, whiteSpace: "normal", wordBreak: "break-word", lineHeight: 1.25, verticalAlign: "top" }}>{pay.mode || "Payment"}</td>
                             <td style={{ padding: "5px 6px", fontSize: 11, fontWeight: 700, color: PALETTE.ink, borderBottom: `1px solid ${PALETTE.line}`, textAlign: "right", whiteSpace: "nowrap", lineHeight: 1.25, verticalAlign: "top" }}>₹{pay.amount}</td>
                           </tr>
-                          );
-                        })}
+                        ))}
                         {Number(data.refund_amount || 0) > 0 && (
                           <tr>
-                            <td style={{ padding: "5px 6px", fontSize: 11, color: PALETTE.ink, borderBottom: `1px solid ${PALETTE.line}`, whiteSpace: "normal", lineHeight: 1.25, verticalAlign: "top" }}>
-                              {data.refund_date ? (
-                                <>
-                                  <div>{format(new Date(data.refund_date), "dd MMM yyyy")}</div>
-                                  <div style={{ fontSize: 10, color: PALETTE.muted }}>{format(new Date(data.refund_date), "hh:mm a")}</div>
-                                </>
-                              ) : "—"}
+                            <td style={{ padding: "5px 6px", fontSize: 11, color: PALETTE.ink, borderBottom: `1px solid ${PALETTE.line}`, whiteSpace: "nowrap", lineHeight: 1.25, verticalAlign: "top" }}>
+                              {data.refund_date ? format(new Date(data.refund_date), "dd MMM yyyy hh:mm a") : "—"}
                             </td>
                             <td style={{ padding: "5px 6px", fontSize: 11, color: PALETTE.ink, borderBottom: `1px solid ${PALETTE.line}`, whiteSpace: "normal", wordBreak: "break-word", lineHeight: 1.25, verticalAlign: "top" }}>
                               {refundModeLabel(data.refund_mode)}
