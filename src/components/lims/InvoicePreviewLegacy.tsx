@@ -864,14 +864,14 @@ const InvoicePreviewLegacy = ({
         summaryHtml = `<div style="margin-top:14px;padding:0;text-align:left">`;
         summaryHtml += `<div style="display:flex;gap:14px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap">`;
         summaryHtml += `<div style="flex:0 0 auto">${leftHtml}</div>`;
-        summaryHtml += `<div style="flex:1 1 220px;max-width:320px">`;
+        summaryHtml += `<div style="flex:1 1 220px;max-width:360px">`;
         summaryHtml += rightHtml;
         if (Number(data.paid_amount || 0) > 0) {
           summaryHtml += `<div style="font-size:9px;margin-top:8px;color:${PALETTE.muted};line-height:1.3;text-align:left">Received with thanks from <strong style="color:${PALETTE.ink}">${patientDisplayName(data)}</strong> a sum of Rs. ${Number(data.paid_amount).toFixed(2)}/- (${numberToWords(Number(data.paid_amount))} Rupees)</div>`;
         }
         summaryHtml += `<div style="text-align:center;font-size:10px;color:${PALETTE.muted};margin-top:8px;line-height:1.3;padding-top:6px;border-top:1px solid ${PALETTE.line}">`;
         summaryHtml += `<p style="margin:0;font-weight:700;color:${PALETTE.blue}">Thank you for choosing PH PathLabs</p>`;
-        summaryHtml += `<p style="margin:2px 0 0;font-size:9px;color:${PALETTE.muted}">This is an electronically generated receipt and does not require a signature</p>`;
+        summaryHtml += `<p style="margin:2px 0 0;font-size:7.5px;color:${PALETTE.muted};white-space:nowrap;letter-spacing:-0.01em">This is an electronically generated receipt and does not require a signature</p>`;
         summaryHtml += `</div>`;
         summaryHtml += `</div>`;
         summaryHtml += `</div>`;
@@ -1261,7 +1261,7 @@ const InvoicePreviewLegacy = ({
                 })()}
               </div>
 
-              <div style={{ flex: "1 1 220px", maxWidth: 320, minWidth: 220 }}>
+              <div style={{ flex: "1 1 220px", maxWidth: 360, minWidth: 220 }}>
                 <div
                   style={{
                     border: `1px solid ${PALETTE.blueLine}`,
@@ -1336,7 +1336,7 @@ const InvoicePreviewLegacy = ({
                 )}
                 <div style={{ textAlign: "center", fontSize: 10, color: PALETTE.muted, marginTop: 8, lineHeight: 1.3, paddingTop: 6, borderTop: `1px solid ${PALETTE.line}` }}>
                   <p style={{ margin: 0, fontWeight: 700, color: PALETTE.blue }}>Thank you for choosing PH PathLabs</p>
-                  <p style={{ margin: "2px 0 0", fontSize: 9, color: PALETTE.muted }}>This is an electronically generated receipt and does not require a signature</p>
+                  <p style={{ margin: "2px 0 0", fontSize: 7.5, color: PALETTE.muted, whiteSpace: "nowrap", letterSpacing: "-0.01em" }}>This is an electronically generated receipt and does not require a signature</p>
                 </div>
               </div>
             </div>
