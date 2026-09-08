@@ -683,7 +683,7 @@ const InvoicePreviewLegacy = ({
     const totalPages = 1;
 
     const headerHtml = () => {
-      // No top blue line; solid red rule (not CSS border) under brand block.
+      // No top blue line; thin blue rule (not CSS border) under brand block.
       let h = `<div style="padding:20px 0 4px;margin:0">`;
       const printLogo = logoSrc || brand.invoice_logo_url;
       if (printLogo) {
@@ -704,7 +704,7 @@ const InvoicePreviewLegacy = ({
         const addrCss = textStyleCss(brand, "invoice_address", "8", PALETTE.muted).replace(/font-size:\s*[\d.]+px/i, `font-size:${addrPx}px`);
         h += `<p style="margin:0;${addrCss};white-space:nowrap;overflow:visible;text-align:${brand.invoice_address_align};line-height:1.25;max-width:100%">${addressLine}</p>`;
       }
-      h += `</div><div style="height:2px;background:${PALETTE.red};width:100%;margin:0 0 6px;padding:0;border:0"></div>`;
+      h += `</div><div style="height:1px;background:${PALETTE.blue};width:100%;margin:0 0 6px;padding:0;border:0"></div>`;
       return h;
     };
 
@@ -1102,7 +1102,7 @@ const InvoicePreviewLegacy = ({
             overflow: fontsReady && brandReady ? undefined : "hidden",
           }}
         >
-          {/* Brand header — solid red rule (not CSS border: html2canvas thickens borders) */}
+          {/* Brand header — thin blue rule (not CSS border: html2canvas thickens borders) */}
           <div style={{ padding: "20px 0 4px" }}>
             {(logoSrc || brand.invoice_logo_url) && (
               <div style={{ textAlign: brand.invoice_logo_align as any, lineHeight: 0 }}>
@@ -1148,7 +1148,7 @@ const InvoicePreviewLegacy = ({
               );
             })()}
           </div>
-          <div style={{ height: 2, background: PALETTE.red, width: "100%", margin: "0 0 6px", padding: 0, border: "none" }} />
+          <div style={{ height: 1, background: PALETTE.blue, width: "100%", margin: "0 0 6px", padding: 0, border: "none" }} />
 
           {/* Invoice meta — left invoice#, center barcode, right UMR */}
           <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed", marginBottom: 4 }}>
