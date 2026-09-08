@@ -864,22 +864,23 @@ const InvoicePreviewLegacy = ({
         summaryHtml = `<div style="margin-top:14px;padding:0;text-align:left">`;
         summaryHtml += `<div style="display:flex;gap:14px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap">`;
         summaryHtml += `<div style="flex:0 0 auto">${leftHtml}</div>`;
-        summaryHtml += `<div style="flex:1 1 220px;max-width:320px">${rightHtml}</div>`;
-        summaryHtml += `</div>`;
+        summaryHtml += `<div style="flex:1 1 220px;max-width:320px">`;
+        summaryHtml += rightHtml;
         if (Number(data.paid_amount || 0) > 0) {
-          summaryHtml += `<div style="font-size:10px;margin-top:6px;color:${PALETTE.muted};line-height:1.25;text-align:left">Received with thanks from <strong style="color:${PALETTE.ink}">${patientDisplayName(data)}</strong> a sum of Rs. ${Number(data.paid_amount).toFixed(2)}/- (${numberToWords(Number(data.paid_amount))} Rupees)</div>`;
+          summaryHtml += `<div style="font-size:9px;margin-top:8px;color:${PALETTE.muted};line-height:1.3;text-align:left">Received with thanks from <strong style="color:${PALETTE.ink}">${patientDisplayName(data)}</strong> a sum of Rs. ${Number(data.paid_amount).toFixed(2)}/- (${numberToWords(Number(data.paid_amount))} Rupees)</div>`;
         }
+        summaryHtml += `<div style="text-align:center;font-size:10px;color:${PALETTE.muted};margin-top:8px;line-height:1.3;padding-top:6px;border-top:1px solid ${PALETTE.line}">`;
+        summaryHtml += `<p style="margin:0;font-weight:700;color:${PALETTE.blue}">Thank you for choosing PH PathLabs</p>`;
+        summaryHtml += `<p style="margin:2px 0 0;font-size:9px;color:${PALETTE.muted}">This is an electronically generated receipt and does not require a signature</p>`;
+        summaryHtml += `</div>`;
+        summaryHtml += `</div>`;
+        summaryHtml += `</div>`;
         if (cancelledTests.length > 0) {
-          summaryHtml += `<div style="font-size:9px;color:${PALETTE.muted};margin-top:1px;text-align:left">Cancelled Tests: ${cancelledTests.map((ct: any) => ct.test_name || ct.test_id).join(", ")}</div>`;
+          summaryHtml += `<div style="font-size:9px;color:${PALETTE.muted};margin-top:4px;text-align:left">Cancelled Tests: ${cancelledTests.map((ct: any) => ct.test_name || ct.test_id).join(", ")}</div>`;
         }
         if (hvcRefund > 0) {
           summaryHtml += `<div style="font-size:9px;color:${PALETTE.muted};margin-top:1px;text-align:left">Home Visit Charges Refunded: ₹${hvcRefund}</div>`;
         }
-        summaryHtml += `</div>`;
-
-        summaryHtml += `<div style="text-align:center;font-size:10px;color:${PALETTE.muted};margin-top:4px;line-height:1.3">`;
-        summaryHtml += `<p style="margin:0;font-weight:700;color:${PALETTE.blue}">Thank you for choosing PH PathLabs</p>`;
-        summaryHtml += `<p style="margin:2px 0 0;font-size:9px;color:${PALETTE.muted}">This is an electronically generated receipt and does not require a signature</p>`;
         summaryHtml += `</div>`;
       }
 
@@ -1260,17 +1261,15 @@ const InvoicePreviewLegacy = ({
                 })()}
               </div>
 
-              <div
-                style={{
-                  flex: "1 1 220px",
-                  maxWidth: 320,
-                  border: `1px solid ${PALETTE.blueLine}`,
-                  borderRadius: 8,
-                  overflow: "hidden",
-                  background: PALETTE.white,
-                  minWidth: 220,
-                }}
-              >
+              <div style={{ flex: "1 1 220px", maxWidth: 320, minWidth: 220 }}>
+                <div
+                  style={{
+                    border: `1px solid ${PALETTE.blueLine}`,
+                    borderRadius: 8,
+                    overflow: "hidden",
+                    background: PALETTE.white,
+                  }}
+                >
                 <div
                   style={{
                     display: "flex",
@@ -1330,14 +1329,19 @@ const InvoicePreviewLegacy = ({
                   </tfoot>
                 </table>
               </div>
-            </div>
-            {Number(data.paid_amount || 0) > 0 && (
-              <div style={{ fontSize: 10, marginTop: 6, color: PALETTE.muted, lineHeight: 1.25, textAlign: "left" }}>
-                Received with thanks from <strong style={{ color: PALETTE.ink }}>{patientDisplayName(data)}</strong> a sum of Rs. {Number(data.paid_amount).toFixed(2)}/- ({numberToWords(Number(data.paid_amount))} Rupees)
+                {Number(data.paid_amount || 0) > 0 && (
+                  <div style={{ fontSize: 9, marginTop: 8, color: PALETTE.muted, lineHeight: 1.3, textAlign: "left" }}>
+                    Received with thanks from <strong style={{ color: PALETTE.ink }}>{patientDisplayName(data)}</strong> a sum of Rs. {Number(data.paid_amount).toFixed(2)}/- ({numberToWords(Number(data.paid_amount))} Rupees)
+                  </div>
+                )}
+                <div style={{ textAlign: "center", fontSize: 10, color: PALETTE.muted, marginTop: 8, lineHeight: 1.3, paddingTop: 6, borderTop: `1px solid ${PALETTE.line}` }}>
+                  <p style={{ margin: 0, fontWeight: 700, color: PALETTE.blue }}>Thank you for choosing PH PathLabs</p>
+                  <p style={{ margin: "2px 0 0", fontSize: 9, color: PALETTE.muted }}>This is an electronically generated receipt and does not require a signature</p>
+                </div>
               </div>
-            )}
+            </div>
             {cancelledTests.length > 0 && (
-              <div style={{ fontSize: 9, color: PALETTE.muted, marginTop: 2, textAlign: "left" }}>
+              <div style={{ fontSize: 9, color: PALETTE.muted, marginTop: 4, textAlign: "left" }}>
                 Cancelled Tests: {cancelledTests.map((ct: any) => ct.test_name || ct.test_id).join(", ")}
               </div>
             )}
@@ -1346,11 +1350,6 @@ const InvoicePreviewLegacy = ({
                 Home Visit Charges Refunded: ₹{hvcRefund}
               </div>
             )}
-          </div>
-
-          <div style={{ textAlign: "center", fontSize: 10, color: PALETTE.muted, marginTop: 4, lineHeight: 1.3 }}>
-            <p style={{ margin: 0, fontWeight: 700, color: PALETTE.blue }}>Thank you for choosing PH PathLabs</p>
-            <p style={{ margin: "2px 0 0", fontSize: 9, color: PALETTE.muted }}>This is an electronically generated receipt and does not require a signature</p>
           </div>
           <div style={{ height: 1, background: PALETTE.line, width: "100%", marginTop: 3 }} />
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: PALETTE.muted, marginTop: 2, lineHeight: 1.25 }}>
