@@ -253,8 +253,8 @@ const ResultsEntry = () => {
       const candidates = await fetchResultsEntryCandidateIds(showOlderPending);
       return await fetchFilteredSortedIds(candidates, debouncedSearch);
     },
-    placeholderData: keepPreviousData,
-    staleTime: 120_000,
+    // No keepPreviousData — finished patients must leave the queue immediately.
+    staleTime: 15_000,
   });
 
   // Analyzer writes emit tiny lims_result_notify rows. Revalidate only the
@@ -299,8 +299,8 @@ const ResultsEntry = () => {
       const allow = new Set(machinePending);
       return pendingIds.filter((id) => allow.has(id));
     },
-    // Do NOT keepPreviousData — stale IDs from another machine/queue look like false positives.
-    staleTime: 30_000,
+    // Fresh fetch every time machine/queue changes — do not serve stale finished patients.
+    staleTime: 0,
   });
 
   // When queue is freshly empty, drop machine-filter leftovers too.
