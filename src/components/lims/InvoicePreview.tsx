@@ -61,6 +61,15 @@ function invoiceLineDiscount(t: any): number {
   return Number(t?.discount || 0);
 }
 
+function invoicePaymentModeLabel(p: { mode?: string; date?: string; payment_date?: string; collected_at?: string } | null | undefined): string {
+  const mode = p?.mode || "Payment";
+  const raw = p?.date || p?.payment_date || p?.collected_at;
+  if (!raw) return mode;
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return mode;
+  return `${mode} (${format(d, "dd-MM-yyyy hh:mm a")})`;
+}
+
 function isInvoicePackageLine(t: any, packageTestsById: Map<string, string[]>): boolean {
   if (String(t?.item_type || "").toLowerCase() === "package") return true;
   const id = String(t?.test_id || "");
@@ -758,11 +767,8 @@ const InvoicePreview = ({
         summaryHtml += moneyRow("Final Amount", `₹${activeFinal}`, { color: PALETTE.ink, weight: "800", size: "11px", amountSize: "11px" });
         if (payments.length > 0) {
           payments.forEach((p: any) => {
-            const modeLabel = `${p.mode || "Payment"}${
-              p.date ? ` (${format(new Date(p.date), "dd-MM-yyyy hh:mm a")})` : ""
-            }`;
             summaryHtml += moneyRow(
-              modeLabel,
+              invoicePaymentModeLabel(p),
               `₹${p.amount}`,
               { color: PALETTE.muted, weight: "500", size: "9px" },
             );
@@ -1111,7 +1117,7 @@ const InvoicePreview = ({
                 {payments.map((p: any, i: number) => (
                   <tr key={i}>
                     <td style={{ padding: "1px 16px 1px 0", fontSize: 10, color: PALETTE.muted, textAlign: "left", border: "none", lineHeight: 1.35, whiteSpace: "nowrap" }}>
-                      {p.mode || "Payment"}
+                      {invoicePaymentModeLabel(p)}
                     </td>
                     <td style={{ padding: "1px 0", fontSize: 10, color: PALETTE.ink, textAlign: "right", whiteSpace: "nowrap", border: "none", lineHeight: 1.35 }}>₹{p.amount}</td>
                   </tr>
