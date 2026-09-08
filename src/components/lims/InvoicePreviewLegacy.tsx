@@ -862,19 +862,18 @@ const InvoicePreviewLegacy = ({
           </div>`;
 
         summaryHtml = `<div style="margin-top:14px;padding:0;text-align:left">`;
-        summaryHtml += `<div style="display:flex;gap:14px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap">`;
-        summaryHtml += `<div style="flex:0 0 auto">${leftHtml}</div>`;
-        summaryHtml += `<div style="flex:1 1 220px;max-width:360px">`;
+        // Table layout is more reliable than flex for print engines (avoids stacking).
+        summaryHtml += `<table style="width:100%;border-collapse:collapse;table-layout:fixed"><tr>`;
+        summaryHtml += `<td style="width:40%;vertical-align:top;padding-right:12px;border:0">${leftHtml}</td>`;
+        summaryHtml += `<td style="width:60%;vertical-align:top;border:0">`;
         summaryHtml += rightHtml;
         if (Number(data.paid_amount || 0) > 0) {
           summaryHtml += `<div style="font-size:9px;margin-top:8px;color:${PALETTE.muted};line-height:1.3;text-align:left">Received with thanks from <strong style="color:${PALETTE.ink}">${patientDisplayName(data)}</strong> a sum of Rs. ${Number(data.paid_amount).toFixed(2)}/- (${numberToWords(Number(data.paid_amount))} Rupees)</div>`;
         }
         summaryHtml += `<div style="text-align:center;font-size:10px;color:${PALETTE.muted};margin-top:8px;line-height:1.3;padding-top:6px;border-top:1px solid ${PALETTE.line}">`;
         summaryHtml += `<p style="margin:0;font-weight:700;color:${PALETTE.blue}">Thank you for choosing PH PathLabs</p>`;
-        summaryHtml += `<p style="margin:2px 0 0;font-size:7.5px;color:${PALETTE.muted};white-space:nowrap;letter-spacing:-0.01em">This is an electronically generated receipt and does not require a signature</p>`;
         summaryHtml += `</div>`;
-        summaryHtml += `</div>`;
-        summaryHtml += `</div>`;
+        summaryHtml += `</td></tr></table>`;
         if (cancelledTests.length > 0) {
           summaryHtml += `<div style="font-size:9px;color:${PALETTE.muted};margin-top:4px;text-align:left">Cancelled Tests: ${cancelledTests.map((ct: any) => ct.test_name || ct.test_id).join(", ")}</div>`;
         }
@@ -891,6 +890,9 @@ const InvoicePreviewLegacy = ({
         <tr>
           <td style="padding-top:3px;font-size:9px;color:${PALETTE.muted};text-align:left;border:0;line-height:1.25">Prepared by ${data.registered_by || "—"} · ${preparedDate}</td>
           <td style="padding-top:3px;font-size:9px;color:${PALETTE.muted};text-align:right;border:0;line-height:1.25">Printed by ${currentUser} · ${printNow}</td>
+        </tr>
+        <tr>
+          <td colspan="2" style="padding-top:4px;font-size:9px;color:${PALETTE.muted};text-align:center;border:0;line-height:1.25">This is an electronically generated receipt and does not require a signature</td>
         </tr>
       </table>`;
 
@@ -1336,7 +1338,6 @@ const InvoicePreviewLegacy = ({
                 )}
                 <div style={{ textAlign: "center", fontSize: 10, color: PALETTE.muted, marginTop: 8, lineHeight: 1.3, paddingTop: 6, borderTop: `1px solid ${PALETTE.line}` }}>
                   <p style={{ margin: 0, fontWeight: 700, color: PALETTE.blue }}>Thank you for choosing PH PathLabs</p>
-                  <p style={{ margin: "2px 0 0", fontSize: 7.5, color: PALETTE.muted, whiteSpace: "nowrap", letterSpacing: "-0.01em" }}>This is an electronically generated receipt and does not require a signature</p>
                 </div>
               </div>
             </div>
@@ -1355,6 +1356,9 @@ const InvoicePreviewLegacy = ({
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: PALETTE.muted, marginTop: 2, lineHeight: 1.25 }}>
             <div>Prepared by {data.registered_by || "—"} · {format(createdAt, "dd-MM-yyyy hh:mm a")}</div>
             <div>Printed by {getCurrentUserName() || "—"} · {format(new Date(), "dd-MM-yyyy hh:mm a")}</div>
+          </div>
+          <div style={{ textAlign: "center", fontSize: 9, color: PALETTE.muted, marginTop: 4, lineHeight: 1.25 }}>
+            This is an electronically generated receipt and does not require a signature
           </div>
         </div>
 
