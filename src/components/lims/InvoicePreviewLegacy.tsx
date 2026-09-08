@@ -661,8 +661,22 @@ const InvoicePreviewLegacy = ({
   const handlePrint = () => {
     renderBarcode();
     const barcodePng = barcodeRef.current?.toDataURL?.("image/png") || "";
-    const printWindow = window.open("", "_blank");
-    if (!printWindow) return;
+    // Hidden iframe — print dialog only (no new browser tab).
+    const existing = document.getElementById("lims-invoice-print-frame");
+    if (existing) existing.remove();
+    const iframe = document.createElement("iframe");
+    iframe.id = "lims-invoice-print-frame";
+    iframe.setAttribute("title", "Invoice print");
+    iframe.setAttribute("aria-hidden", "true");
+    iframe.style.cssText =
+      "position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0;pointer-events:none;";
+    document.body.appendChild(iframe);
+    const printWindow = iframe.contentWindow;
+    const printDoc = iframe.contentDocument || printWindow?.document;
+    if (!printWindow || !printDoc) {
+      iframe.remove();
+      return;
+    }
 
     // Always one page — content auto-scales in the print window.
     const pages: any[][] = [tests];
@@ -955,7 +969,8 @@ const InvoicePreviewLegacy = ({
       pagesHtml += `</div></div>`;
     });
 
-    printWindow.document.write(`
+    printDoc.open();
+    printDoc.write(`
       <html><head><title>Invoice ${data.invoice_number}</title>
       <link rel="stylesheet" href="${INVOICE_FONT_CSS_HREF}" />
       <style>
@@ -1021,11 +1036,30 @@ const InvoicePreviewLegacy = ({
             });
             setTimeout(go, 8000);
           }
-          whenReady(function () { fit(); setTimeout(function () { window.focus(); window.print(); }, 120); });
+          whenReady(function () {
+            fit();
+            setTimeout(function () {
+              try { window.focus(); } catch (e) {}
+              window.print();
+            }, 120);
+          });
+          window.onafterprint = function () {
+            try {
+              var frame = window.parent && window.parent.document
+                ? window.parent.document.getElementById("lims-invoice-print-frame")
+                : null;
+              if (frame && frame.parentNode) frame.parentNode.removeChild(frame);
+            } catch (e) {}
+          };
         })();
       <\/script></body></html>
     `);
-    printWindow.document.close();
+    printDoc.close();
+    // Fallback cleanup if afterprint never fires (some browsers).
+    window.setTimeout(() => {
+      const frame = document.getElementById("lims-invoice-print-frame");
+      if (frame) frame.remove();
+    }, 120000);
   };
 
   const age = formatPatientAge({ dob: data.dob, ageText: data.age_text });
