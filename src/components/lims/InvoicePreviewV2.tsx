@@ -1,7 +1,9 @@
 import { useRef, useState, useEffect, useCallback, useLayoutEffect, type CSSProperties, type ReactNode } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Printer, Send, Loader2, CheckCircle2, Heart, Info } from "lucide-react";
+import { Printer, Send, Loader2, CheckCircle2, Heart, Info, User, ClipboardList, ShieldCheck, Users } from "lucide-react";
+import artYourHealth from "@/assets/invoice-art/your-health-priority.png";
+import artThankYou from "@/assets/invoice-art/thank-you.png";
 import { format } from "date-fns";
 import { toJpeg, getFontEmbedCSS } from "html-to-image";
 import JsBarcode from "jsbarcode";
@@ -63,7 +65,9 @@ const INVOICE_FONT =
   '"Noto Sans", "IBM Plex Sans", "Segoe UI", system-ui, sans-serif';
 
 const INVOICE_FONT_CSS_HREF =
-  "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Noto+Sans:wght@400;500;600;700&display=swap";
+  "https://fonts.googleapis.com/css2?family=Caveat:wght@500;600;700&family=Caveat:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Noto+Sans:wght@400;500;600;700&display=swap";
+
+const SCRIPT_FONT = '"Caveat", "Segoe Script", cursive';
 
 function invoiceLineAmount(t: any): number {
   return Number(t?.price || 0);
@@ -184,6 +188,25 @@ async function waitForImagesIn(root: HTMLElement, timeoutMs = 12000): Promise<vo
 
 void ensureInvoiceFontsReady();
 
+
+function SectionHeading({ icon, title }: { icon: ReactNode; title: string }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+      <span style={{ display: "inline-flex", color: PALETTE.blue, flexShrink: 0 }}>{icon}</span>
+      <div style={{ fontSize: 10, fontWeight: 800, color: PALETTE.blue, letterSpacing: "0.02em" }}>{title}</div>
+    </div>
+  );
+}
+
+function TrustBadge({ icon, label }: { icon: ReactNode; label: string }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 5, minWidth: 0 }}>
+      <span style={{ color: PALETTE.blue, display: "inline-flex", flexShrink: 0 }}>{icon}</span>
+      <span style={{ fontSize: 8, fontWeight: 700, color: PALETTE.blue, lineHeight: 1.15, whiteSpace: "pre-line" }}>{label}</span>
+    </div>
+  );
+}
+
 function Field({
   label,
   value,
@@ -194,7 +217,7 @@ function Field({
   return (
     <div style={{ marginBottom: 4, lineHeight: 1.25 }}>
       <div style={{ fontSize: 8, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", color: PALETTE.blue }}>{label}</div>
-      <div style={{ fontSize: 11, fontWeight: 600, color: PALETTE.ink, wordBreak: "break-word" }}>{value || "—"}</div>
+      <div style={{ fontSize: 11, fontWeight: 700, color: PALETTE.ink, wordBreak: "break-word" }}>{value || "—"}</div>
     </div>
   );
 }
@@ -251,6 +274,7 @@ const InvoicePreviewV2 = ({
   const barcodeRef = useRef<HTMLCanvasElement>(null);
   const queuedInvoiceRef = useRef<string | null>(null);
   const autoQueuedRef = useRef<string | null>(null);
+  const lastQueueNonce = useRef(0);
   const [brand, setBrand] = useState<Record<string, string>>(INVOICE_BRAND_DEFAULTS);
   const [logoSrc, setLogoSrc] = useState("");
   const [consoleQueued, setConsoleQueued] = useState(false);
@@ -522,11 +546,11 @@ const InvoicePreviewV2 = ({
         `Amount: ₹${data.final_amount ?? activeFinalSafe(data)}`;
       const res = await enqueueInvoiceForWhatsAppConsole({
         phone: data.mobile_number,
+        patient_name: patientLabel,
+        registration_id: data.id || null,
+        invoice_number: invoiceNo,
         caption,
-        imageBlob: blob,
-        fileName: `invoice-${invoiceNo}.jpg`,
-        invoiceNumber: invoiceNo,
-        patientName: patientLabel,
+        blob,
       });
       if (!res.ok) {
         toast.error(res.error || "Failed to queue invoice for WhatsApp");
@@ -546,23 +570,38 @@ const InvoicePreviewV2 = ({
     }
   }, [open, data, brandReady, brand, isPickupInvoice, prepareCloneForCapture, onQueueSettled]);
 
-  // Auto / parent-driven queue — same gates as legacy
+  // Parent-driven sequential queue (home-visit multi-patient). Bound to invoice #.
   useEffect(() => {
-    if (!open || !data || !fontsReady || !packageNamesReady || !brandReady) return;
-    const invoiceNo = String(data.invoice_number || "");
-    if (!invoiceNo) return;
-    if (autoQueueWhatsApp && autoQueuedRef.current !== invoiceNo && !isPickupInvoice(data)) {
+    const invoiceNo = String(data?.invoice_number || "").trim();
+    const ready = open && packageNamesReady && fontsReady && brandReady;
+    if (
+      !shouldFireBoundInvoiceQueue({
+        token: queueRequest,
+        lastNonce: lastQueueNonce.current,
+        currentInvoiceNumber: invoiceNo,
+        ready,
+      })
+    ) {
+      return;
+    }
+    lastQueueNonce.current = Number(queueRequest?.nonce || 0);
+    void queueInvoiceViaWaApi();
+  }, [queueRequest, open, data?.invoice_number, packageNamesReady, fontsReady, brandReady, queueInvoiceViaWaApi]);
+
+  // New registration: queue invoice to durable outbox once layout is ready.
+  useEffect(() => {
+    if (!autoQueueWhatsApp || !open || !data?.invoice_number || !data?.mobile_number) return;
+    if (!packageNamesReady || !fontsReady || !brandReady) return;
+    if (isPickupInvoice(data)) return;
+    const invoiceNo = String(data.invoice_number);
+    if (autoQueuedRef.current === invoiceNo || queuedInvoiceRef.current === invoiceNo) return;
+    const timer = setTimeout(() => {
+      if (autoQueuedRef.current === invoiceNo || queuedInvoiceRef.current === invoiceNo) return;
       autoQueuedRef.current = invoiceNo;
       void queueInvoiceViaWaApi();
-    }
-  }, [open, data, fontsReady, packageNamesReady, brandReady, autoQueueWhatsApp, isPickupInvoice, queueInvoiceViaWaApi]);
-
-  useEffect(() => {
-    if (!open || !queueRequest || !data) return;
-    if (!shouldFireBoundInvoiceQueue(queueRequest, String(data.invoice_number || ""))) return;
-    if (!fontsReady || !packageNamesReady || !brandReady) return;
-    void queueInvoiceViaWaApi();
-  }, [open, queueRequest, data, fontsReady, packageNamesReady, brandReady, queueInvoiceViaWaApi]);
+    }, 900);
+    return () => clearTimeout(timer);
+  }, [autoQueueWhatsApp, open, data, data?.invoice_number, data?.mobile_number, queueInvoiceViaWaApi, isPickupInvoice, packageNamesReady, fontsReady, brandReady]);
 
   const handlePrint = useCallback(async () => {
     const prepared = prepareCloneForCapture();
@@ -700,13 +739,13 @@ const InvoicePreviewV2 = ({
           >
             <div ref={sheetRef} id="invoice-sheet" style={{ width: "100%", padding: "14px 16px 10px" }}>
               {/* Header */}
-              <div style={{ display: "flex", gap: 12, alignItems: "flex-start", marginBottom: 8 }}>
+              <div style={{ display: "flex", gap: 10, alignItems: "flex-start", marginBottom: 10 }}>
                 <div style={{ flex: "0 0 auto", textAlign: (brand.invoice_logo_align as any) || "left" }}>
                   {(logoSrc || brand.invoice_logo_url) ? (
                     <img
                       src={logoSrc || brand.invoice_logo_url}
                       alt="logo"
-                      style={{ maxHeight: 48, maxWidth: 150, objectFit: "contain", display: "block" }}
+                      style={{ maxHeight: 52, maxWidth: 160, objectFit: "contain", display: "block" }}
                     />
                   ) : labVisible ? (
                     <div style={{ fontSize: 18, fontWeight: 800, color: PALETTE.blue, lineHeight: 1.1 }}>
@@ -714,7 +753,7 @@ const InvoicePreviewV2 = ({
                     </div>
                   ) : null}
                   {labVisible && (logoSrc || brand.invoice_logo_url) && (
-                    <div style={{ fontSize: 11, fontWeight: 800, color: PALETTE.blue, marginTop: 2, lineHeight: 1.15 }}>
+                    <div style={{ fontSize: 12, fontWeight: 800, color: PALETTE.blue, marginTop: 2, lineHeight: 1.15 }}>
                       {brand.invoice_lab_name || "PH PathLabs"}
                     </div>
                   )}
@@ -724,11 +763,17 @@ const InvoicePreviewV2 = ({
                     </div>
                   )}
                 </div>
-                <div style={{ flex: 1, textAlign: "right", fontSize: 9, color: PALETTE.muted, lineHeight: 1.35 }}>
-                  {brand.invoice_contact && <div style={{ fontWeight: 600, color: PALETTE.ink }}>{brand.invoice_contact}</div>}
+                <div style={{ flex: 1, minWidth: 0 }} />
+                <div style={{ flex: "0 0 auto", textAlign: "right", fontSize: 9, color: PALETTE.muted, lineHeight: 1.35, maxWidth: 220 }}>
+                  {brand.invoice_contact && <div style={{ fontWeight: 700, color: PALETTE.blue }}>{brand.invoice_contact}</div>}
                   {brand.invoice_address && (
                     <div style={{ whiteSpace: "pre-line", marginTop: 2 }}>{brand.invoice_address}</div>
                   )}
+                  <img
+                    src={artYourHealth}
+                    alt="Your Health Our Priority"
+                    style={{ display: "block", marginLeft: "auto", marginTop: 6, width: 120, height: "auto", objectFit: "contain" }}
+                  />
                 </div>
               </div>
 
@@ -740,8 +785,8 @@ const InvoicePreviewV2 = ({
                   gap: 8,
                   background: PALETTE.blueSoft,
                   border: `1px solid ${PALETTE.blueLine}`,
-                  borderRadius: 8,
-                  padding: "8px 10px",
+                  borderRadius: 10,
+                  padding: "9px 12px",
                   marginBottom: 8,
                 }}
               >
@@ -783,11 +828,9 @@ const InvoicePreviewV2 = ({
               </div>
 
               {/* Patient + Generated By */}
-              <div style={{ display: "grid", gridTemplateColumns: "1.4fr 0.9fr", gap: 8, marginBottom: 8 }}>
-                <div style={{ background: PALETTE.soft, border: `1px solid ${PALETTE.line}`, borderRadius: 8, padding: "8px 10px" }}>
-                  <div style={{ fontSize: 9, fontWeight: 800, color: PALETTE.blue, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.04em" }}>
-                    Patient Details
-                  </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1.55fr 0.85fr", gap: 8, marginBottom: 8 }}>
+                <div style={{ background: PALETTE.white, border: `1px solid ${PALETTE.line}`, borderRadius: 10, padding: "9px 11px" }}>
+                  <SectionHeading icon={<User style={{ width: 13, height: 13 }} strokeWidth={2.25} />} title="Patient Details" />
                   <Field label="Name" value={patientDisplayName(data)} />
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
                     <Field label="UMR / Patient ID" value={data.umr_number || "—"} />
@@ -798,10 +841,8 @@ const InvoicePreviewV2 = ({
                     <Field label="Referring Doctor" value={data.doctor_name || "SELF"} />
                   </div>
                 </div>
-                <div style={{ background: PALETTE.soft, border: `1px solid ${PALETTE.line}`, borderRadius: 8, padding: "8px 10px" }}>
-                  <div style={{ fontSize: 9, fontWeight: 800, color: PALETTE.blue, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.04em" }}>
-                    Visit Details
-                  </div>
+                <div style={{ background: PALETTE.white, border: `1px solid ${PALETTE.line}`, borderRadius: 10, padding: "9px 11px" }}>
+                  <SectionHeading icon={<ClipboardList style={{ width: 13, height: 13 }} strokeWidth={2.25} />} title="Visit Details" />
                   <Field label="Generated By" value={data.registered_by || "—"} />
                 </div>
               </div>
@@ -876,10 +917,8 @@ const InvoicePreviewV2 = ({
                 </div>
 
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  <div style={{ background: PALETTE.blueSoft, border: `1px solid ${PALETTE.blueLine}`, borderRadius: 8, padding: "8px 10px" }}>
-                    <div style={{ fontSize: 9, fontWeight: 800, color: PALETTE.blue, marginBottom: 4, textTransform: "uppercase" }}>
-                      Payment Summary
-                    </div>
+                  <div style={{ background: PALETTE.blueSoft, border: `1px solid ${PALETTE.blueLine}`, borderRadius: 10, padding: "9px 10px" }}>
+                    <SectionHeading icon={<CheckCircle2 style={{ width: 13, height: 13 }} strokeWidth={2.25} />} title="Payment Summary" />
                     <MoneyRow label="Gross Amount" amount={`₹${activeGross}`} />
                     {activeDiscount > 0 && (
                       <MoneyRow label="Total Discount" amount={`-₹${activeDiscount}`} discount />
@@ -913,9 +952,7 @@ const InvoicePreviewV2 = ({
                   </div>
 
                   <div style={{ border: `1px solid ${PALETTE.line}`, borderRadius: 8, padding: "6px 8px" }}>
-                    <div style={{ fontSize: 9, fontWeight: 800, color: PALETTE.blue, marginBottom: 4, textTransform: "uppercase" }}>
-                      Payment Details
-                    </div>
+                    <SectionHeading icon={<ClipboardList style={{ width: 13, height: 13 }} strokeWidth={2.25} />} title="Payment Details" />
                     <table style={{ width: "100%", borderCollapse: "collapse" }}>
                       <thead>
                         <tr>
@@ -961,36 +998,100 @@ const InvoicePreviewV2 = ({
                   </div>
 
                   {qrPng && (
-                    <div style={{ textAlign: "center", border: `1px solid ${PALETTE.line}`, borderRadius: 8, padding: 8 }}>
+                    <div style={{ textAlign: "center", border: `1px solid ${PALETTE.line}`, borderRadius: 10, padding: 8, background: PALETTE.white }}>
                       <img src={qrPng} alt="Report QR" style={{ width: 88, height: 88, margin: "0 auto", display: "block" }} />
                       <div style={{ fontSize: 8, color: PALETTE.muted, marginTop: 4, lineHeight: 1.25 }}>
                         Scan to view / download reports
                       </div>
                     </div>
                   )}
-
-                  <div style={{ display: "flex", gap: 6, alignItems: "flex-start", fontSize: 8, color: PALETTE.muted, lineHeight: 1.3 }}>
-                    <Heart style={{ width: 12, height: 12, color: PALETTE.red, flexShrink: 0, marginTop: 1 }} />
-                    <span>Thank you for choosing {brand.invoice_lab_name || "PH PathLabs"}. We are committed to your health and well-being.</span>
-                  </div>
                 </div>
               </div>
 
-              {/* Notes + trust */}
-              <div style={{ marginTop: 8, displayTop: `1px solid ${PALETTE.line}`, paddingTop: 6 }}>
-                <div style={{ display: "flex", gap: 6, alignItems: "flex-start", marginBottom: 6 }}>
+              {/* Thank-you + notes + trust footer */}
+              <div style={{ marginTop: 10, textAlign: "center" }}>
+                <img
+                  src={artThankYou}
+                  alt={`Thank you for choosing ${brand.invoice_lab_name || "PH PathLabs"}`}
+                  style={{
+                    display: "block",
+                    width: "100%",
+                    maxHeight: 118,
+                    objectFit: "contain",
+                    margin: "0 auto",
+                    borderRadius: 10,
+                  }}
+                />
+              </div>
+
+              <div
+                style={{
+                  marginTop: 8,
+                  background: PALETTE.blueSoft,
+                  border: `1px solid ${PALETTE.blueLine}`,
+                  borderRadius: 10,
+                  padding: "8px 10px",
+                }}
+              >
+                <div style={{ display: "flex", gap: 6, alignItems: "flex-start", marginBottom: 8 }}>
                   <Info style={{ width: 12, height: 12, color: PALETTE.blue, flexShrink: 0, marginTop: 1 }} />
-                  <div style={{ fontSize: 8, color: PALETTE.muted, lineHeight: 1.35 }}>
-                    <div style={{ fontWeight: 700, color: PALETTE.blue, marginBottom: 2 }}>Important Notes</div>
+                  <div style={{ fontSize: 8, color: PALETTE.muted, lineHeight: 1.35, textAlign: "left" }}>
+                    <div style={{ fontWeight: 800, color: PALETTE.blue, marginBottom: 2 }}>Important Notes</div>
                     <div>• Please retain this invoice for your records and future reference.</div>
                     <div>• Reports are available via the secure link / QR once approved and dispatched.</div>
                     <div>• For queries contact {brand.invoice_contact || "the lab"}.</div>
                   </div>
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 8, color: PALETTE.blue, fontWeight: 700 }}>
-                  <span>Accurate Results</span>
-                  <span>Trusted by Doctors</span>
-                  <span>Caring for You</span>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr 1fr",
+                    gap: 8,
+                    background: PALETTE.white,
+                    borderRadius: 8,
+                    border: `1px solid ${PALETTE.blueLine}`,
+                    padding: "7px 8px",
+                    marginBottom: 8,
+                  }}
+                >
+                  <TrustBadge icon={<ShieldCheck style={{ width: 14, height: 14 }} />} label={"Accurate\nResults"} />
+                  <TrustBadge icon={<Users style={{ width: 14, height: 14 }} />} label={"Trusted by\nDoctors"} />
+                  <TrustBadge icon={<Heart style={{ width: 14, height: 14 }} />} label={"Caring\nfor You"} />
+                </div>
+
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 8 }}>
+                  <div style={{ fontSize: 8, fontWeight: 600, color: PALETTE.blue, lineHeight: 1.3 }}>
+                    {(brand.invoice_contact || "LabLine: 6356 55 66 99").replace(/^LabLine:\s*/i, "")}
+                    {"  |  "}
+                    www.phpathlabs.com
+                  </div>
+                  <div style={{ textAlign: "right" }}>
+                    <div
+                      style={{
+                        fontFamily: SCRIPT_FONT,
+                        fontSize: 16,
+                        fontWeight: 700,
+                        color: PALETTE.blue,
+                        lineHeight: 1,
+                        transform: "rotate(-6deg)",
+                        display: "inline-block",
+                      }}
+                    >
+                      Healthier Tomorrows
+                    </div>
+                    <div
+                      style={{
+                        height: 2,
+                        width: 88,
+                        marginLeft: "auto",
+                        marginTop: 2,
+                        background: `linear-gradient(90deg, ${PALETTE.orange}, #FBB03B)`,
+                        borderRadius: 2,
+                        transform: "rotate(-4deg)",
+                      }}
+                    />
+                  </div>
                 </div>
               </div>
 
