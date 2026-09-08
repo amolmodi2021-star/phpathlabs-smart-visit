@@ -1623,7 +1623,7 @@ const ResultsEntry = () => {
     setExpandedTestKey(null);
     if (machineFilterActive) {
       qc.invalidateQueries({ queryKey: ["results_machine_filtered_ids"] });
-      qc.invalidateQueries({ queryKey: ["results_pending_ids"] });
+      qc.invalidateQueries({ queryKey: ["results_accepted_count"] });
     }
   }, [filteredEntries, expandedPatient, detailReady, machineFilterActive, qc]);
 
