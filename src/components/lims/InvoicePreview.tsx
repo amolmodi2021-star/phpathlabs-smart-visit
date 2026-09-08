@@ -758,8 +758,11 @@ const InvoicePreview = ({
         summaryHtml += moneyRow("Final Amount", `₹${activeFinal}`, { color: PALETTE.ink, weight: "800", size: "11px", amountSize: "11px" });
         if (payments.length > 0) {
           payments.forEach((p: any) => {
+            const modeLabel = `${p.mode || "Payment"}${
+              p.date ? ` (${format(new Date(p.date), "dd-MM-yyyy hh:mm a")})` : ""
+            }`;
             summaryHtml += moneyRow(
-              `${p.mode || "Payment"}`,
+              modeLabel,
               `₹${p.amount}`,
               { color: PALETTE.muted, weight: "500", size: "9px" },
             );
