@@ -1592,27 +1592,40 @@ const ResultsEntry = () => {
       return resolved === String(filterMachine).trim();
     };
 
-    return activeEntries.map((e) => {
-      if (e.registration.id !== expandedPatient) return e;
-      return {
-        ...e,
-        parameters: e.parameters.filter((p) => matchesMachine(p.testId, p.machineName)),
-        incompleteTests: e.incompleteTests.filter((t) => matchesMachine(t.testId)),
-        snipOnlyTests: e.snipOnlyTests.filter((t) => matchesMachine(t.testId)),
-      };
-    });
+    return activeEntries
+      .map((e) => {
+        if (e.registration.id !== expandedPatient) return e;
+        return {
+          ...e,
+          parameters: e.parameters.filter((p) => matchesMachine(p.testId, p.machineName)),
+          incompleteTests: e.incompleteTests.filter((t) => matchesMachine(t.testId)),
+          snipOnlyTests: e.snipOnlyTests.filter((t) => matchesMachine(t.testId)),
+        };
+      })
+      // Already entered / nothing left for this machine → drop after detail+masters are ready
+      // (not before — empty instrument_name during master load caused false collapses).
+      .filter((e) => {
+        if (e.registration.id !== expandedPatient || !detailReady) return true;
+        return (
+          e.parameters.length > 0 ||
+          e.incompleteTests.length > 0 ||
+          e.snipOnlyTests.length > 0
+        );
+      });
   }, [patientEntries, mode, selectedMachine, expandedPatient, testsMap, testsInstrumentMap, detailReady]);
 
-  // Soft refresh: if expanded patient left the machine queue entirely, clear selection.
-  // Do NOT collapse merely because machine filter temporarily emptied params (that
-  // made Sysmex cards look like they "won't open").
+  // Drop selection and refresh machine queue when expand proves there is no Results work left.
   useEffect(() => {
     if (!expandedPatient || !detailReady) return;
-    const stillInList = filteredEntries.some((e) => e.registration.id === expandedPatient);
-    if (stillInList) return;
+    const stillVisible = filteredEntries.some((e) => e.registration.id === expandedPatient);
+    if (stillVisible) return;
     setExpandedPatient(null);
     setExpandedTestKey(null);
-  }, [filteredEntries, expandedPatient, detailReady]);
+    if (machineFilterActive) {
+      qc.invalidateQueries({ queryKey: ["results_machine_filtered_ids"] });
+      qc.invalidateQueries({ queryKey: ["results_pending_ids"] });
+    }
+  }, [filteredEntries, expandedPatient, detailReady, machineFilterActive, qc]);
 
   // ─── NEW arrivals badge tracker ───
   const filteredRegIds = useMemo(() => filteredEntries.map(e => e.registration.id), [filteredEntries]);
