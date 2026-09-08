@@ -5,7 +5,7 @@
 import InvoicePreviewLegacy from "./InvoicePreviewLegacy";
 import InvoicePreviewV2 from "./InvoicePreviewV2";
 
-const INVOICE_LAYOUT: "v2" | "legacy" = "v2";
+const INVOICE_LAYOUT: "v2" | "legacy" = "legacy";
 
 const InvoicePreview = INVOICE_LAYOUT === "legacy" ? InvoicePreviewLegacy : InvoicePreviewV2;
 
