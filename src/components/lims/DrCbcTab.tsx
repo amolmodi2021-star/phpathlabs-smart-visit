@@ -1147,7 +1147,6 @@ const DrCbcTab = () => {
                         {formatAgeGender(reg.dob, reg.gender, reg.age_text)}
                       </Badge>
                     </div>
-                    <div className="text-xs text-muted-foreground">{reg.mobile_number || "—"}</div>
                   </div>
                 </button>
 
