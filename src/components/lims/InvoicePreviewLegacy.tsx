@@ -874,11 +874,11 @@ const InvoicePreviewLegacy = ({
         summaryHtml += `<td style="width:56%;vertical-align:top;padding-left:2px;border:0">`;
         summaryHtml += rightHtml;
         if (Number(data.paid_amount || 0) > 0) {
-          summaryHtml += `<div style="font-size:9px;margin-top:8px;color:${PALETTE.muted};line-height:1.3;text-align:left">Received with thanks from <strong style="color:${PALETTE.ink}">${patientDisplayName(data)}</strong> a sum of Rs. ${Number(data.paid_amount).toFixed(2)}/- (${numberToWords(Number(data.paid_amount))} Rupees)</div>`;
+          summaryHtml += `<div style="font-size:11px;margin-top:8px;color:${PALETTE.muted};line-height:1.45;text-align:left">Received with thanks from <strong style="color:${PALETTE.ink}">${patientDisplayName(data)}</strong> a sum of Rs. ${Number(data.paid_amount).toFixed(2)}/- (${numberToWords(Number(data.paid_amount))} Rupees)</div>`;
         }
         summaryHtml += `<div style="text-align:center;margin-top:8px;padding-top:6px;border-top:1px solid ${PALETTE.line}">`;
-        summaryHtml += `<p style="margin:0;padding:2px 0 4px;font-size:10px;font-weight:700;color:${PALETTE.blue};line-height:1.55;overflow:visible">Thank you for choosing PH PathLabs</p>`;
-        summaryHtml += `<div style="margin-top:6px;font-size:9px;color:${PALETTE.muted};line-height:1.55;text-align:center">`;
+        summaryHtml += `<p style="margin:0;padding:3px 0 5px;font-size:12px;font-weight:700;color:${PALETTE.blue};line-height:1.55;overflow:visible">Thank you for choosing PH PathLabs</p>`;
+        summaryHtml += `<div style="margin-top:8px;font-size:11px;color:${PALETTE.muted};line-height:1.55;text-align:center">`;
         summaryHtml += `<div style="padding:1px 0">Prepared by ${data.registered_by || "—"} · ${format(createdAt, "dd-MM-yyyy hh:mm a")}</div>`;
         summaryHtml += `<div style="padding:1px 0">Printed by ${getCurrentUserName() || "—"} · ${format(new Date(), "dd-MM-yyyy hh:mm a")}</div>`;
         summaryHtml += `</div>`;
@@ -893,7 +893,7 @@ const InvoicePreviewLegacy = ({
         summaryHtml += `</div>`;
       }
 
-      const preparedPrintedFooter = `<div style="margin-top:6px;padding-top:4px;border-top:1px solid ${PALETTE.line};text-align:center;font-size:9px;color:${PALETTE.muted};line-height:1.55;padding-bottom:2px">This is an electronically generated receipt and does not require a signature</div>`;
+      const preparedPrintedFooter = `<div style="margin-top:6px;padding-top:4px;border-top:1px solid ${PALETTE.line};text-align:center;font-size:11px;color:${PALETTE.muted};line-height:1.55;padding-bottom:3px">This is an electronically generated receipt and does not require a signature</div>`;
 
       pagesHtml += `<div id="invoice-page"><div id="invoice-sheet">`;
       pagesHtml += headerHtml();
@@ -1342,15 +1342,15 @@ const InvoicePreviewLegacy = ({
                 </table>
               </div>
                 {Number(data.paid_amount || 0) > 0 && (
-                  <div style={{ fontSize: 9, marginTop: 8, color: PALETTE.muted, lineHeight: 1.3, textAlign: "left" }}>
+                  <div style={{ fontSize: 11, marginTop: 8, color: PALETTE.muted, lineHeight: 1.45, textAlign: "left" }}>
                     Received with thanks from <strong style={{ color: PALETTE.ink }}>{patientDisplayName(data)}</strong> a sum of Rs. {Number(data.paid_amount).toFixed(2)}/- ({numberToWords(Number(data.paid_amount))} Rupees)
                   </div>
                 )}
                 <div style={{ textAlign: "center", marginTop: 8, paddingTop: 6, borderTop: `1px solid ${PALETTE.line}` }}>
-                  <p style={{ margin: 0, padding: "2px 0 4px", fontSize: 10, fontWeight: 700, color: PALETTE.blue, lineHeight: 1.55, overflow: "visible" }}>
+                  <p style={{ margin: 0, padding: "3px 0 5px", fontSize: 12, fontWeight: 700, color: PALETTE.blue, lineHeight: 1.55, overflow: "visible" }}>
                     Thank you for choosing PH PathLabs
                   </p>
-                  <div style={{ marginTop: 6, fontSize: 9, color: PALETTE.muted, lineHeight: 1.55 }}>
+                  <div style={{ marginTop: 8, fontSize: 11, color: PALETTE.muted, lineHeight: 1.55 }}>
                     <div style={{ padding: "1px 0" }}>
                       Prepared by {data.registered_by || "—"} · {format(createdAt, "dd-MM-yyyy hh:mm a")}
                     </div>
@@ -1376,12 +1376,12 @@ const InvoicePreviewLegacy = ({
           <div
             style={{
               textAlign: "center",
-              fontSize: 9,
+              fontSize: 11,
               color: PALETTE.muted,
               marginTop: 4,
               marginBottom: 2,
               lineHeight: 1.55,
-              paddingBottom: 2,
+              paddingBottom: 3,
               overflow: "visible",
             }}
           >
