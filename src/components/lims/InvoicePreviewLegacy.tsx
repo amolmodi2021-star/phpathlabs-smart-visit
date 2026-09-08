@@ -857,12 +857,30 @@ const InvoicePreviewLegacy = ({
         }
         leftInner += `</div></div></div>`;
 
+        const preparedByLine = `${data.registered_by || "—"} · ${format(createdAt, "dd-MM-yyyy hh:mm a")}`;
+        const printedByLine = `${getCurrentUserName() || "—"} · ${format(new Date(), "dd-MM-yyyy hh:mm a")}`;
+        const prepPrintMeta = `
+          <table style="width:auto;border-collapse:collapse;margin-top:8px;text-align:left">
+            <tr>
+              <td style="padding:1px 0;font-size:11px;color:${PALETTE.muted};white-space:nowrap;line-height:1.55;border:0;vertical-align:baseline">Prepared by</td>
+              <td style="padding:1px 6px;font-size:11px;color:${PALETTE.muted};line-height:1.55;border:0;vertical-align:baseline">:</td>
+              <td style="padding:1px 0;font-size:11px;color:${PALETTE.ink};line-height:1.55;border:0;vertical-align:baseline;white-space:nowrap">${preparedByLine}</td>
+            </tr>
+            <tr>
+              <td style="padding:1px 0;font-size:11px;color:${PALETTE.muted};white-space:nowrap;line-height:1.55;border:0;vertical-align:baseline">Printed by</td>
+              <td style="padding:1px 6px;font-size:11px;color:${PALETTE.muted};line-height:1.55;border:0;vertical-align:baseline">:</td>
+              <td style="padding:1px 0;font-size:11px;color:${PALETTE.ink};line-height:1.55;border:0;vertical-align:baseline;white-space:nowrap">${printedByLine}</td>
+            </tr>
+          </table>`;
         const leftHtml = `
-          <div style="background:${PALETTE.blueSoft};border:1px solid ${PALETTE.blueLine};border-radius:10px;padding:10px 12px;min-width:0;max-width:100%;width:100%">
-            <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
-              <span style="font-size:11px;font-weight:800;color:${PALETTE.blue}">Payment Summary</span>
+          <div>
+            <div style="background:${PALETTE.blueSoft};border:1px solid ${PALETTE.blueLine};border-radius:10px;padding:10px 12px;min-width:0;max-width:100%;width:100%">
+              <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
+                <span style="font-size:11px;font-weight:800;color:${PALETTE.blue}">Payment Summary</span>
+              </div>
+              ${leftInner}
             </div>
-            ${leftInner}
+            ${prepPrintMeta}
           </div>`;
 
 
@@ -913,10 +931,6 @@ const InvoicePreviewLegacy = ({
         }
         summaryHtml += `<div style="text-align:center;margin-top:8px;padding-top:6px;border-top:1px solid ${PALETTE.line}">`;
         summaryHtml += `<p style="margin:0;padding:3px 0 5px;font-size:12px;font-weight:700;color:${PALETTE.blue};line-height:1.55;overflow:visible">Thank you for choosing PH PathLabs</p>`;
-        summaryHtml += `<div style="margin-top:8px;font-size:11px;color:${PALETTE.muted};line-height:1.55;text-align:center">`;
-        summaryHtml += `<div style="padding:1px 0">Prepared by ${data.registered_by || "—"} · ${format(createdAt, "dd-MM-yyyy hh:mm a")}</div>`;
-        summaryHtml += `<div style="padding:1px 0">Printed by ${getCurrentUserName() || "—"} · ${format(new Date(), "dd-MM-yyyy hh:mm a")}</div>`;
-        summaryHtml += `</div>`;
         summaryHtml += `</div>`;
         summaryHtml += `</td></tr></table>`;
         if (cancelledTests.length > 0) {
@@ -1318,6 +1332,24 @@ const InvoicePreviewLegacy = ({
                 </div>
                   );
                 })()}
+                <table style={{ width: "auto", borderCollapse: "collapse", marginTop: 8, textAlign: "left" }}>
+                  <tbody>
+                    <tr>
+                      <td style={{ padding: "1px 0", fontSize: 11, color: PALETTE.muted, whiteSpace: "nowrap", lineHeight: 1.55, border: "none", verticalAlign: "baseline" }}>Prepared by</td>
+                      <td style={{ padding: "1px 6px", fontSize: 11, color: PALETTE.muted, lineHeight: 1.55, border: "none", verticalAlign: "baseline" }}>:</td>
+                      <td style={{ padding: "1px 0", fontSize: 11, color: PALETTE.ink, lineHeight: 1.55, border: "none", verticalAlign: "baseline", whiteSpace: "nowrap" }}>
+                        {data.registered_by || "—"} · {format(createdAt, "dd-MM-yyyy hh:mm a")}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style={{ padding: "1px 0", fontSize: 11, color: PALETTE.muted, whiteSpace: "nowrap", lineHeight: 1.55, border: "none", verticalAlign: "baseline" }}>Printed by</td>
+                      <td style={{ padding: "1px 6px", fontSize: 11, color: PALETTE.muted, lineHeight: 1.55, border: "none", verticalAlign: "baseline" }}>:</td>
+                      <td style={{ padding: "1px 0", fontSize: 11, color: PALETTE.ink, lineHeight: 1.55, border: "none", verticalAlign: "baseline", whiteSpace: "nowrap" }}>
+                        {getCurrentUserName() || "—"} · {format(new Date(), "dd-MM-yyyy hh:mm a")}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
               </div>
 
               <div style={{ flex: "1 1 220px", maxWidth: 300, minWidth: 200 }}>
@@ -1397,14 +1429,6 @@ const InvoicePreviewLegacy = ({
                   <p style={{ margin: 0, padding: "3px 0 5px", fontSize: 12, fontWeight: 700, color: PALETTE.blue, lineHeight: 1.55, overflow: "visible" }}>
                     Thank you for choosing PH PathLabs
                   </p>
-                  <div style={{ marginTop: 8, fontSize: 11, color: PALETTE.muted, lineHeight: 1.55 }}>
-                    <div style={{ padding: "1px 0" }}>
-                      Prepared by {data.registered_by || "—"} · {format(createdAt, "dd-MM-yyyy hh:mm a")}
-                    </div>
-                    <div style={{ padding: "1px 0" }}>
-                      Printed by {getCurrentUserName() || "—"} · {format(new Date(), "dd-MM-yyyy hh:mm a")}
-                    </div>
-                  </div>
                 </div>
               </div>
             </div>
