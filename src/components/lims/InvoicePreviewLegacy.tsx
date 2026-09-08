@@ -1287,8 +1287,11 @@ const InvoicePreviewLegacy = ({
           </table>
 
           <div style={{ marginTop: 14, padding: 0, textAlign: "left" }}>
-            <div style={{ display: "flex", gap: 6, alignItems: "flex-start", justifyContent: "flex-start" }}>
-              <div style={{ flex: "0 0 188px", display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
+            {/* Match print: fixed table columns. Flex left the Prepared-by min-content width as a large gap. */}
+            <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
+              <tbody>
+                <tr>
+                  <td style={{ width: "36%", verticalAlign: "top", paddingRight: 6, border: "none" }}>
                 {(() => {
                   const status = paymentStatusBadge(data);
                   const showStatusBadge = !!status && (status.tone === "cancelled" || activeFinal > 0);
@@ -1302,7 +1305,7 @@ const InvoicePreviewLegacy = ({
                     border: `1px solid ${PALETTE.blueLine}`,
                     borderRadius: 10,
                     padding: "10px 12px",
-                    width: 188,
+                    width: "100%",
                     boxSizing: "border-box",
                   }}
                 >
@@ -1386,7 +1389,7 @@ const InvoicePreviewLegacy = ({
                 </div>
                   );
                 })()}
-                <table style={{ width: "auto", borderCollapse: "collapse", marginTop: 8, textAlign: "left" }}>
+                <table style={{ width: "auto", maxWidth: "100%", borderCollapse: "collapse", marginTop: 8, textAlign: "left" }}>
                   <tbody>
                     <tr>
                       <td style={{ padding: "1px 0", fontSize: 10, color: PALETTE.muted, whiteSpace: "nowrap", lineHeight: 1.5, border: "none", verticalAlign: "baseline" }}>Prepared by</td>
@@ -1412,9 +1415,8 @@ const InvoicePreviewLegacy = ({
                     </tr>
                   </tbody>
                 </table>
-              </div>
-
-              <div style={{ flex: "1 1 0", minWidth: 0 }}>
+                  </td>
+                  <td style={{ width: "64%", verticalAlign: "top", border: "none" }}>
                 <div
                   style={{
                     border: `1px solid ${PALETTE.blueLine}`,
@@ -1422,6 +1424,7 @@ const InvoicePreviewLegacy = ({
                     overflow: "hidden",
                     background: PALETTE.white,
                     width: "100%",
+                    boxSizing: "border-box",
                   }}
                 >
                 <div
@@ -1495,8 +1498,10 @@ const InvoicePreviewLegacy = ({
                     Thank you for choosing PH PathLabs
                   </p>
                 </div>
-              </div>
-            </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
             {cancelledTests.length > 0 && (
               <div style={{ fontSize: 9, color: PALETTE.muted, marginTop: 4, textAlign: "left" }}>
                 Cancelled Tests: {cancelledTests.map((ct: any) => ct.test_name || ct.test_id).join(", ")}
