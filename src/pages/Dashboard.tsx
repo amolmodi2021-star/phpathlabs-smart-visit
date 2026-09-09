@@ -48,8 +48,12 @@ type RegRow = {
 
 type ModeTotals = Record<string, number>;
 
+/** Uniform with Daily Report: `-₹1,234` (sign before ₹), never `₹-1,234`. */
 function money(n: number) {
-  return `₹${n.toLocaleString("en-IN", { maximumFractionDigits: 2, minimumFractionDigits: 0 })}`;
+  const v = Number(n) || 0;
+  const abs = Math.abs(v).toLocaleString("en-IN", { maximumFractionDigits: 2, minimumFractionDigits: 0 });
+  if (v < 0) return `-₹${abs}`;
+  return `₹${abs}`;
 }
 
 function listPrice(t: any): number {
@@ -781,7 +785,7 @@ const Dashboard = () => {
                     <TableRow key={mode}>
                       <TableCell>{mode}</TableCell>
                       <TableCell className={`text-right tabular-nums ${amt < 0 ? "text-destructive" : ""}`}>
-                        {amt < 0 ? `−${money(Math.abs(amt))}` : money(amt)}
+                        {money(amt)}
                       </TableCell>
                     </TableRow>
                   ))}
