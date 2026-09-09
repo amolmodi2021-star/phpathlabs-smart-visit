@@ -33,4 +33,12 @@ describe("dailyReportMetrics", () => {
       {},
     )).toBe(-42000);
   });
+
+  it("paid for post_discount_refund is signed outflow", () => {
+    expect(paymentRowPaid({
+      transaction_type: "post_discount_refund",
+      total_amount: -10,
+      refund_amount: 10,
+    })).toBe(-10);
+  });
 });

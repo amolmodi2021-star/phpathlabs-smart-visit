@@ -38,7 +38,7 @@ export interface LogTransactionParams {
   registration_id: string;
   invoice_number: string;
   patient_name?: string;
-  transaction_type: "registration_payment" | "due_collection" | "old_due_recovered" | "discount_applied" | "refund" | "old_bill_refund" | "bill_cancellation" | "old_bill_cancellation" | "test_cancellation";
+  transaction_type: "registration_payment" | "due_collection" | "old_due_recovered" | "discount_applied" | "refund" | "old_bill_refund" | "post_discount_refund" | "bill_cancellation" | "old_bill_cancellation" | "test_cancellation";
   direction: "in" | "out";
   payments?: Array<{ mode?: string; amount?: number }>;
   total_amount?: number;
@@ -255,7 +255,7 @@ export async function sumLoggedRefunds(registrationId: string): Promise<number> 
     .from("payment_transactions" as any)
     .select("refund_amount, total_amount")
     .eq("registration_id", registrationId)
-    .in("transaction_type", ["refund", "old_bill_refund"]);
+    .in("transaction_type", ["refund", "old_bill_refund", "post_discount_refund"]);
   if (error || !data?.length) return 0;
   return (data as any[]).reduce((sum, r) => {
     const refundAmt = Number(r.refund_amount || 0);

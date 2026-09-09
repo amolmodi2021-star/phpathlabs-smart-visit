@@ -24,6 +24,7 @@ const TRANSACTION_LABELS: Record<string, string> = {
   discount_applied: "Discount Applied",
   refund: "Refund",
   old_bill_refund: "Old Bill Refund",
+  post_discount_refund: "Post Discount Refund",
   bill_cancellation: "Bill Cancellation",
   old_bill_cancellation: "Old Bill Cancelled",
   test_cancellation: "Test Cancellation",
@@ -189,7 +190,7 @@ const DailyReport = () => {
   // Type rank: cancellation rows must appear before refund rows within the same invoice
   const typeRank = (type: string): number => {
     if (type === "bill_cancellation" || type === "old_bill_cancellation" || type === "test_cancellation") return 0;
-    if (type === "refund" || type === "old_bill_refund") return 1;
+    if (type === "refund" || type === "old_bill_refund" || type === "post_discount_refund") return 1;
     return 2;
   };
 

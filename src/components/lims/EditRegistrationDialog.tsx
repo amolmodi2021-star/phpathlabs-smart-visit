@@ -463,11 +463,10 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
 
       invalidatePatientCaches(qc);
 
-      // Sync the original registration_payment row's bill snapshot. Payment-mode
-      // columns stay frozen UNLESS the user truly edited the original at-registration
-      // split (mode typo correction) — never when adding what is really a due collection.
+      // Sync registration_payment only for at-registration payment-mode corrections.
+      // Discount changes must NOT rewrite the frozen Registration Gross/Discount/Final —
+      // those deltas belong on discount_applied / post_discount_refund rows.
       {
-        const newFinal = discountChanged ? discountCalc.finalAmount : Number(reg.final_amount || 0);
         const origModes = splitPaymentModes(originalRegEntries);
         const newModes = splitPaymentModes(editedSplit);
         const splitChanged =
@@ -476,27 +475,43 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
           origModes.paytm !== newModes.paytm ||
           origModes.credit_card !== newModes.credit_card ||
           origModes.neft !== newModes.neft;
-        const reasons: string[] = [];
-        if (splitChanged) reasons.push("Payment mode edited");
-        if (discountChanged) reasons.push("Discount edited");
-        if (reasons.length > 0) {
-          const origPaid = originalRegEntries.reduce((s: number, p: any) => s + Number(p.amount || 0), 0);
-          const syncedPaid = splitChanged
-            ? editedSplit.reduce((s, p) => s + (p.amount || 0), 0)
-            : origPaid;
+        if (splitChanged) {
+          const syncedPaid = editedSplit.reduce((s, p) => s + (p.amount || 0), 0);
+          const frozenFinal = Number(reg.final_amount || 0);
           await syncRegistrationPaymentRow({
             registration_id: reg.id,
             invoice_number: reg.invoice_number,
             patient_name: patientName,
-            payments: splitChanged ? editedSplit : originalRegEntries,
+            payments: editedSplit,
             paid_amount: syncedPaid,
-            final_amount: newFinal,
-            due_amount: Math.max(0, newFinal - lockedPaidAmount),
-            gross_amount: discountChanged ? discountCalc.totalAmount : Number(reg.gross_amount || 0),
-            discount_amount: discountChanged ? discountCalc.totalDiscount : Number(reg.discount_amount || 0),
-            change_reason: reasons.join(" + "),
-            sync_payment_split: splitChanged,
+            final_amount: frozenFinal,
+            due_amount: Math.max(0, frozenFinal - syncedPaid),
+            change_reason: "Payment mode edited",
+            sync_payment_split: true,
           });
+        }
+        if (discountChanged) {
+          const prevDiscount = Number(reg.discount_amount || 0);
+          const prevFinal = Number(reg.final_amount || 0);
+          const discDelta = discountCalc.totalDiscount - prevDiscount;
+          const finalDelta = discountCalc.finalAmount - prevFinal;
+          if (Math.abs(discDelta) > 0.009 || Math.abs(finalDelta) > 0.009) {
+            logPaymentTransaction({
+              registration_id: reg.id,
+              invoice_number: reg.invoice_number,
+              patient_name: patientName,
+              transaction_type: "discount_applied",
+              direction: finalDelta < 0 ? "out" : "in",
+              payments: [],
+              total_amount: 0,
+              gross_amount: 0,
+              discount_amount: discDelta,
+              final_amount: finalDelta,
+              paid_amount: 0,
+              due_amount: 0,
+              remarks: `Discount edited — Disc ${discDelta >= 0 ? "+" : ""}₹${discDelta}, Final ${finalDelta >= 0 ? "+" : ""}₹${finalDelta}`,
+            });
+          }
         }
       }
 
@@ -551,46 +566,28 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
       if (error) throw error;
       qc.invalidateQueries({ queryKey: ["patient_registrations"] });
 
-      // Always sync registration_payment row after refund + discount applied
-      {
-        const newPayments = updateData.payments as Array<{ mode: string; amount: number }>;
-        await syncRegistrationPaymentRow({
-          registration_id: reg.id,
-          invoice_number: reg.invoice_number,
-          patient_name: patientName,
-          payments: newPayments,
-          paid_amount: discountCalc.finalAmount,
-          final_amount: discountCalc.finalAmount,
-          due_amount: 0,
-          gross_amount: discountCalc.totalAmount,
-          discount_amount: discountCalc.totalDiscount,
-          change_reason: "Discount applied + overpayment refunded",
-        });
-      }
-
-      // Log overpayment refund — money-out delta only.
-      // Registration snapshot fields (gross/discount/final/paid/due) are zero so
-      // they don't inflate Daily Report totals; sync row above already reflects new state.
-      const ovTodayStr = format(new Date(), "dd-MM-yyyy");
-      const ovInvDateStr = (reg.invoice_number && /^\d{6}/.test(reg.invoice_number))
-        ? `${reg.invoice_number.slice(4,6)}-${reg.invoice_number.slice(2,4)}-20${reg.invoice_number.slice(0,2)}`
-        : ovTodayStr;
-      const ovIsCrossDay = ovInvDateStr !== ovTodayStr;
+      // Do NOT sync/mutate the frozen registration_payment Gross/Discount/Final/Paid.
+      // Post-discount cash-out + Disc/Final deltas go on a dedicated audit row.
+      const additionalDiscount = Math.max(
+        0,
+        discountCalc.totalDiscount - Number(reg.discount_amount || 0),
+      );
+      const discForRow = additionalDiscount > 0.009 ? additionalDiscount : discountOverpayment;
       logPaymentTransaction({
         registration_id: reg.id,
         invoice_number: reg.invoice_number,
         patient_name: patientName,
-        transaction_type: ovIsCrossDay ? "old_bill_refund" : "refund",
+        transaction_type: "post_discount_refund",
         direction: "out",
         payments: [{ mode: overpaymentRefundMode, amount: discountOverpayment }],
         total_amount: discountOverpayment,
         gross_amount: 0,
-        discount_amount: 0,
-        final_amount: 0,
+        discount_amount: discForRow,
+        final_amount: -discountOverpayment,
         paid_amount: 0,
         due_amount: 0,
         refund_amount: discountOverpayment,
-        remarks: `Overpayment refund via ${overpaymentRefundMode}`,
+        remarks: `Post discount refund ₹${discountOverpayment} via ${overpaymentRefundMode}`,
       });
       toast.success(`Discount applied & ₹${discountOverpayment} refunded via ${overpaymentRefundMode}`);
       onOpenChange(false);

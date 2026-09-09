@@ -44,7 +44,7 @@ export function paymentRowPaid(row: {
   if (type === "due_collection" || type === "old_due_recovered") {
     return Number(row.total_amount || 0);
   }
-  if (type === "refund" || type === "old_bill_refund") {
+  if (type === "refund" || type === "old_bill_refund" || type === "post_discount_refund") {
     const signedTotal = Number(row.total_amount || 0);
     if (signedTotal !== 0) return signedTotal;
     const refundAmt = Number(row.refund_amount || 0);
