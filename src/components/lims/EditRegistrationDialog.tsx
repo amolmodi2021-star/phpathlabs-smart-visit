@@ -768,32 +768,57 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
       // 4. Recalculate registration status
       await recalculateRegistrationStatus(reg.id);
 
-      // Single audit row: Gross/Discount/Final offsets + cash refund (if any).
-      // Do NOT rewrite registration_payment — Registration stays frozen.
-      if (cancelledGross > 0.009 || cancelledDiscount > 0.009 || billReduction > 0.009 || cashRefund > 0.009) {
-        const cancelParts: string[] = [];
-        if (newlyCancelled.length > 0) cancelParts.push(`${newlyCancelled.length} test(s) cancelled`);
-        if (homeVisitRefundRequested) {
-          cancelParts.push(hvcCashRefund > 0 ? "HV charges refunded" : "HV charges removed");
-        }
+      // Bill offset + cash refund as paired rows. Same timestamp → Daily Report merges
+      // into one line; different timestamps stay separate.
+      const cancelAt = new Date().toISOString();
+      const cancelParts: string[] = [];
+      if (newlyCancelled.length > 0) cancelParts.push(`${newlyCancelled.length} test(s) cancelled`);
+      if (homeVisitRefundRequested) {
+        cancelParts.push(hvcCashRefund > 0 ? "HV charges refunded" : "HV charges removed");
+      }
+      const cancelRemark = cancelParts.length ? cancelParts.join(" + ") : "Test cancellation";
+
+      if (cancelledGross > 0.009 || cancelledDiscount > 0.009 || billReduction > 0.009) {
         logPaymentTransaction({
           registration_id: reg.id,
           invoice_number: reg.invoice_number,
           patient_name: patientName,
           transaction_type: "test_cancellation",
           direction: "out",
-          payments: cashRefund > 0 ? [{ mode: refundMode, amount: cashRefund }] : [],
-          total_amount: cashRefund,
-          // gross_amount is tests-only; HVC-only removals offset via final_amount.
+          payments: [],
+          total_amount: 0,
           gross_amount: -cancelledGross,
           discount_amount: -cancelledDiscount,
           final_amount: -billReduction,
           paid_amount: 0,
           due_amount: 0,
+          refund_amount: 0,
+          transaction_date: cancelAt,
+          remarks: cancelRemark,
+        });
+      }
+      if (cashRefund > 0.009) {
+        const cTodayStr = format(new Date(), "dd-MM-yyyy");
+        const cInvDateStr = (reg.invoice_number && /^\d{6}/.test(reg.invoice_number))
+          ? `${reg.invoice_number.slice(4, 6)}-${reg.invoice_number.slice(2, 4)}-20${reg.invoice_number.slice(0, 2)}`
+          : cTodayStr;
+        const cIsCrossDay = cInvDateStr !== cTodayStr;
+        logPaymentTransaction({
+          registration_id: reg.id,
+          invoice_number: reg.invoice_number,
+          patient_name: patientName,
+          transaction_type: cIsCrossDay ? "old_bill_refund" : "refund",
+          direction: "out",
+          payments: [{ mode: refundMode, amount: cashRefund }],
+          total_amount: cashRefund,
+          gross_amount: 0,
+          discount_amount: 0,
+          final_amount: 0,
+          paid_amount: 0,
+          due_amount: 0,
           refund_amount: cashRefund,
-          remarks: cancelParts.length
-            ? `${cancelParts.join(" + ")}${cashRefund > 0 ? ` — refund ₹${cashRefund} via ${refundMode}` : ""}`
-            : `Test cancellation${cashRefund > 0 ? ` — refund ₹${cashRefund}` : ""}`,
+          transaction_date: cancelAt,
+          remarks: `${cancelRemark} — refund ₹${cashRefund} via ${refundMode}`,
         });
       }
 

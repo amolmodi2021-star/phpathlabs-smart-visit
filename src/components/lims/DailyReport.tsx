@@ -15,7 +15,7 @@ import DeletePasswordDialog from "@/components/DeletePasswordDialog";
 import * as XLSX from "@e965/xlsx";
 import jsPDF from "jspdf";
 import { patientDisplayName } from "@/lib/patientDisplayName";
-import { isHiddenDailyReportType, paymentRowGross, paymentRowPaid } from "@/lib/dailyReportMetrics";
+import { isHiddenDailyReportType, paymentRowGross, paymentRowPaid, mergeSameTimestampTestCancelRefunds } from "@/lib/dailyReportMetrics";
 
 const TRANSACTION_LABELS: Record<string, string> = {
   registration_payment: "Registration",
@@ -196,26 +196,26 @@ const DailyReport = () => {
 
   // Filtered data
   const filtered = useMemo(() => {
-    const rows = transactions.filter((t: any) => {
-      // Hide cross-day cancellation marker rows; the paired old_bill_refund row carries the cash impact
-      if (isHiddenDailyReportType(t.transaction_type)) return false;
-      if (userFilter !== "ALL" && t.performed_by !== userFilter) return false;
-      if (typeFilter !== "ALL" && t.transaction_type !== typeFilter) return false;
-      if (modeFilter !== "ALL") {
-        const key = modeFilter.toLowerCase().replace(/\s+/g, "_") + "_amount";
-        // Show row if this mode has any non-zero amount (positive in or negative refund)
-        if (Number(t[key] || 0) === 0) return false;
-      }
-      return true;
-    });
-    // Stable sort: invoice_number desc, then cancellation before refund, then chronological
-    return [...rows].sort((a: any, b: any) => {
+    // Merge cancel+refund pairs first (same minute only), then apply UI filters so
+    // a Cash/Refund filter still sees the combined row.
+    const visible = transactions.filter((t: any) => !isHiddenDailyReportType(t.transaction_type));
+    const sorted = [...visible].sort((a: any, b: any) => {
       const invA = a.invoice_number || "";
       const invB = b.invoice_number || "";
       if (invA !== invB) return invB.localeCompare(invA);
       const rankDiff = typeRank(a.transaction_type) - typeRank(b.transaction_type);
       if (rankDiff !== 0) return rankDiff;
       return new Date(a.transaction_date).getTime() - new Date(b.transaction_date).getTime();
+    });
+    const merged = mergeSameTimestampTestCancelRefunds(sorted);
+    return merged.filter((t: any) => {
+      if (userFilter !== "ALL" && t.performed_by !== userFilter) return false;
+      if (typeFilter !== "ALL" && t.transaction_type !== typeFilter) return false;
+      if (modeFilter !== "ALL") {
+        const key = modeFilter.toLowerCase().replace(/\s+/g, "_") + "_amount";
+        if (Number(t[key] || 0) === 0) return false;
+      }
+      return true;
     });
   }, [transactions, userFilter, typeFilter, modeFilter]);
 

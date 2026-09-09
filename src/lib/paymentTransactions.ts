@@ -49,6 +49,8 @@ export interface LogTransactionParams {
   due_amount?: number;
   refund_amount?: number;
   remarks?: string;
+  /** Optional shared stamp so paired cancel+refund rows can merge when equal. */
+  transaction_date?: string;
 }
 
 /**
@@ -68,7 +70,7 @@ export function logPaymentTransaction(params: LogTransactionParams) {
     invoice_number: params.invoice_number,
     patient_name: params.patient_name || null,
     transaction_type: params.transaction_type,
-    transaction_date: new Date().toISOString(),
+    transaction_date: params.transaction_date || new Date().toISOString(),
     performed_by: user?.display_name || user?.username || "Unknown",
     cash_amount: modes.cash * sign,
     gpay_amount: modes.gpay * sign,

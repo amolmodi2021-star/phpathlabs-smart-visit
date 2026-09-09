@@ -59,3 +59,118 @@ export function paymentRowPaid(row: {
 export function isHiddenDailyReportType(type: string | null | undefined): boolean {
   return type === "old_bill_cancellation";
 }
+
+/** Minute bucket for pairing cancel + refund (same minute → eligible to merge). */
+export function transactionMinuteKey(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return `${d.getUTCFullYear()}-${d.getUTCMonth()}-${d.getUTCDate()}-${d.getUTCHours()}-${d.getUTCMinutes()}`;
+}
+
+function isCashlessTestCancellation(row: {
+  transaction_type?: string | null;
+  refund_amount?: number | null;
+  total_amount?: number | null;
+  cash_amount?: number | null;
+  gpay_amount?: number | null;
+  paytm_amount?: number | null;
+  neft_amount?: number | null;
+  credit_card_amount?: number | null;
+}): boolean {
+  if (row.transaction_type !== "test_cancellation") return false;
+  if (Number(row.refund_amount || 0) > 0.009) return false;
+  const modeSum =
+    Math.abs(Number(row.cash_amount || 0))
+    + Math.abs(Number(row.gpay_amount || 0))
+    + Math.abs(Number(row.paytm_amount || 0))
+    + Math.abs(Number(row.neft_amount || 0))
+    + Math.abs(Number(row.credit_card_amount || 0))
+    + Math.abs(Number(row.total_amount || 0));
+  return modeSum < 0.009;
+}
+
+function isTestCancelCashRefund(row: {
+  transaction_type?: string | null;
+  remarks?: string | null;
+}): boolean {
+  if (row.transaction_type !== "refund" && row.transaction_type !== "old_bill_refund") return false;
+  const remarks = String(row.remarks || "").toLowerCase();
+  // Prefer explicit cancel remarks; still allow empty remarks when paired by time+invoice.
+  if (!remarks) return true;
+  return remarks.includes("cancel") || remarks.includes("test");
+}
+
+/**
+ * Merge Test Cancellation + Refund into one display row only when they share the
+ * same invoice and the same minute. Different timestamps stay as separate rows.
+ * Already-combined test_cancellation rows (with cash/refund on the row) pass through.
+ */
+export function mergeSameTimestampTestCancelRefunds<T extends {
+  id?: string;
+  invoice_number?: string | null;
+  registration_id?: string | null;
+  transaction_type?: string | null;
+  transaction_date?: string | null;
+  remarks?: string | null;
+  refund_amount?: number | null;
+  total_amount?: number | null;
+  cash_amount?: number | null;
+  gpay_amount?: number | null;
+  paytm_amount?: number | null;
+  neft_amount?: number | null;
+  credit_card_amount?: number | null;
+  gross_amount?: number | null;
+  discount_amount?: number | null;
+  final_amount?: number | null;
+}>(rows: T[]): T[] {
+  const used = new Set<string>();
+  const out: T[] = [];
+
+  for (const row of rows) {
+    const id = String(row.id || "");
+    if (id && used.has(id)) continue;
+
+    if (!isCashlessTestCancellation(row)) {
+      out.push(row);
+      continue;
+    }
+
+    const minute = transactionMinuteKey(row.transaction_date);
+    const partner = rows.find((cand) => {
+      const cid = String(cand.id || "");
+      if (!cid || cid === id || used.has(cid)) return false;
+      if (!isTestCancelCashRefund(cand)) return false;
+      if ((cand.invoice_number || "") !== (row.invoice_number || "")) return false;
+      if ((cand.registration_id || "") && (row.registration_id || "")
+        && cand.registration_id !== row.registration_id) return false;
+      // Different minute → do not merge
+      if (!minute || transactionMinuteKey(cand.transaction_date) !== minute) return false;
+      return true;
+    });
+
+    if (!partner) {
+      out.push(row);
+      continue;
+    }
+
+    const pid = String(partner.id || "");
+    if (id) used.add(id);
+    if (pid) used.add(pid);
+
+    out.push({
+      ...row,
+      id: id && pid ? `${id}+${pid}` : row.id,
+      cash_amount: partner.cash_amount ?? 0,
+      gpay_amount: partner.gpay_amount ?? 0,
+      paytm_amount: partner.paytm_amount ?? 0,
+      neft_amount: partner.neft_amount ?? 0,
+      credit_card_amount: partner.credit_card_amount ?? 0,
+      total_amount: partner.total_amount ?? 0,
+      refund_amount: partner.refund_amount ?? 0,
+      remarks: row.remarks || partner.remarks,
+    });
+  }
+
+  return out;
+}

@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { paymentRowGross, paymentRowPaid } from "@/lib/dailyReportMetrics";
+import {
+  paymentRowGross,
+  paymentRowPaid,
+  mergeSameTimestampTestCancelRefunds,
+} from "@/lib/dailyReportMetrics";
 
 describe("dailyReportMetrics", () => {
   it("adds live HVC onto registration gross", () => {
@@ -58,5 +62,71 @@ describe("dailyReportMetrics", () => {
       refund_amount: 0,
       paid_amount: 0,
     })).toBe(0);
+  });
+
+  it("merges cancel + refund only when same minute", () => {
+    const merged = mergeSameTimestampTestCancelRefunds([
+      {
+        id: "c1",
+        invoice_number: "2609100001",
+        registration_id: "r1",
+        transaction_type: "test_cancellation",
+        transaction_date: "2026-09-09T19:11:00.000Z",
+        gross_amount: -300,
+        discount_amount: -60,
+        final_amount: -240,
+        refund_amount: 0,
+        total_amount: 0,
+        cash_amount: 0,
+        remarks: "1 test(s) cancelled",
+      },
+      {
+        id: "rf1",
+        invoice_number: "2609100001",
+        registration_id: "r1",
+        transaction_type: "refund",
+        transaction_date: "2026-09-09T19:11:30.000Z",
+        refund_amount: 240,
+        total_amount: -240,
+        cash_amount: -240,
+        remarks: "1 test(s) cancelled — refund",
+      },
+    ]);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].transaction_type).toBe("test_cancellation");
+    expect(merged[0].final_amount).toBe(-240);
+    expect(merged[0].refund_amount).toBe(240);
+    expect(merged[0].cash_amount).toBe(-240);
+  });
+
+  it("does not merge cancel + refund when minutes differ", () => {
+    const merged = mergeSameTimestampTestCancelRefunds([
+      {
+        id: "c1",
+        invoice_number: "2609100001",
+        registration_id: "r1",
+        transaction_type: "test_cancellation",
+        transaction_date: "2026-09-09T19:11:00.000Z",
+        gross_amount: -300,
+        discount_amount: -60,
+        final_amount: -240,
+        refund_amount: 0,
+        total_amount: 0,
+        cash_amount: 0,
+        remarks: "1 test(s) cancelled",
+      },
+      {
+        id: "rf1",
+        invoice_number: "2609100001",
+        registration_id: "r1",
+        transaction_type: "refund",
+        transaction_date: "2026-09-09T19:16:00.000Z",
+        refund_amount: 240,
+        total_amount: -240,
+        cash_amount: -240,
+        remarks: "1 test(s) cancelled — refund",
+      },
+    ]);
+    expect(merged).toHaveLength(2);
   });
 });
