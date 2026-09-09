@@ -3030,6 +3030,10 @@ export type Database = {
         Returns: string[]
       }
       lims_verification_candidate_ids: { Args: never; Returns: string[] }
+      lims_verification_machine_candidate_ids: {
+        Args: { p_instrument?: string; p_include_older?: boolean }
+        Returns: string[]
+      }
       prune_lims_result_notify: { Args: never; Returns: undefined }
       prune_messaging_logs_90d: { Args: never; Returns: undefined }
       register_patient_atomic: {

@@ -19,6 +19,17 @@ export async function fetchVerificationCandidateIds(includeOlder = false): Promi
   return rpcUuidArray("lims_verification_candidate_ids", { p_include_older: includeOlder });
 }
 
+/** Verification Machine Wise: pending verifyable work for one instrument ("" = Others). */
+export async function fetchVerificationMachineCandidateIds(
+  instrument: string,
+  includeOlder = false,
+): Promise<string[]> {
+  return rpcUuidArray("lims_verification_machine_candidate_ids", {
+    p_instrument: instrument || null,
+    p_include_older: includeOlder,
+  });
+}
+
 export async function fetchDoctorApprovalCandidateIds(includeOlder = false): Promise<string[]> {
   return rpcUuidArray("lims_doctor_approval_candidate_ids", { p_include_older: includeOlder });
 }

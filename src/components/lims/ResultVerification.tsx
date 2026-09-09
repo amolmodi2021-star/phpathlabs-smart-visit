@@ -46,7 +46,7 @@ import { fetchAllByIds } from "@/lib/fetchAllRows";
 import { PATIENT_RESULTS_SELECT_VERIFICATION } from "@/lib/patientResultsSelect";
 import { shortIdsKey } from "@/lib/queryKeys";
 import { readLimsPageSize, type LimsPageSize } from "@/lib/limsListPrefs";
-import { fetchVerificationCandidateIds, fetchFilteredSortedIds } from "@/lib/limsPendingCandidates";
+import { fetchVerificationCandidateIds, fetchVerificationMachineCandidateIds, fetchFilteredSortedIds } from "@/lib/limsPendingCandidates";
 import SyncingOverlay from "./SyncingOverlay";
 import NewBadge from "./NewBadge";
 import { isSnipResultDetail } from "@/lib/outsourcedResultMode";
@@ -233,8 +233,45 @@ const ResultVerification = () => {
     placeholderData: keepPreviousData,
     staleTime: 120_000,
   });
-  const rvCount = pendingIds.length;
-  const pageIds: string[] = pendingIds.slice(rvPage * pageSize, (rvPage + 1) * pageSize);
+
+  // Reset page + collapse when switching patient/machine mode or machine filter
+  useEffect(() => {
+    setRvPage(0);
+    setExpandedPatient(null);
+  }, [mode, selectedMachine, showOlderPending]);
+
+  const machineFilterActive = mode === "machine" && selectedMachine !== "all";
+
+  // Among Verification candidates, keep only regs with PENDING verify work for the selected machine.
+  const pendingIdsKey = shortIdsKey(pendingIds, "rv-c");
+  const {
+    data: machineFilteredIds = [] as string[],
+    isFetching: fetchingMachineFilter,
+    isFetched: machineFilterFetched,
+  } = useQuery({
+    queryKey: ["verification_machine_filtered_ids", pendingIdsKey, selectedMachine, showOlderPending],
+    enabled: tabActive && machineFilterActive && pendingIds.length > 0,
+    queryFn: async (): Promise<string[]> => {
+      const want = selectedMachine === "others" ? "" : selectedMachine;
+      const machinePending = await fetchVerificationMachineCandidateIds(want, showOlderPending);
+      if (machinePending.length === 0) return [];
+      const allow = new Set(machinePending);
+      return pendingIds.filter((id) => allow.has(id));
+    },
+    staleTime: 0,
+  });
+
+  // While machine filter is loading/refetching, show nothing (avoid flash of wrong patients).
+  const displayIds =
+    !idsPlaceholder && pendingIds.length === 0
+      ? []
+      : machineFilterActive
+        ? !machineFilterFetched || fetchingMachineFilter
+          ? []
+          : machineFilteredIds
+        : pendingIds;
+  const rvCount = displayIds.length;
+  const pageIds: string[] = displayIds.slice(rvPage * pageSize, (rvPage + 1) * pageSize);
   const pageKey = shortIdsKey(pageIds, "rv-p");
 
   const { data: registrationsRaw = [], isLoading: loadingRegs } = useQuery({
@@ -942,17 +979,43 @@ const ResultVerification = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [patientEntries]);
 
-  // Filter
+  // Filter machine-wise: trim params/snips on expand; drop if nothing left for this machine.
   const filteredEntries = useMemo(() => {
     if (mode === "patient") return patientEntries;
     if (selectedMachine === "all") return patientEntries;
     const filterMachine = selectedMachine === "others" ? "" : selectedMachine;
+    const matchesMachine = (testId: string, machineName?: string) => {
+      const fromParam = machineName !== undefined ? String(machineName).trim() : "";
+      const fromMaps = String(testsMap[testId]?.instrument_name || "").trim();
+      const resolved = fromParam || fromMaps;
+      return resolved === String(filterMachine).trim();
+    };
     return patientEntries
-      .map(e => {
+      .map((e) => {
         if (e.registration.id !== expandedPatient) return e;
-        return { ...e, parameters: e.parameters.filter(p => (p.machineName || "") === filterMachine) };
+        return {
+          ...e,
+          parameters: e.parameters.filter((p) => matchesMachine(p.testId, p.machineName)),
+          snipOnlyTests: e.snipOnlyTests.filter((s) => matchesMachine(s.testId)),
+        };
+      })
+      .filter((e) => {
+        if (e.registration.id !== expandedPatient || !detailReady) return true;
+        return e.parameters.length > 0 || e.snipOnlyTests.length > 0;
       });
-  }, [patientEntries, mode, selectedMachine, expandedPatient]);
+  }, [patientEntries, mode, selectedMachine, expandedPatient, testsMap, detailReady]);
+
+  // Drop selection and refresh machine queue when expand proves there is no verify work left.
+  useEffect(() => {
+    if (!expandedPatient || !detailReady) return;
+    const stillVisible = filteredEntries.some((e) => e.registration.id === expandedPatient);
+    if (stillVisible) return;
+    setExpandedPatient(null);
+    if (machineFilterActive) {
+      qc.invalidateQueries({ queryKey: ["verification_machine_filtered_ids"] });
+      qc.invalidateQueries({ queryKey: ["verification_regs_count"] });
+    }
+  }, [filteredEntries, expandedPatient, detailReady, machineFilterActive, qc]);
 
   const stats = useMemo(() => {
     let totalParams = 0;
@@ -1851,6 +1914,7 @@ const ResultVerification = () => {
         <RefreshButton
           queryKeys={[
             "verification_regs_count",
+            "verification_machine_filtered_ids",
             "verification_regs_v2",
             "verification_results_v2",
             "verification_tubes",
@@ -1877,7 +1941,7 @@ const ResultVerification = () => {
         </Card>
       </div>
 
-      {(loadingIds && !idsPlaceholder) || (pageIds.length > 0 && loadingRegs) ? (
+      {(loadingIds && !idsPlaceholder) || (machineFilterActive && fetchingMachineFilter) || (pageIds.length > 0 && loadingRegs) ? (
         <Card><CardContent className="p-8 text-center text-muted-foreground">Loading…</CardContent></Card>
       ) : filteredEntries.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">
