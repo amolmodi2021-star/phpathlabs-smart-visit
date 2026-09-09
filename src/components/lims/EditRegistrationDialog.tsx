@@ -1410,8 +1410,8 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
             )}
 
             {isHvChargeOnlyRegistration(reg) && !isBillCancelled && !isRefundBlocked && (
-              <p className="text-xs text-muted-foreground">
-                Home visit charge only — use Cancel Entire Bill (do not refund HVC separately first). That writes Bill Cancel (−Gross/Final) + Refund (−Cash) so Daily Report nets to zero.
+              <p className="text-xs text-muted-foreground rounded border bg-muted/40 px-3 py-2">
+                Home visit charge only — cancel with <span className="font-medium">Cancel Entire Bill</span> below. There is no separate HVC refund on this invoice.
               </p>
             )}
             {!isBillCancelled && !isRefundBlocked && (newlyCancelled.length > 0 || homeVisitRefundRequested) && (
