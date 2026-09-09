@@ -5,19 +5,19 @@ alwaysApply: true
 
 # UTF-8 file writes (Windows)
 
-Never write source/config/scripts as UTF-16. UTF-16 breaks PowerShell (`.ps1`), SQL, and wastes time rewriting.
+Never write source/config/scripts as UTF-16. UTF-16 breaks Vite/esbuild, PowerShell (`.ps1`), SQL, and Cloudflare Pages deploys.
 
 ## Required
 
-1. Prefer the Cursor **Write** / **StrReplace** tools for `.ts`, `.tsx`, `.sql`, `.md`, `.mdc`, `.json`.
-2. For **`.ps1` / `.bat` / `.cmd`**, do **not** rely on PowerShell `Set-Content` / `Out-File` (they often emit UTF-16). Use:
+1. After **any new file** created with Write (especially `.ts`, `.tsx`, `.ps1`, `.sql`), verify first bytes are normal ASCII (not `47,0` / null-interleaved, not `255,254` UTF-16 LE BOM).
+2. If UTF-16 is detected, rewrite immediately:
    ```powershell
    [System.IO.File]::WriteAllText($path, $text, [System.Text.UTF8Encoding]::new($false))
    ```
-3. After creating a `.ps1`, smoke-check the first bytes are ASCII (e.g. `#` = `35`), not `255,254` (UTF-16 LE BOM) and not `0`-interleaved ASCII.
-4. If a file was accidentally saved as UTF-16, rewrite immediately with `WriteAllText` + `UTF8Encoding(false)` — do not iterate calendar/UI work while stuck on encoding.
+3. For **`.ps1` / `.bat` / `.cmd`**, never use PowerShell `Set-Content` / `Out-File` without UTF-8 no-BOM.
+4. Run `npm run build` before pushing LIMS UI changes when a new source file was added in the same change set.
 
 ## Do not
 
-- `Set-Content` / `Out-File` without an explicit UTF-8 no-BOM encoding for scripts
-- Re-save the same script multiple times "to fix encoding" without verifying bytes
+- Ship a commit that contains UTF-16 source (Cloudflare Pages will fail with `Expected ";" but found "\x00"`)
+- Re-save the same file multiple times "to fix encoding" without verifying bytes
