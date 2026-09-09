@@ -356,8 +356,10 @@ const EditHomeVisitDialog = ({ visit, open, onClose, completionMode, onCompletio
         item_type: (t as any).item_type || "test",
       }));
 
-      const { error: insertError } = await supabase.from("estimate_tests").insert(testRows);
-      if (insertError) throw insertError;
+      if (testRows.length > 0) {
+        const { error: insertError } = await supabase.from("estimate_tests").insert(testRows);
+        if (insertError) throw insertError;
+      }
 
       // Update home visit
       const { error: visitError } = await supabase.from("home_visits").update({
