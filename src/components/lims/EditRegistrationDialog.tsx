@@ -427,41 +427,25 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
 
       const todayStr = format(new Date(), "dd-MM-yyyy");
       const isCrossDay = regDateStr !== todayStr;
-      if (totalPaid > 0) {
-        logPaymentTransaction({
-          registration_id: reg.id,
-          invoice_number: reg.invoice_number,
-          patient_name: patientName,
-          transaction_type: isCrossDay ? "old_bill_refund" : "refund",
-          direction: "out",
-          payments: [{ mode: refundMode, amount: totalPaid }],
-          total_amount: totalPaid,
-          gross_amount: 0,
-          discount_amount: 0,
-          final_amount: 0,
-          paid_amount: 0,
-          due_amount: 0,
-          refund_amount: totalPaid,
-          remarks: `Refund of ₹${totalPaid} via ${refundMode} for cancelled invoice ${reg.invoice_number} (registered ${regDateStr}, originally paid via ${origModesLabel})`,
-        });
-      }
-
-      if (origFinal > 0.009 || origGross > 0.009) {
+      // One row: Gross/Discount/Final offsets + cash refund (no separate Refund line).
+      if (origFinal > 0.009 || origGross > 0.009 || totalPaid > 0.009) {
         logPaymentTransaction({
           registration_id: reg.id,
           invoice_number: reg.invoice_number,
           patient_name: patientName,
           transaction_type: isCrossDay ? "old_bill_cancellation" : "bill_cancellation",
           direction: "out",
-          payments: [],
-          total_amount: 0,
+          payments: totalPaid > 0 ? [{ mode: refundMode, amount: totalPaid }] : [],
+          total_amount: totalPaid,
           gross_amount: -origGross,
           discount_amount: -origDiscount,
           final_amount: -origFinal,
           paid_amount: 0,
           due_amount: 0,
-          refund_amount: 0,
-          remarks: `Bill cancelled — original invoice ${reg.invoice_number} dated ${regDateStr}, final ₹${origFinal}`,
+          refund_amount: totalPaid,
+          remarks: totalPaid > 0
+            ? `Bill cancelled — invoice ${reg.invoice_number} dated ${regDateStr}, final ₹${origFinal}, refund ₹${totalPaid} via ${refundMode} (originally paid via ${origModesLabel})`
+            : `Bill cancelled — invoice ${reg.invoice_number} dated ${regDateStr}, final ₹${origFinal}`,
         });
       }
 

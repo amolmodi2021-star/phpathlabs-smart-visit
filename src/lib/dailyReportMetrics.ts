@@ -44,20 +44,24 @@ export function paymentRowPaid(row: {
   if (type === "due_collection" || type === "old_due_recovered") {
     return Number(row.total_amount || 0);
   }
-  if (type === "refund" || type === "old_bill_refund" || type === "post_discount_refund" || type === "test_cancellation") {
+  if (type === "refund" || type === "old_bill_refund" || type === "post_discount_refund"
+    || type === "test_cancellation" || type === "bill_cancellation" || type === "old_bill_cancellation") {
     const signedTotal = Number(row.total_amount || 0);
     if (signedTotal !== 0) return signedTotal;
     const refundAmt = Number(row.refund_amount || 0);
     if (refundAmt) return -Math.abs(refundAmt);
-    // test_cancellation with no cash still uses paid_amount (usually 0)
-    if (type === "test_cancellation") return Number(row.paid_amount || 0);
+    if (type === "test_cancellation" || type === "bill_cancellation" || type === "old_bill_cancellation") {
+      return Number(row.paid_amount || 0);
+    }
     return 0;
   }
   return Number(row.paid_amount || 0);
 }
 
 export function isHiddenDailyReportType(type: string | null | undefined): boolean {
-  return type === "old_bill_cancellation";
+  // Cross-day cancel used to hide the marker while a separate refund carried cash.
+  // Combined cancel rows now include cash — always show them.
+  return false;
 }
 
 /** Minute bucket for pairing cancel + refund (same minute → eligible to merge). */
@@ -68,7 +72,7 @@ export function transactionMinuteKey(iso: string | null | undefined): string {
   return `${d.getUTCFullYear()}-${d.getUTCMonth()}-${d.getUTCDate()}-${d.getUTCHours()}-${d.getUTCMinutes()}`;
 }
 
-function isCashlessTestCancellation(row: {
+function isCashlessCancelOffset(row: {
   transaction_type?: string | null;
   refund_amount?: number | null;
   total_amount?: number | null;
@@ -78,7 +82,12 @@ function isCashlessTestCancellation(row: {
   neft_amount?: number | null;
   credit_card_amount?: number | null;
 }): boolean {
-  if (row.transaction_type !== "test_cancellation") return false;
+  const type = row.transaction_type || "";
+  if (
+    type !== "test_cancellation"
+    && type !== "bill_cancellation"
+    && type !== "old_bill_cancellation"
+  ) return false;
   if (Number(row.refund_amount || 0) > 0.009) return false;
   const modeSum =
     Math.abs(Number(row.cash_amount || 0))
@@ -90,21 +99,20 @@ function isCashlessTestCancellation(row: {
   return modeSum < 0.009;
 }
 
-function isTestCancelCashRefund(row: {
+function isCancelCashRefund(row: {
   transaction_type?: string | null;
   remarks?: string | null;
 }): boolean {
   if (row.transaction_type !== "refund" && row.transaction_type !== "old_bill_refund") return false;
   const remarks = String(row.remarks || "").toLowerCase();
-  // Prefer explicit cancel remarks; still allow empty remarks when paired by time+invoice.
   if (!remarks) return true;
-  return remarks.includes("cancel") || remarks.includes("test");
+  return remarks.includes("cancel") || remarks.includes("test") || remarks.includes("refund");
 }
 
 /**
- * Legacy only: merge a cashless Test Cancellation with its paired Refund when they
- * share invoice + minute + matching amount. Never merges two cancel events together —
- * each cancel action stays its own Daily Report row.
+ * Legacy only: merge a cashless cancel offset with its paired Refund when they
+ * share invoice + minute + matching amount (test cancel or entire-bill cancel).
+ * Already-combined rows (with cash on the cancel line) pass through unchanged.
  */
 export function mergeSameTimestampTestCancelRefunds<T extends {
   id?: string;
@@ -131,13 +139,19 @@ export function mergeSameTimestampTestCancelRefunds<T extends {
     const id = String(row.id || "");
     if (id && used.has(id)) continue;
 
-    // Already a combined cancel row (new logging) — leave alone; do not fold into others.
-    if (row.transaction_type === "test_cancellation" && !isCashlessTestCancellation(row)) {
+    const type = row.transaction_type || "";
+    const isCancelType =
+      type === "test_cancellation"
+      || type === "bill_cancellation"
+      || type === "old_bill_cancellation";
+
+    // Already a combined cancel row (new logging) — leave alone.
+    if (isCancelType && !isCashlessCancelOffset(row)) {
       out.push(row);
       continue;
     }
 
-    if (!isCashlessTestCancellation(row)) {
+    if (!isCashlessCancelOffset(row)) {
       out.push(row);
       continue;
     }
@@ -147,13 +161,11 @@ export function mergeSameTimestampTestCancelRefunds<T extends {
     const partner = rows.find((cand) => {
       const cid = String(cand.id || "");
       if (!cid || cid === id || used.has(cid)) return false;
-      if (!isTestCancelCashRefund(cand)) return false;
+      if (!isCancelCashRefund(cand)) return false;
       if ((cand.invoice_number || "") !== (row.invoice_number || "")) return false;
       if ((cand.registration_id || "") && (row.registration_id || "")
         && cand.registration_id !== row.registration_id) return false;
-      // Different cancel actions (different minute) stay separate.
       if (!minute || transactionMinuteKey(cand.transaction_date) !== minute) return false;
-      // Amount must match this cancel's Final so a later cancel's refund is not attached.
       const refundAmt = Math.abs(Number(cand.refund_amount || cand.total_amount || 0));
       if (cancelFinal > 0.009 && Math.abs(refundAmt - cancelFinal) > 0.05) return false;
       return true;

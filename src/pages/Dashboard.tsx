@@ -324,7 +324,10 @@ const Dashboard = () => {
         const regId = t.registration_id || "";
         const refund = Math.max(
           0,
-          cancelRefundByReg.get(regId) || cancelRefundByReg.get(t.invoice_number) || 0,
+          Number(t.refund_amount || 0)
+            || cancelRefundByReg.get(regId)
+            || cancelRefundByReg.get(t.invoice_number)
+            || 0,
         );
         return {
           id: t.id,
