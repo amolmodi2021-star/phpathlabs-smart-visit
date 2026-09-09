@@ -635,6 +635,17 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
         const test = tests.find((t: any) => t.test_id === id);
         return sum + Number(test?.discounted_price || test?.price || 0);
       }, 0);
+      let cancelledGross = 0;
+      let cancelledDiscount = 0;
+      newlyCancelled.forEach((id) => {
+        const test = tests.find((t: any) => t.test_id === id);
+        if (!test) return;
+        const price = Number(test.price || 0);
+        const lineDisc = Number(test.discount || 0)
+          || Math.max(0, price - Number(test.discounted_price ?? price));
+        cancelledGross += price;
+        cancelledDiscount += Math.min(Math.max(0, lineDisc), price);
+      });
       const hvcBill = homeVisitRefundRequested ? Number(reg.home_visit_charges || 0) : 0;
       const hvcCashRefund = homeVisitRefundRequested ? refundableHomeVisitCharges(reg) : 0;
       // Bill drops by full cancelled value; cash refund is only what was received.
@@ -645,6 +656,8 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
       );
 
       const totalRefund = Number(reg.refund_amount || 0) + cashRefund;
+      const newGrossAmount = Math.max(0, Number(reg.gross_amount || 0) - cancelledGross);
+      const newDiscountAmount = Math.max(0, Number(reg.discount_amount || 0) - cancelledDiscount);
       const newFinalAmount = Math.max(0, Number(reg.final_amount) - billReduction);
       const newPaid = Math.max(0, Number(reg.paid_amount) - cashRefund);
       // Keep payments[] in sync with paid/final or DB trigger rejects the update.
@@ -655,6 +668,11 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
         refund_amount: totalRefund,
         refund_mode: refundMode,
         refund_date: new Date().toISOString(),
+        // Shrink bill snapshot so Daily Report Gross/Discount/Final don't stay inflated
+        // after partial test cancel (cash stays on frozen registration_payment + Refund −).
+        gross_amount: newGrossAmount,
+        discount_amount: newDiscountAmount,
+        net_amount: Math.max(0, newGrossAmount - newDiscountAmount),
         final_amount: newFinalAmount,
         paid_amount: newPaid,
         due_amount: Math.max(0, newFinalAmount - newPaid),
@@ -755,8 +773,8 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
           paid_amount: newPaid,
           final_amount: newFinalAmount,
           due_amount: Math.max(0, newFinalAmount - newPaid),
-          gross_amount: Number(reg.gross_amount || 0),
-          discount_amount: Number(reg.discount_amount || 0),
+          gross_amount: newGrossAmount,
+          discount_amount: newDiscountAmount,
           change_reason: `${newlyCancelled.length} test(s) cancelled${homeVisitRefundRequested ? " + HV refunded" : ""}`,
         });
       }
