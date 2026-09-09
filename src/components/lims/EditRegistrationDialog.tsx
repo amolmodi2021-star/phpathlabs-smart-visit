@@ -628,7 +628,16 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
     try {
       const allCancelled = [...cancelledTestIds].map(id => {
         const test = tests.find((t: any) => t.test_id === id);
-        return { test_id: id, test_name: test?.test_name || "", refund_amount: Number(test?.discounted_price || test?.price || 0) };
+        const price = Number(test?.price || 0);
+        const discount = Number(test?.discount || 0)
+          || Math.max(0, price - Number(test?.discounted_price ?? price));
+        return {
+          test_id: id,
+          test_name: test?.test_name || "",
+          price,
+          discount,
+          refund_amount: Number(test?.discounted_price || test?.price || 0),
+        };
       });
 
       const testBillReduction = newlyCancelled.reduce((sum, id) => {

@@ -16,7 +16,7 @@ import {
   fetchPackageIncludedTestNamesFromLines,
   formatPackageIncludedTests,
 } from "@/lib/invoicePackageTests";
-import { computeHvcRefundAmount } from "@/lib/invoiceRefundDisplay";
+import { computeHvcRefundAmount, cancelledTestRefundAmount } from "@/lib/invoiceRefundDisplay";
 import { isHvChargeOnlyRegistration } from "@/lib/hvChargeOnly";
 import {
   shouldFireBoundInvoiceQueue,
@@ -98,6 +98,61 @@ function refundModeLabel(mode?: string | null): string {
   if (!m) return "Refund";
   if (/^refund\b/i.test(m)) return m;
   return `Refund (${m})`;
+}
+
+/**
+ * After test cancel, payments[] is scaled to remaining paid_amount while
+ * refund_amount holds the cash returned. Rebuild display so the first rows
+ * show original collection, then refund (−), then net Total Paid.
+ */
+function buildInvoicePaymentDetailRows(data: any, payments: any[]) {
+  const refundAmt = Math.max(0, Number(data?.refund_amount || 0));
+  const netPaid = Math.max(0, Number(data?.paid_amount || 0));
+  const list = (Array.isArray(payments) ? payments : []).filter((p) => Number(p?.amount || 0) > 0);
+  const sumPays = list.reduce((s, p) => s + Number(p.amount || 0), 0);
+  const originalTotal = netPaid + refundAmt;
+
+  let displayPays = list.map((p) => ({ ...p, amount: Number(p.amount || 0) }));
+  if (refundAmt > 0.009 && originalTotal > 0.009) {
+    if (sumPays > 0.009 && Math.abs(sumPays - netPaid) <= 0.05) {
+      const factor = originalTotal / sumPays;
+      displayPays = list.map((p) => ({
+        ...p,
+        amount: Math.round(Number(p.amount || 0) * factor),
+      }));
+      const rounded = displayPays.reduce((s, p) => s + Number(p.amount || 0), 0);
+      const drift = originalTotal - rounded;
+      if (displayPays.length && Math.abs(drift) >= 1) {
+        displayPays[0] = { ...displayPays[0], amount: Number(displayPays[0].amount || 0) + drift };
+      }
+    } else if (list.length === 0) {
+      displayPays = [{
+        mode: data?.refund_mode || "Cash",
+        amount: originalTotal,
+        date: data?.created_at || null,
+      }];
+    }
+  }
+
+  return { displayPays, refundAmt, netPaid, originalTotal };
+}
+
+function buildCancelledTestDisplayRows(cancelledTests: any[], allTests: any[]) {
+  const tests = Array.isArray(allTests) ? allTests : [];
+  return (Array.isArray(cancelledTests) ? cancelledTests : []).map((ct: any) => {
+    const t = tests.find((x: any) => x.test_id === ct.test_id) || {};
+    const price = Number(ct.price ?? t.price ?? 0);
+    const storedDisc = Number(ct.discount ?? 0)
+      || Number(t.discount || 0)
+      || Math.max(0, price - Number(t.discounted_price ?? price));
+    const paid = cancelledTestRefundAmount({ ...t, ...ct });
+    return {
+      test_name: ct.test_name || t.test_name || ct.test_id || "—",
+      price,
+      discount: storedDisc,
+      paid,
+    };
+  });
 }
 
 function paymentStatusBadge(data: any): { label: string; tone: "paid" | "partial" | "due" | "cancelled" } | null {
@@ -650,7 +705,12 @@ const InvoicePreviewLegacy = ({
       }]
     : tests;
   const createdAt = data.created_at ? new Date(data.created_at) : new Date();
-  const payments = Array.isArray(data.payments) ? data.payments : [];
+  const paymentsRaw = Array.isArray(data.payments) ? data.payments : [];
+  const {
+    displayPays: payments,
+    refundAmt: displayRefundAmt,
+  } = buildInvoicePaymentDetailRows(data, paymentsRaw);
+  const cancelledTestRows = buildCancelledTestDisplayRows(cancelledTests, allTests);
 
   const activeGross = hvChargeOnly
     ? hvcAmt
@@ -934,17 +994,17 @@ const InvoicePreviewLegacy = ({
           `<td style="padding:4px 5px;font-size:10px;font-weight:${weight};color:${color};border-bottom:1px solid ${PALETTE.line};text-align:${align};white-space:${allowWrap ? "normal" : "nowrap"};line-height:1.25;word-break:${allowWrap ? "break-word" : "normal"};${width ? `width:${width};` : ""}">${val}</td>`;
 
         let payRows = "";
-        if (payments.length === 0 && !(Number(data.refund_amount || 0) > 0)) {
+        if (payments.length === 0 && !(displayRefundAmt > 0)) {
           payRows = `<tr><td colspan="3" style="padding:6px;font-size:9px;color:${PALETTE.muted};text-align:left;border-bottom:1px solid ${PALETTE.line}">No payments</td></tr>`;
         } else {
           payments.forEach((pay: any) => {
             payRows += `<tr>${td(paymentDetailsDateLabel(pay, createdAt), "left", PALETTE.ink, "500", "56%")}${td(pay.mode || "Payment", "left", PALETTE.ink, "500", "22%", true)}${td(`₹${pay.amount}`, "right", PALETTE.ink, "700", "22%")}</tr>`;
           });
-          if (Number(data.refund_amount || 0) > 0) {
+          if (displayRefundAmt > 0) {
             const refundDate = data.refund_date
               ? format(new Date(data.refund_date), "dd MMM yyyy hh:mm a")
               : "—";
-            payRows += `<tr>${td(refundDate, "left", PALETTE.ink, "500", "56%")}${td(refundModeLabel(data.refund_mode), "left", PALETTE.ink, "500", "22%", true)}${td(`-₹${data.refund_amount}`, "right", PALETTE.orange, "700", "22%")}</tr>`;
+            payRows += `<tr>${td(refundDate, "left", PALETTE.ink, "500", "56%")}${td(refundModeLabel(data.refund_mode), "left", PALETTE.ink, "500", "22%", true)}${td(`-₹${displayRefundAmt}`, "right", PALETTE.orange, "700", "22%")}</tr>`;
           }
         }
         const rightHtml = `
@@ -973,20 +1033,28 @@ const InvoicePreviewLegacy = ({
         if (Number(data.paid_amount || 0) > 0) {
           summaryHtml += `<div style="font-size:11px;margin-top:8px;color:${PALETTE.muted};line-height:1.45;text-align:left">Received with thanks from <strong style="color:${PALETTE.ink}">${patientDisplayName(data)}</strong> a sum of Rs. ${Number(data.paid_amount).toFixed(2)}/- (${numberToWords(Number(data.paid_amount))} Rupees)</div>`;
         }
-        summaryHtml += `<div style="text-align:center;margin-top:8px;padding-top:6px;border-top:1px solid ${PALETTE.line}">`;
-        summaryHtml += `<p style="margin:0;padding:3px 0 5px;font-size:12px;font-weight:700;color:${PALETTE.blue};line-height:1.55;overflow:visible">Thank you for choosing PH PathLabs</p>`;
-        summaryHtml += `</div>`;
         summaryHtml += `</td></tr></table>`;
-        if (cancelledTests.length > 0) {
-          summaryHtml += `<div style="font-size:9px;color:${PALETTE.muted};margin-top:4px;text-align:left">Cancelled Tests: ${cancelledTests.map((ct: any) => ct.test_name || ct.test_id).join(", ")}</div>`;
+        if (cancelledTestRows.length > 0) {
+          const cTh = (label: string, align = "left") =>
+            `<th style="padding:3px 5px;font-size:8px;font-weight:700;letter-spacing:0.02em;text-transform:uppercase;color:${PALETTE.blue};background:${PALETTE.blueSoft};border-bottom:1px solid ${PALETTE.blueLine};text-align:${align};white-space:nowrap">${label}</th>`;
+          const cTd = (val: string, align = "left", color = PALETTE.ink, weight = "500") =>
+            `<td style="padding:3px 5px;font-size:9px;font-weight:${weight};color:${color};border-bottom:1px solid ${PALETTE.line};text-align:${align};white-space:nowrap;line-height:1.25">${val}</td>`;
+          let cRows = "";
+          cancelledTestRows.forEach((row) => {
+            cRows += `<tr>${cTd(row.test_name, "left")}${cTd(`₹${row.price}`, "right")}${cTd(row.discount > 0 ? `-₹${row.discount}` : "—", "right", row.discount > 0 ? PALETTE.discount : PALETTE.muted)}${cTd(`₹${row.paid}`, "right", PALETTE.ink, "700")}</tr>`;
+          });
+          summaryHtml += `<div style="margin-top:8px;border:1px solid ${PALETTE.line};border-radius:8px;overflow:hidden">`;
+          summaryHtml += `<div style="padding:4px 8px;font-size:10px;font-weight:800;color:${PALETTE.blue};background:${PALETTE.blueSoft};border-bottom:1px solid ${PALETTE.blueLine}">Cancelled Tests</div>`;
+          summaryHtml += `<table style="width:100%;border-collapse:collapse;table-layout:fixed"><thead><tr>${cTh("Test / Investigation")}${cTh("Price", "right")}${cTh("Disc", "right")}${cTh("Paid", "right")}</tr></thead><tbody>${cRows}</tbody></table>`;
+          summaryHtml += `</div>`;
         }
         if (hvcRefund > 0) {
-          summaryHtml += `<div style="font-size:9px;color:${PALETTE.muted};margin-top:1px;text-align:left">Home Visit Charges Refunded: ₹${hvcRefund}</div>`;
+          summaryHtml += `<div style="font-size:9px;color:${PALETTE.muted};margin-top:4px;text-align:left">Home Visit Charges Refunded: ₹${hvcRefund}</div>`;
         }
         summaryHtml += `</div>`;
       }
 
-      const preparedPrintedFooter = `<div style="margin-top:6px;padding-top:5px;border-top:1px solid ${PALETTE.line};text-align:center;font-size:11px;color:${PALETTE.muted};line-height:1.7;padding-bottom:10px;overflow:visible">This is an electronically generated receipt and does not require a signature</div>`;
+      const preparedPrintedFooter = `<div style="margin-top:8px;padding-top:6px;border-top:1px solid ${PALETTE.line};text-align:center;padding-bottom:10px;overflow:visible"><p style="margin:0 0 4px;padding:0;font-size:12px;font-weight:700;color:${PALETTE.blue};line-height:1.4">Thank you for choosing PH PathLabs</p><div style="font-size:11px;color:${PALETTE.muted};line-height:1.7">This is an electronically generated receipt and does not require a signature</div></div>`;
 
       pagesHtml += `<div id="invoice-page"><div id="invoice-sheet">`;
       pagesHtml += headerHtml();
@@ -1466,7 +1534,7 @@ const InvoicePreviewLegacy = ({
                     </tr>
                   </thead>
                   <tbody>
-                    {payments.length === 0 && !(Number(data.refund_amount || 0) > 0) ? (
+                    {payments.length === 0 && !(displayRefundAmt > 0) ? (
                       <tr>
                         <td colSpan={3} style={{ padding: 6, fontSize: 11, color: PALETTE.muted, textAlign: "left", borderBottom: `1px solid ${PALETTE.line}` }}>No payments</td>
                       </tr>
@@ -1481,7 +1549,7 @@ const InvoicePreviewLegacy = ({
                             <td style={{ padding: "5px 6px", fontSize: 11, fontWeight: 700, color: PALETTE.ink, borderBottom: `1px solid ${PALETTE.line}`, textAlign: "right", whiteSpace: "nowrap", lineHeight: 1.25, verticalAlign: "top" }}>₹{pay.amount}</td>
                           </tr>
                         ))}
-                        {Number(data.refund_amount || 0) > 0 && (
+                        {displayRefundAmt > 0 && (
                           <tr>
                             <td style={{ padding: "5px 6px", fontSize: 11, color: PALETTE.ink, borderBottom: `1px solid ${PALETTE.line}`, whiteSpace: "nowrap", lineHeight: 1.25, verticalAlign: "top" }}>
                               {data.refund_date ? format(new Date(data.refund_date), "dd MMM yyyy hh:mm a") : "—"}
@@ -1490,7 +1558,7 @@ const InvoicePreviewLegacy = ({
                               {refundModeLabel(data.refund_mode)}
                             </td>
                             <td style={{ padding: "5px 6px", fontSize: 11, fontWeight: 700, color: PALETTE.orange, borderBottom: `1px solid ${PALETTE.line}`, textAlign: "right", whiteSpace: "nowrap", lineHeight: 1.25, verticalAlign: "top" }}>
-                              -₹{data.refund_amount}
+                              -₹{displayRefundAmt}
                             </td>
                           </tr>
                         )}
@@ -1510,41 +1578,62 @@ const InvoicePreviewLegacy = ({
                     Received with thanks from <strong style={{ color: PALETTE.ink }}>{patientDisplayName(data)}</strong> a sum of Rs. {Number(data.paid_amount).toFixed(2)}/- ({numberToWords(Number(data.paid_amount))} Rupees)
                   </div>
                 )}
-                <div style={{ textAlign: "center", marginTop: 8, paddingTop: 6, borderTop: `1px solid ${PALETTE.line}` }}>
-                  <p style={{ margin: 0, padding: "3px 0 5px", fontSize: 12, fontWeight: 700, color: PALETTE.blue, lineHeight: 1.55, overflow: "visible" }}>
-                    Thank you for choosing PH PathLabs
-                  </p>
-                </div>
                   </td>
                 </tr>
               </tbody>
             </table>
-            {cancelledTests.length > 0 && (
-              <div style={{ fontSize: 9, color: PALETTE.muted, marginTop: 4, textAlign: "left" }}>
-                Cancelled Tests: {cancelledTests.map((ct: any) => ct.test_name || ct.test_id).join(", ")}
+            {cancelledTestRows.length > 0 && (
+              <div style={{ marginTop: 8, border: `1px solid ${PALETTE.line}`, borderRadius: 8, overflow: "hidden" }}>
+                <div style={{ padding: "4px 8px", fontSize: 11, fontWeight: 800, color: PALETTE.blue, background: PALETTE.blueSoft, borderBottom: `1px solid ${PALETTE.blueLine}` }}>
+                  Cancelled Tests
+                </div>
+                <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
+                  <thead>
+                    <tr>
+                      <th style={{ padding: "4px 6px", fontSize: 9, fontWeight: 700, letterSpacing: "0.03em", textTransform: "uppercase", color: PALETTE.blue, background: PALETTE.blueSoft, borderBottom: `1px solid ${PALETTE.blueLine}`, textAlign: "left" }}>Test / Investigation</th>
+                      <th style={{ padding: "4px 6px", fontSize: 9, fontWeight: 700, letterSpacing: "0.03em", textTransform: "uppercase", color: PALETTE.blue, background: PALETTE.blueSoft, borderBottom: `1px solid ${PALETTE.blueLine}`, textAlign: "right", whiteSpace: "nowrap" }}>Price</th>
+                      <th style={{ padding: "4px 6px", fontSize: 9, fontWeight: 700, letterSpacing: "0.03em", textTransform: "uppercase", color: PALETTE.blue, background: PALETTE.blueSoft, borderBottom: `1px solid ${PALETTE.blueLine}`, textAlign: "right", whiteSpace: "nowrap" }}>Disc</th>
+                      <th style={{ padding: "4px 6px", fontSize: 9, fontWeight: 700, letterSpacing: "0.03em", textTransform: "uppercase", color: PALETTE.blue, background: PALETTE.blueSoft, borderBottom: `1px solid ${PALETTE.blueLine}`, textAlign: "right", whiteSpace: "nowrap" }}>Paid</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {cancelledTestRows.map((row, i) => (
+                      <tr key={`cancel-${i}`}>
+                        <td style={{ padding: "4px 6px", fontSize: 10, color: PALETTE.ink, borderBottom: `1px solid ${PALETTE.line}`, lineHeight: 1.25 }}>{row.test_name}</td>
+                        <td style={{ padding: "4px 6px", fontSize: 10, color: PALETTE.ink, borderBottom: `1px solid ${PALETTE.line}`, textAlign: "right", whiteSpace: "nowrap" }}>₹{row.price}</td>
+                        <td style={{ padding: "4px 6px", fontSize: 10, color: row.discount > 0 ? PALETTE.discount : PALETTE.muted, borderBottom: `1px solid ${PALETTE.line}`, textAlign: "right", whiteSpace: "nowrap" }}>
+                          {row.discount > 0 ? `-₹${row.discount}` : "—"}
+                        </td>
+                        <td style={{ padding: "4px 6px", fontSize: 10, fontWeight: 700, color: PALETTE.ink, borderBottom: `1px solid ${PALETTE.line}`, textAlign: "right", whiteSpace: "nowrap" }}>₹{row.paid}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             )}
             {hvcRefund > 0 && (
-              <div style={{ fontSize: 9, color: PALETTE.muted, marginTop: 1, textAlign: "left" }}>
+              <div style={{ fontSize: 9, color: PALETTE.muted, marginTop: 4, textAlign: "left" }}>
                 Home Visit Charges Refunded: ₹{hvcRefund}
               </div>
             )}
           </div>
-          <div style={{ height: 1, background: PALETTE.line, width: "100%", marginTop: 6 }} />
+          <div style={{ height: 1, background: PALETTE.line, width: "100%", marginTop: 8 }} />
           <div
             style={{
               textAlign: "center",
-              fontSize: 11,
-              color: PALETTE.muted,
-              marginTop: 4,
+              marginTop: 6,
               marginBottom: 0,
-              lineHeight: 1.7,
-              paddingTop: 2,
+              paddingTop: 4,
               paddingBottom: 10,
               overflow: "visible",
             }}
           >
-            This is an electronically generated receipt and does not require a signature
+            <p style={{ margin: "0 0 4px", padding: 0, fontSize: 12, fontWeight: 700, color: PALETTE.blue, lineHeight: 1.4 }}>
+              Thank you for choosing PH PathLabs
+            </p>
+            <div style={{ fontSize: 11, color: PALETTE.muted, lineHeight: 1.7 }}>
+              This is an electronically generated receipt and does not require a signature
+            </div>
           </div>
         </div>
 
