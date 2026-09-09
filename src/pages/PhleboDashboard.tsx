@@ -181,11 +181,11 @@ const PhleboDashboard = () => {
       const incentive = registrationIncentiveAmount(reg, incentiveById);
       const bucket = registrationPayoutBucket(reg);
 
-      // Gross month totals (what was billed on registrations)
-      amounts[pid][period] += hvc;
-      incentives[pid][period] += incentive;
-
+      // Summary cards / leaderboard: net payable only (earned - deducted).
+      // On-hold stays out of these figures (shown only in payout section).
       if (bucket === "earned") {
+        amounts[pid][period] += hvc;
+        incentives[pid][period] += incentive;
         hvcPay[pid][period].earned += hvc;
         incPay[pid][period].earned += incentive;
       } else if (bucket === "hold") {
@@ -201,6 +201,8 @@ const PhleboDashboard = () => {
           });
         }
       } else if (bucket === "deducted") {
+        amounts[pid][period] -= hvc;
+        incentives[pid][period] -= incentive;
         hvcPay[pid][period].deducted += hvc;
         incPay[pid][period].deducted += incentive;
         if (hvc > 0 || incentive > 0) {
@@ -489,12 +491,15 @@ const PhleboDashboard = () => {
             </Card>
           </div>
 
-          {/* Gross HVC */}
+          {/* HVC — net payable (cancelled already deducted) */}
           <div className="space-y-3">
             <h2 className="text-lg font-semibold flex items-center gap-2">
               <IndianRupee className="h-5 w-5 text-primary" />
-              Home Visit Charges (billed)
+              Home Visit Charges (net payable)
             </h2>
+            <p className="text-xs text-muted-foreground -mt-1">
+              Cancelled bills already deducted. On-hold dues are not included here.
+            </p>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {activePhleboIds.map((id) => (
                 <Card key={id}>
@@ -516,12 +521,15 @@ const PhleboDashboard = () => {
             </div>
           </div>
 
-          {/* Gross incentives */}
+          {/* Incentives — net payable (cancelled already deducted) */}
           <div className="space-y-3">
             <h2 className="text-lg font-semibold flex items-center gap-2">
               <TrendingUp className="h-5 w-5 text-primary" />
-              Incentive Earnings (tests / packages / combos)
+              Incentive Earnings (net payable)
             </h2>
+            <p className="text-xs text-muted-foreground -mt-1">
+              Tests / packages / combos. Cancelled bills already deducted. On-hold dues are not included here.
+            </p>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {activePhleboIds.map((id) => (
                 <Card key={id}>
