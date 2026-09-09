@@ -387,6 +387,13 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
         alreadyRefunded,
       );
       const totalPaid = refundCash;
+      // Unpaid balance to reverse so Daily Report Due nets to zero with Registration.
+      const outstandingDue = Math.max(
+        0,
+        Number(reg.due_amount || 0) > 0.009
+          ? Number(reg.due_amount || 0)
+          : origFinal - totalPaid,
+      );
       const regDate = reg.created_at ? new Date(reg.created_at) : new Date();
       const regDateStr = (reg.invoice_number && /^\d{6}/.test(reg.invoice_number))
         ? `${reg.invoice_number.slice(4, 6)}-${reg.invoice_number.slice(2, 4)}-20${reg.invoice_number.slice(0, 2)}`
@@ -441,11 +448,13 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
           discount_amount: -origDiscount,
           final_amount: -origFinal,
           paid_amount: 0,
-          due_amount: 0,
+          due_amount: outstandingDue > 0.009 ? -outstandingDue : 0,
           refund_amount: totalPaid,
           remarks: totalPaid > 0
             ? `Bill cancelled — invoice ${reg.invoice_number} dated ${regDateStr}, final ₹${origFinal}, refund ₹${totalPaid} via ${refundMode} (originally paid via ${origModesLabel})`
-            : `Bill cancelled — invoice ${reg.invoice_number} dated ${regDateStr}, final ₹${origFinal}`,
+            : outstandingDue > 0.009
+              ? `Bill cancelled — invoice ${reg.invoice_number} dated ${regDateStr}, final ₹${origFinal}, due ₹${outstandingDue} cleared`
+              : `Bill cancelled — invoice ${reg.invoice_number} dated ${regDateStr}, final ₹${origFinal}`,
         });
       }
 

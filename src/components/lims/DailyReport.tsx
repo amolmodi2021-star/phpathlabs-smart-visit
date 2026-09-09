@@ -1259,7 +1259,15 @@ const DailyReport = () => {
                       </TableCell>
                     );
                   })()}
-                  <TableCell className="text-right text-sm">{Number(r.due_amount || 0) > 0 ? <span className="text-destructive">₹{Number(r.due_amount)}</span> : "₹0"}</TableCell>
+                  {(() => {
+                    const due = Number(r.due_amount || 0);
+                    const shown = formatSignedRupee(due);
+                    return (
+                      <TableCell className={`text-right text-sm ${shown.negative || due > 0 ? "text-destructive font-medium" : ""}`}>
+                        {due === 0 ? "₹0" : shown.text}
+                      </TableCell>
+                    );
+                  })()}
                   {(["cash_amount","gpay_amount","paytm_amount","neft_amount","credit_card_amount"] as const).map((k) => {
                     const v = Number(r[k] || 0);
                     if (v === 0) return <TableCell key={k} className="text-right text-sm">-</TableCell>;
@@ -1284,7 +1292,9 @@ const DailyReport = () => {
                 <TableCell className={`text-right ${totals.paid < 0 ? "text-destructive" : ""}`}>
                   {totals.paid < 0 ? `-₹${Math.abs(totals.paid).toFixed(2)}` : `₹${totals.paid.toFixed(2)}`}
                 </TableCell>
-                <TableCell className="text-right">₹{totals.due.toFixed(2)}</TableCell>
+                <TableCell className={`text-right ${totals.due < 0 ? "text-destructive" : totals.due > 0 ? "text-destructive" : ""}`}>
+                  {totals.due < 0 ? `-₹${Math.abs(totals.due).toFixed(2)}` : `₹${totals.due.toFixed(2)}`}
+                </TableCell>
                 <TableCell className="text-right">₹{totals.cash.toFixed(2)}</TableCell>
                 <TableCell className="text-right">₹{totals.gpay.toFixed(2)}</TableCell>
                 <TableCell className="text-right">₹{totals.paytm.toFixed(2)}</TableCell>
