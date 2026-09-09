@@ -1577,6 +1577,7 @@ export type Database = {
           gross_amount: number
           home_visit_charges: number
           home_visit_id: string | null
+          hv_charge_only: boolean
           id: string
           invoice_number: string
           is_bad_debt: boolean
@@ -1621,6 +1622,7 @@ export type Database = {
           gross_amount?: number
           home_visit_charges?: number
           home_visit_id?: string | null
+          hv_charge_only?: boolean
           id?: string
           invoice_number: string
           is_bad_debt?: boolean
@@ -1665,6 +1667,7 @@ export type Database = {
           gross_amount?: number
           home_visit_charges?: number
           home_visit_id?: string | null
+          hv_charge_only?: boolean
           id?: string
           invoice_number?: string
           is_bad_debt?: boolean

@@ -17,6 +17,7 @@ import {
   formatPackageIncludedTests,
 } from "@/lib/invoicePackageTests";
 import { computeHvcRefundAmount } from "@/lib/invoiceRefundDisplay";
+import { isHvChargeOnlyRegistration } from "@/lib/hvChargeOnly";
 import {
   shouldFireBoundInvoiceQueue,
   type InvoiceQueueToken,
@@ -637,19 +638,35 @@ const InvoicePreviewLegacy = ({
     allTests.filter((t: any) => !cancelledTestIds.has(t.test_id)),
     packageTestsById,
   );
+  const hvChargeOnly = isHvChargeOnlyRegistration(data);
+  const hvcAmt = Number(data.home_visit_charges || 0);
+  const lineItems = hvChargeOnly
+    ? [{
+        test_id: "__hv_charge__",
+        test_name: "Home Visit Charge",
+        price: hvcAmt,
+        discount: 0,
+        discounted_price: hvcAmt,
+      }]
+    : tests;
   const createdAt = data.created_at ? new Date(data.created_at) : new Date();
   const payments = Array.isArray(data.payments) ? data.payments : [];
 
-  const activeGross = tests.reduce((sum: number, t: any) => sum + Number(t.price || 0), 0);
-  const activeNet = tests.reduce((sum: number, t: any) => sum + invoiceLineNet(t), 0);
+  const activeGross = hvChargeOnly
+    ? hvcAmt
+    : tests.reduce((sum: number, t: any) => sum + Number(t.price || 0), 0);
+  const activeNet = hvChargeOnly
+    ? hvcAmt
+    : tests.reduce((sum: number, t: any) => sum + invoiceLineNet(t), 0);
   const activeDiscount = activeGross - activeNet;
-  const activeFinal = activeNet + Number(data.home_visit_charges || 0);
+  const activeFinal = hvChargeOnly ? hvcAmt : activeNet + hvcAmt;
 
   const hvcRefund = computeHvcRefundAmount(data);
 
   const labVisible = brand.invoice_lab_name_visible !== "false";
-  const hasAnyDiscount = tests.some((t: any) => Number(t.discount || 0) > 0);
-  const showGross = activeGross !== activeFinal;
+  const hasAnyDiscount = !hvChargeOnly && tests.some((t: any) => Number(t.discount || 0) > 0);
+  const showGross = !hvChargeOnly && activeGross !== activeFinal;
+  const lineHeaderLabel = hvChargeOnly ? "Service" : "Test / Investigation";
 
   const visitLabel = formatVisitType(data.visit_type) + (channelName ? ` (${channelName})` : "");
 
@@ -680,7 +697,7 @@ const InvoicePreviewLegacy = ({
     }
 
     // Always one page — content auto-scales in the print window.
-    const pages: any[][] = [tests];
+    const pages: any[][] = [lineItems];
     const totalPages = 1;
 
     const headerHtml = () => {
@@ -751,7 +768,7 @@ const InvoicePreviewLegacy = ({
       const moneyTh = `${th};text-align:right;width:1%;white-space:nowrap;padding-left:14px;padding-right:14px;min-width:4.75em`;
       let h = `<tr>`;
       h += `<th style="${th};width:1%;white-space:nowrap;text-align:center;padding-left:4px;padding-right:4px">#</th>`;
-      h += `<th style="${th};text-align:left;padding-left:4px">Test / Investigation</th>`;
+      h += `<th style="${th};text-align:left;padding-left:4px">${lineHeaderLabel}</th>`;
       if (hasAnyDiscount) {
         h += `<th style="${moneyTh}">Price</th>`;
         h += `<th style="${moneyTh}">Disc</th>`;
@@ -849,7 +866,7 @@ const InvoicePreviewLegacy = ({
           if (activeDiscount > 0) {
             leftInner += sumRow("Total Discount", `– ₹${activeDiscount}`, { color: PALETTE.discount, weight: "600", size: "10px" });
           }
-          if (Number(data.home_visit_charges || 0) > 0) {
+          if (!hvChargeOnly && Number(data.home_visit_charges || 0) > 0) {
             leftInner += sumRow("Home Visit Charges", `+ ₹${data.home_visit_charges}`, { color: PALETTE.blue, weight: "500", size: "10px" });
           }
         }
@@ -1229,7 +1246,7 @@ const InvoicePreviewLegacy = ({
             <thead>
               <tr>
                 <th style={{ padding: "5px 4px", fontSize: 10, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", color: PALETTE.blue, borderBottom: `2px solid ${PALETTE.blue}`, background: PALETTE.blueSoft, width: "1%", whiteSpace: "nowrap", textAlign: "center" }}>#</th>
-                <th style={{ padding: "5px 4px", fontSize: 10, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", color: PALETTE.blue, borderBottom: `2px solid ${PALETTE.blue}`, background: PALETTE.blueSoft, textAlign: "left" }}>Test / Investigation</th>
+                <th style={{ padding: "5px 4px", fontSize: 10, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", color: PALETTE.blue, borderBottom: `2px solid ${PALETTE.blue}`, background: PALETTE.blueSoft, textAlign: "left" }}>{lineHeaderLabel}</th>
                 {hasAnyDiscount ? (
                   <>
                     <th style={{ padding: "5px 14px", fontSize: 10, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", color: PALETTE.blue, borderBottom: `2px solid ${PALETTE.blue}`, background: PALETTE.blueSoft, textAlign: "right", width: "1%", whiteSpace: "nowrap", minWidth: "4.75em" }}>Price</th>
@@ -1242,8 +1259,8 @@ const InvoicePreviewLegacy = ({
               </tr>
             </thead>
             <tbody>
-              {tests.map((t: any, i: number) => {
-                const included = includedTestsLine(t);
+              {lineItems.map((t: any, i: number) => {
+                const included = hvChargeOnly ? null : includedTestsLine(t);
                 const name = String(t.test_name || "");
                 const nameSize = name.length > 42 ? 10 : name.length > 28 ? 11 : 12;
                 return (
@@ -1269,7 +1286,7 @@ const InvoicePreviewLegacy = ({
                 </tr>
                 );
               })}
-              {tests.length > 0 && (
+              {lineItems.length > 0 && (
                 <tr>
                   <td colSpan={2} style={{ padding: "6px 4px", fontSize: 13, fontWeight: 800, color: PALETTE.ink, borderTop: `2px solid ${PALETTE.blue}`, borderBottom: `1px solid ${PALETTE.line}`, lineHeight: 1.25 }}>Total</td>
                   {hasAnyDiscount ? (

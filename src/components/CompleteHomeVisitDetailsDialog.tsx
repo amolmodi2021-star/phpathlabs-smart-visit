@@ -444,7 +444,12 @@ const CompleteHomeVisitDetailsDialog = ({ visit, open, onClose, onCompleted }: P
       if (!gender) throw new Error("Gender is required");
       if (!dob) throw new Error("Date of birth is required");
       if (!address.trim()) throw new Error("Address is required");
-      if (selectedTests.length === 0) throw new Error("Select at least one test");
+      if (selectedTests.length === 0 && !(Number(homeVisitCharges) > 0)) {
+        throw new Error("Select at least one test, or enter Home Visit Charges only");
+      }
+      if (selectedTests.length === 0 && Number(homeVisitCharges) > 0 && globalDiscountValue > 0) {
+        throw new Error("Discount is not allowed on home visit charge only");
+      }
       if (paidAmount > calculations.finalAmount) throw new Error("Payment amount cannot exceed the final amount");
 
       const masterRows = await findPatientMasterByMobile(cleanMobile);
@@ -502,8 +507,10 @@ const CompleteHomeVisitDetailsDialog = ({ visit, open, onClose, onCompleted }: P
         discounted_price: t.discountedPrice,
         item_type: t.item_type || "test",
       }));
-      const { error: insertError } = await supabase.from("estimate_tests").insert(testRows);
-      if (insertError) throw insertError;
+      if (testRows.length > 0) {
+        const { error: insertError } = await supabase.from("estimate_tests").insert(testRows);
+        if (insertError) throw insertError;
+      }
 
       const { error: visitError } = await supabase
         .from("home_visits")
@@ -1007,7 +1014,7 @@ const CompleteHomeVisitDetailsDialog = ({ visit, open, onClose, onCompleted }: P
               <Switch id="complete-hv-stat-toggle" checked={isStat} onCheckedChange={setIsStat} className="data-[state=checked]:bg-destructive" />
             </div>
 
-            <Button className="w-full" onClick={handleSave} disabled={saveMutation.isPending || selectedTests.length === 0}>
+            <Button className="w-full" onClick={handleSave} disabled={saveMutation.isPending || (selectedTests.length === 0 && !(Number(homeVisitCharges) > 0))}>
               <Save className="h-4 w-4 mr-2" />Save & Generate Invoice
             </Button>
           </div>

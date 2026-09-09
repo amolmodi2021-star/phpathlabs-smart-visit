@@ -30,6 +30,7 @@ import {
 import { syncPatientDemographicsByUmr, invalidatePatientCaches } from "@/lib/syncPatientDemographics";
 import DoctorAutocomplete, { ensureDoctor } from "@/components/lims/DoctorAutocomplete";
 import { genderFromTitle, PATIENT_TITLES } from "@/lib/normalizePatientFields";
+import { isHvChargeOnlyRegistration } from "@/lib/hvChargeOnly";
 
 const TITLES = [...PATIENT_TITLES];
 
@@ -904,8 +905,18 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
             <DialogTitle className="flex items-center gap-2">
               Edit Registration — {reg.invoice_number}
               {isBillCancelled && <Badge variant="destructive">CANCELLED</Badge>}
+              {isHvChargeOnlyRegistration(reg) && (
+                <Badge variant="outline" className="border-sky-500 text-sky-700">HV Charge Only</Badge>
+              )}
             </DialogTitle>
           </DialogHeader>
+
+          {isHvChargeOnlyRegistration(reg) && (
+            <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900 dark:border-sky-800 dark:bg-sky-950 dark:text-sky-100">
+              This invoice is home visit charge only. Tests cannot be added here — create a new registration for lab tests.
+              Discount is not applicable on home visit charges.
+            </div>
+          )}
 
           {/* Patient Details */}
           <div className="space-y-3">

@@ -25,7 +25,7 @@ const LIST_BATCH = 10;
 
 /** Lean columns for the table only — no tests/payments JSON (egress). */
 const LIST_SELECT =
-  "id, invoice_number, created_at, patient_name, title, umr_number, mobile_number, visit_type, pickup_point_id, channel_id, remarks, registered_by, completing_phlebo_name, gross_amount, discount_amount, net_amount, home_visit_charges, paid_amount, refund_amount, due_amount, status, bill_cancelled, is_stat";
+  "id, invoice_number, created_at, patient_name, title, umr_number, mobile_number, visit_type, pickup_point_id, channel_id, remarks, registered_by, completing_phlebo_name, gross_amount, discount_amount, net_amount, home_visit_charges, paid_amount, refund_amount, due_amount, status, bill_cancelled, is_stat, hv_charge_only, tests";
 
 const RegisteredPatients = () => {
   const qc = useQueryClient();
@@ -418,7 +418,14 @@ const RegisteredPatients = () => {
                       {r.umr_number && <div className="text-xs text-muted-foreground">{r.umr_number}</div>}
                     </TableCell>
                     <TableCell className="text-sm">{r.mobile_number}</TableCell>
-                    <TableCell className="text-xs">{visitTypeLabel(r.visit_type)}</TableCell>
+                    <TableCell className="text-xs">
+                      <div className="flex flex-col gap-0.5">
+                        <span>{visitTypeLabel(r.visit_type)}</span>
+                        {(r.hv_charge_only || (r.visit_type === "home_visit" && Array.isArray(r.tests) && r.tests.length === 0 && Number(r.home_visit_charges || 0) > 0)) && (
+                          <Badge variant="outline" className="text-[10px] w-fit border-sky-500 text-sky-700">HV Charge Only</Badge>
+                        )}
+                      </div>
+                    </TableCell>
                     <TableCell className="text-xs">{getSourceLabel(r)}</TableCell>
                     <TableCell className="text-xs">
                       {(() => {

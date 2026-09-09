@@ -16,6 +16,7 @@ import { getCurrentUserName } from "@/lib/auth";
 import { getAllSelectableTests } from "@/lib/allSelectableTests";
 import { buildSampleTubeGroups } from "@/lib/sampleTubeGrouping";
 import { registerPatientAtomic } from "@/lib/registerPatientAtomic";
+import { canSaveHvChargeOnly } from "@/lib/hvChargeOnly";
 import { useParamConflictHighlight } from "@/hooks/useParamConflictHighlight";
 import SelectedTestContentsButton from "@/components/lims/SelectedTestContentsButton";
 import InvoicePreview from "./InvoicePreview";
@@ -575,6 +576,14 @@ const PatientRegistration = ({
     return { totalAmount, totalDiscount, finalAmount, testDetails, homeVisitCharges: hvc };
   }, [selectedTests, effectiveDiscountType, effectiveDiscountValue, homeVisitCharges, visitType, allowIneligibleDiscount, allowHvCharges]);
 
+  const effectiveVisitType = homeVisitOnly ? "home_visit" : visitType;
+  const isHvChargeOnlyDraft = canSaveHvChargeOnly({
+    visitType: effectiveVisitType,
+    selectedTestCount: selectedTests.length,
+    homeVisitCharges,
+    allowHvCharges,
+  });
+
   // Payment
   const toggleMode = (mode: string) => {
     setSelectedModes(prev => {
@@ -686,9 +695,16 @@ const PatientRegistration = ({
     if (!gender) throw new Error("Gender is required");
     if (!isPickup && !dob) throw new Error("Date of birth is required");
     if (isPickup && !manualAge.trim()) throw new Error("Age is required for pickup point registrations");
-    if (selectedTests.length === 0) throw new Error("Select at least one test");
+    if (selectedTests.length === 0) {
+      if (!isHvChargeOnlyDraft) {
+        throw new Error("Select at least one test, or enter Home Visit Charges only (no tests)");
+      }
+    }
+    if (isHvChargeOnlyDraft && Number(homeVisitCharges || 0) <= 0) {
+      throw new Error("Home Visit Charges are required when no tests are selected");
+    }
     if (visitType !== "pickup_point" && !address.trim()) throw new Error("Address is required");
-    if (homeVisitOnly && !(getCurrentUserName()?.trim() || completingPhleboName.trim())) {
+    if ((homeVisitOnly || isHvChargeOnlyDraft) && !(getCurrentUserName()?.trim() || completingPhleboName.trim())) {
       throw new Error("Signed-in user name required for Completed by (Phlebo)");
     }
     if (!deferPayment && collectedExceedsBill(paidAmount, billing.finalAmount)) {
@@ -736,7 +752,8 @@ const PatientRegistration = ({
         .map(m => ({ mode: m, amount: modeAmounts[m] || 0 }));
 
       const hvc = allowHvCharges ? billing.homeVisitCharges : 0;
-      const finalAmt = billing.totalAmount - billing.totalDiscount + hvc;
+      const hvOnly = isHvChargeOnlyDraft;
+      const finalAmt = hvOnly ? hvc : (billing.totalAmount - billing.totalDiscount + hvc);
 
       const regData = {
         mobile_number: cleanMobile,
@@ -749,46 +766,49 @@ const PatientRegistration = ({
         address: visitType === "pickup_point" ? (selectedPickup?.address || "") : address.replace(/\s+/g, ' ').trim().toUpperCase(),
         doctor_name: (doctorName || "SELF").toUpperCase(),
         umr_number: finalUmr,
-        visit_type: homeVisitOnly ? "home_visit" : visitType,
+        visit_type: homeVisitOnly || hvOnly ? "home_visit" : visitType,
         pickup_point_id: visitType === "pickup_point" ? pickupPointId : null,
         channel_id: channelId || null,
-        tests: billing.testDetails.map(t => ({
+        tests: hvOnly ? [] : billing.testDetails.map(t => ({
           test_id: t.test_id, test_name: t.test_name, price: t.price,
           discount: t.discount, discounted_price: t.discountedPrice,
           fasting_required: t.fasting_required,
           item_type: t.item_type || "test",
         })),
-        gross_amount: billing.totalAmount,
-        discount_amount: billing.totalDiscount,
-        net_amount: billing.totalAmount - billing.totalDiscount,
+        gross_amount: hvOnly ? 0 : billing.totalAmount,
+        discount_amount: hvOnly ? 0 : billing.totalDiscount,
+        net_amount: hvOnly ? 0 : billing.totalAmount - billing.totalDiscount,
         home_visit_charges: hvc,
         final_amount: finalAmt,
+        hv_charge_only: hvOnly,
         payments,
         paid_amount: (isCreditPickup || isCreditChannel) ? 0 : paidAmount,
         due_amount: (isCreditPickup || isCreditChannel) ? finalAmt : Math.max(0, finalAmt - paidAmount),
-        global_discount_type: billing.roundUpApplied
+        global_discount_type: hvOnly || billing.roundUpApplied
           ? null
           : (globalDiscountValue > 0 ? globalDiscountType : null),
         // After ₹10 round-up, per-test `discount` amounts are authoritative; keep global %
         // would make Edit Registration recompute a higher discount and false overpayment.
-        global_discount_value: billing.roundUpApplied ? 0 : globalDiscountValue,
+        global_discount_value: hvOnly || billing.roundUpApplied ? 0 : globalDiscountValue,
         remarks: remarks.replace(/\s+/g, ' ').trim().toUpperCase() || null,
-        is_stat: isStat,
+        is_stat: hvOnly ? false : isStat,
         report_language: visitType === "pickup_point" ? "ENGLISH" : reportLanguage.toUpperCase(),
         registered_by: stampedBy,
-        completing_phlebo_name: homeVisitOnly
+        completing_phlebo_name: homeVisitOnly || hvOnly
           ? (getCurrentUserName()?.trim() || completingPhleboName.trim() || homeVisitPrefill?.completingPhleboName?.trim() || null)
           : null,
         home_visit_id: homeVisitOnly ? (homeVisitPrefill?.homeVisitId || null) : null,
       };
 
-      const tubeGroups = await buildSampleTubeGroups(
-        billing.testDetails.map((t: any) => ({
-          test_id: t.test_id,
-          test_name: t.test_name,
-          item_type: t.item_type || "test",
-        })),
-      );
+      const tubeGroups = hvOnly
+        ? []
+        : await buildSampleTubeGroups(
+          billing.testDetails.map((t: any) => ({
+            test_id: t.test_id,
+            test_name: t.test_name,
+            item_type: t.item_type || "test",
+          })),
+        );
 
       const reg = await registerPatientAtomic({
         registration: regData,
@@ -796,8 +816,8 @@ const PatientRegistration = ({
         payment: {
           payments,
           total_amount: regData.paid_amount,
-          gross_amount: billing.totalAmount,
-          discount_amount: billing.totalDiscount,
+          gross_amount: regData.gross_amount,
+          discount_amount: regData.discount_amount,
           final_amount: finalAmt,
           paid_amount: regData.paid_amount,
           due_amount: regData.due_amount,
@@ -1470,12 +1490,16 @@ const PatientRegistration = ({
             </div>
           )}
 
-          {/* Global Discount - hidden for credit pickup points */}
+          {/* Global Discount - hidden for credit pickup / HV charge-only (discount never on HVC) */}
           {isCreditPickup ? (
             <div className="rounded-lg border border-muted bg-muted/30 p-3">
               <p className="text-xs text-muted-foreground">Credit pickup point — discount not applicable</p>
             </div>
-          ) : (
+          ) : isHvChargeOnlyDraft ? (
+            <div className="rounded-lg border border-muted bg-muted/30 p-3">
+              <p className="text-xs text-muted-foreground">Home visit charge only — discount is not applicable</p>
+            </div>
+          ) : selectedTests.length > 0 ? (
             <div className="space-y-3">
               <div className="flex items-start gap-3 rounded-lg border p-3 bg-muted/20">
                 <Switch
@@ -1529,47 +1553,64 @@ const PatientRegistration = ({
                 </div>
               )}
             </div>
-          )}
+          ) : null}
 
           {/* Home Visit Charges — primary patient only in HV multi-patient sessions */}
-          {visitType === "home_visit" && allowHvCharges && (
+          {(visitType === "home_visit" || homeVisitOnly) && allowHvCharges && (
             <div>
               <Label>Home Visit Charges (₹)</Label>
               <Input type="number" value={homeVisitCharges || ""} onChange={e => setHomeVisitCharges(parseFloat(e.target.value) || 0)} />
+              {selectedTests.length === 0 && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  Leave tests empty and enter charges to create a home-visit-charge-only invoice.
+                </p>
+              )}
             </div>
           )}
 
           {/* Summary */}
-          {selectedTests.length > 0 && (
+          {(selectedTests.length > 0 || isHvChargeOnlyDraft) && (
             <div className="rounded-lg bg-muted p-4 space-y-1 text-sm">
-              <div className="flex justify-between"><span>Gross Amount</span><span className="font-medium">₹{billing.totalAmount}</span></div>
-              {billing.totalDiscount > 0 && <div className="flex justify-between text-primary"><span>Discount</span><span>-₹{billing.totalDiscount}</span></div>}
-              {billing.homeVisitCharges > 0 && <div className="flex justify-between"><span>Home Visit</span><span>+₹{billing.homeVisitCharges}</span></div>}
-              <div className="flex justify-between border-t pt-1 font-bold"><span>Final Amount</span><span>₹{billing.finalAmount}</span></div>
-              {billing.roundUpTarget != null && calculations.totalDiscount > 0 && (
-                <div className="flex flex-wrap items-center gap-2 pt-2 border-t mt-1">
-                  <span className="text-xs text-muted-foreground">Round collect:</span>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant={billing.roundUpApplied ? "default" : "outline"}
-                    className="h-7 text-xs"
-                    onClick={() => setRoundUpSelected((v) => !v)}
-                  >
-                    {billing.roundUpApplied ? `Using ₹${billing.finalAmount}` : `Collect ₹${billing.roundUpTarget}`}
-                  </Button>
-                  {billing.roundUpApplied && (
-                    <span className="text-[10px] text-muted-foreground">
-                      Exact was ₹{calculations.finalAmount} — discount reduced so payable is a ₹10 multiple
-                    </span>
+              {isHvChargeOnlyDraft ? (
+                <>
+                  <div className="text-xs text-muted-foreground mb-1">
+                    Home visit charge only — no tests selected (no lab pipeline)
+                  </div>
+                  <div className="flex justify-between"><span>Home Visit Charge</span><span className="font-medium">₹{billing.homeVisitCharges}</span></div>
+                  <div className="flex justify-between border-t pt-1 font-bold"><span>Final Amount</span><span>₹{billing.finalAmount}</span></div>
+                </>
+              ) : (
+                <>
+                  <div className="flex justify-between"><span>Gross Amount</span><span className="font-medium">₹{billing.totalAmount}</span></div>
+                  {billing.totalDiscount > 0 && <div className="flex justify-between text-primary"><span>Discount</span><span>-₹{billing.totalDiscount}</span></div>}
+                  {billing.homeVisitCharges > 0 && <div className="flex justify-between"><span>Home Visit</span><span>+₹{billing.homeVisitCharges}</span></div>}
+                  <div className="flex justify-between border-t pt-1 font-bold"><span>Final Amount</span><span>₹{billing.finalAmount}</span></div>
+                  {billing.roundUpTarget != null && calculations.totalDiscount > 0 && (
+                    <div className="flex flex-wrap items-center gap-2 pt-2 border-t mt-1">
+                      <span className="text-xs text-muted-foreground">Round collect:</span>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={billing.roundUpApplied ? "default" : "outline"}
+                        className="h-7 text-xs"
+                        onClick={() => setRoundUpSelected((v) => !v)}
+                      >
+                        {billing.roundUpApplied ? `Using ₹${billing.finalAmount}` : `Collect ₹${billing.roundUpTarget}`}
+                      </Button>
+                      {billing.roundUpApplied && (
+                        <span className="text-[10px] text-muted-foreground">
+                          Exact was ₹{calculations.finalAmount} — discount reduced so payable is a ₹10 multiple
+                        </span>
+                      )}
+                    </div>
                   )}
-                </div>
+                </>
               )}
             </div>
           )}
 
           {/* Payment Section — deferred for HV multi-patient wizard */}
-          {!deferPayment && !isCreditPickup && selectedTests.length > 0 && (
+          {!deferPayment && !isCreditPickup && (selectedTests.length > 0 || isHvChargeOnlyDraft) && (
             <div className="space-y-3">
               <Label className="text-base font-semibold">Payment</Label>
               <div className="grid grid-cols-3 gap-2">
@@ -1621,13 +1662,13 @@ const PatientRegistration = ({
             </div>
           )}
 
-          {deferPayment && selectedTests.length > 0 && (
+          {deferPayment && (selectedTests.length > 0 || isHvChargeOnlyDraft) && (
             <div className="rounded-lg bg-muted p-3 text-sm text-muted-foreground">
               Payment is collected once for all patients on this visit (after you finish adding patients).
             </div>
           )}
 
-          {isCreditPickup && selectedTests.length > 0 && (
+          {isCreditPickup && (selectedTests.length > 0 || isHvChargeOnlyDraft) && (
             <div className="rounded-lg bg-muted p-3 text-sm text-muted-foreground">
               Credit billing — Payment will be collected in monthly billing cycle from <strong>{selectedPickup?.name}</strong>
             </div>
@@ -1693,7 +1734,7 @@ const PatientRegistration = ({
                 }
                 runAfterUmrGuard("save");
               }}
-              disabled={saveMutation.isPending || selectedTests.length === 0}
+              disabled={saveMutation.isPending || (selectedTests.length === 0 && !isHvChargeOnlyDraft)}
             >
               <Save className="h-4 w-4 mr-2" />
               {submitLabel || (deferPayment ? "Continue" : "Save & Generate Invoice")}

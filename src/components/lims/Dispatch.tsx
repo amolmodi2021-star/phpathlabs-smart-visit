@@ -68,6 +68,8 @@ function readDispatchUiRestore(): DispatchUiRestore | null {
     return null;
   }
 }
+import { isHvChargeOnlyRegistration } from "@/lib/hvChargeOnly";
+import InvoicePreview from "./InvoicePreview";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -110,6 +112,8 @@ interface DispatchEntry {
   pendingCount: number;
   dispatchedCount: number;
   cancelledCount: number;
+  /** Home visit charge-only invoice — no reports, send invoice only. */
+  hvChargeOnly?: boolean;
 }
 
 /** Full DispatchEntry for one registration from detail arrays (results/tubes/snips). */
@@ -120,6 +124,39 @@ function buildFullDispatchEntry(
   allSnips: any[],
   testsMap: Record<string, any>,
 ): DispatchEntry {
+  if (isHvChargeOnlyRegistration(reg)) {
+    const hvc = Number(reg.home_visit_charges || 0);
+    return {
+      registration: reg,
+      hvChargeOnly: true,
+      tests: [{
+        testId: "__hv_charge__",
+        testName: hvc > 0 ? `Home Visit Charge (₹${hvc})` : "Home Visit Charge",
+        status: "registered" as TestStatus,
+        results: [],
+        snipUrls: [],
+        collectedAt: null,
+        acceptedAt: null,
+        enteredAt: null,
+        verifiedAt: null,
+        approvedAt: null,
+        dispatchedAt: null,
+        registeredBy: reg.registered_by || null,
+        collectedBy: null,
+        acceptedBy: null,
+        enteredBy: null,
+        verifiedBy: null,
+        approvedBy: null,
+        dispatchedBy: null,
+      }],
+      completionStatus: "all_dispatched",
+      approvedCount: 0,
+      pendingCount: 0,
+      dispatchedCount: 0,
+      cancelledCount: 0,
+    };
+  }
+
   const tests = (reg.tests || []) as any[];
   const cancelledIds = new Set(((reg.cancelled_tests || []) as any[]).map((t: any) => t.test_id || t.id).filter(Boolean));
   const billCancelled = !!reg.bill_cancelled;
@@ -295,6 +332,7 @@ const Dispatch = () => {
   /** After Today: Current board lists every matching patient (no page chunking). */
   const [showAllForDay, setShowAllForDay] = useState(false);
   const [dueBlockEntry, setDueBlockEntry] = useState<DispatchEntry | null>(null);
+  const [invoiceReg, setInvoiceReg] = useState<any | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 400);
@@ -386,7 +424,7 @@ const Dispatch = () => {
     enabled: tabActive && pageIds.length > 0,
     queryFn: async () => {
       const { data } = await supabase.from("patient_registrations")
-        .select("id, invoice_number, patient_name, title, mobile_number, umr_number, status, is_stat, tests, cancelled_tests, visit_type, gender, dob, age_text, created_at, updated_at, bill_cancelled, registered_by, due_amount, pickup_point_id")
+        .select("id, invoice_number, patient_name, title, mobile_number, umr_number, status, is_stat, tests, cancelled_tests, visit_type, gender, dob, age_text, created_at, updated_at, bill_cancelled, registered_by, due_amount, pickup_point_id, home_visit_charges, hv_charge_only, paid_amount, final_amount, payments, gross_amount, discount_amount, net_amount, completing_phlebo_name, address, doctor_name, email, channel_id")
         .in("id", pageIds);
       const order = new Map(pageIds.map((id, i) => [id, i]));
       return ((data || []) as any[]).sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
@@ -1086,6 +1124,7 @@ const Dispatch = () => {
                               <span className={cn("font-semibold text-sm truncate tracking-wide", entry.completionStatus === "cancelled" && "line-through text-muted-foreground")}>{reg.invoice_number}</span>
                               <NewBadge show={isNewArrival(reg.id) && entry.completionStatus !== "all_dispatched"} />
                               {entry.completionStatus === "cancelled" && <Badge variant="destructive" className="text-[10px] px-1 py-0">Cancelled</Badge>}
+                              {entry.hvChargeOnly && <Badge variant="outline" className="text-[10px] px-1 py-0 border-sky-500 text-sky-700">HV Charge</Badge>}
                               {showHeld && <Badge variant="outline" className="text-[10px] px-1 py-0 border-amber-500 text-amber-700">Held</Badge>}
                             </div>
                             <div className="flex items-center gap-1.5 mt-0.5 min-w-0">
@@ -1143,6 +1182,9 @@ const Dispatch = () => {
                           )}
                           <FileText className="h-5 w-5 text-muted-foreground shrink-0" />
                           <h3 className={cn("font-semibold", isMobile ? "text-base" : "text-lg", selectedEntry.completionStatus === "cancelled" && "line-through text-muted-foreground")}>{selectedEntry.registration.invoice_number}</h3>
+                          {selectedEntry.hvChargeOnly && (
+                            <Badge variant="outline" className="text-[10px] border-sky-500 text-sky-700">HV Charge Only</Badge>
+                          )}
                           {selectedEntry.completionStatus === "cancelled" && <Badge variant="destructive" className="text-[10px]">Cancelled</Badge>}
                           {detailHeld && selectedEntry.completionStatus !== "cancelled" && <Badge variant="outline" className="text-[10px] border-amber-500 text-amber-700">Held</Badge>}
                           {selectedEntry.registration.is_stat && selectedEntry.completionStatus !== "all_done" && selectedEntry.completionStatus !== "all_dispatched" && selectedEntry.completionStatus !== "cancelled" && <Badge variant="destructive" className="text-[10px]">STAT</Badge>}
@@ -1190,6 +1232,27 @@ const Dispatch = () => {
                       </div>
                     )}
                     <div className="flex items-center gap-2 flex-wrap mt-3">
+                      {selectedEntry.hvChargeOnly ? (
+                        <>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="gap-1"
+                            disabled
+                            title="No lab reports for home visit charge only"
+                          >
+                            <Eye className="h-4 w-4" /> View Report
+                          </Button>
+                          <Button
+                            size="sm"
+                            className="gap-1"
+                            onClick={() => setInvoiceReg(selectedEntry.registration)}
+                          >
+                            <Send className="h-4 w-4" /> Send Invoice
+                          </Button>
+                        </>
+                      ) : (
+                        <>
                       {selectedEntry.tests.some((t) => t.status === "approved" || t.status === "dispatched") && (
                         <Button size="sm" variant="outline" className="gap-1" disabled={isPaymentBlocked(selectedEntry.registration)} onClick={() => openReportSelectDialog(selectedEntry)}>
                           <Eye className="h-4 w-4" /> View Report
@@ -1215,6 +1278,8 @@ const Dispatch = () => {
                         <Button size="sm" className="gap-1" disabled={actionKey === `${selectedEntry.registration.id}||dispatch`} onClick={() => markAsDispatched(selectedEntry)}>
                           {actionKey === `${selectedEntry.registration.id}||dispatch` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Dispatch All
                         </Button>
+                      )}
+                        </>
                       )}
                     </div>
                   </div>
@@ -1321,6 +1386,15 @@ const Dispatch = () => {
             </Card>
           )}
         </div>
+      )}
+
+      {invoiceReg && (
+        <InvoicePreview
+          data={invoiceReg}
+          open={!!invoiceReg}
+          onClose={() => setInvoiceReg(null)}
+          autoQueueWhatsApp
+        />
       )}
 
       {/* Snip viewer dialog */}

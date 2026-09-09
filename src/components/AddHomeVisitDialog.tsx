@@ -276,7 +276,12 @@ const AddHomeVisitDialog = ({ open, onClose }: AddHomeVisitDialogProps) => {
     mutationFn: async () => {
       const cleanNumber = formatWhatsApp(whatsappNumber);
       if (!cleanNumber || cleanNumber.length < 10) throw new Error("Valid WhatsApp number required");
-      if (selectedTests.length === 0) throw new Error("Select at least one test");
+      if (selectedTests.length === 0 && !(homeVisitCharges > 0)) {
+        throw new Error("Select at least one test, or enter Home Visit Charges only");
+      }
+      if (selectedTests.length === 0 && homeVisitCharges > 0 && globalDiscountValue > 0) {
+        throw new Error("Discount is not allowed on home visit charge only");
+      }
       if (!visitDate || !visitTime || !address.trim()) throw new Error("Visit date, time, and address are required");
       if (!/^\d{4}-\d{2}-\d{2}$/.test(visitDate)) throw new Error("Invalid visit date format");
       if (!/^\d{2}:\d{2}$/.test(visitTime)) throw new Error("Invalid visit time format");
@@ -309,7 +314,7 @@ const AddHomeVisitDialog = ({ open, onClose }: AddHomeVisitDialogProps) => {
       }).select().single();
       if (estError) throw estError;
 
-      // Insert estimate tests
+      // Insert estimate tests (may be empty for HV charge-only booking)
       const testRows = calculations.testDetails.map(t => ({
         estimate_id: est.id,
         test_id: t.test_id,
@@ -322,8 +327,10 @@ const AddHomeVisitDialog = ({ open, onClose }: AddHomeVisitDialogProps) => {
         discounted_price: t.discountedPrice,
         item_type: (t as any).item_type || "test",
       }));
-      const { error: testError } = await supabase.from("estimate_tests").insert(testRows);
-      if (testError) throw testError;
+      if (testRows.length > 0) {
+        const { error: testError } = await supabase.from("estimate_tests").insert(testRows);
+        if (testError) throw testError;
+      }
 
       // Create home visit
       const { error: visitError } = await supabase.from("home_visits").insert({
@@ -643,25 +650,43 @@ const AddHomeVisitDialog = ({ open, onClose }: AddHomeVisitDialogProps) => {
           </div>
 
           {/* Summary */}
-          {selectedTests.length > 0 && (
+          {(selectedTests.length > 0 || homeVisitCharges > 0) && (
             <div className="rounded-lg bg-muted p-4 space-y-1 text-sm">
-              <div className="flex justify-between"><span>Total Amount</span><span className="font-medium">₹{calculations.totalAmount}</span></div>
-              {calculations.totalDiscount > 0 && <div className="flex justify-between text-success"><span>Discount</span><span>-₹{calculations.totalDiscount}</span></div>}
-              {homeVisitCharges > 0 && <div className="flex justify-between"><span>Home Visit</span><span>+₹{homeVisitCharges}</span></div>}
-              <div className="flex justify-between border-t pt-1 font-bold"><span>Final Amount</span><span>₹{calculations.finalAmount}</span></div>
+              {selectedTests.length === 0 ? (
+                <>
+                  <div className="text-xs text-muted-foreground">Home visit charge only — no tests</div>
+                  <div className="flex justify-between"><span>Home Visit Charge</span><span className="font-medium">₹{homeVisitCharges}</span></div>
+                  <div className="flex justify-between border-t pt-1 font-bold"><span>Final Amount</span><span>₹{calculations.finalAmount}</span></div>
+                </>
+              ) : (
+                <>
+                  <div className="flex justify-between"><span>Total Amount</span><span className="font-medium">₹{calculations.totalAmount}</span></div>
+                  {calculations.totalDiscount > 0 && <div className="flex justify-between text-success"><span>Discount</span><span>-₹{calculations.totalDiscount}</span></div>}
+                  {homeVisitCharges > 0 && <div className="flex justify-between"><span>Home Visit</span><span>+₹{homeVisitCharges}</span></div>}
+                  <div className="flex justify-between border-t pt-1 font-bold"><span>Final Amount</span><span>₹{calculations.finalAmount}</span></div>
+                </>
+              )}
             </div>
           )}
 
           <Button
             className="w-full"
             onClick={() => {
+              if (selectedTests.length === 0) {
+                if (!(homeVisitCharges > 0)) {
+                  toast.error("Select at least one test, or enter Home Visit Charges only");
+                  return;
+                }
+                saveMutation.mutate();
+                return;
+              }
               if (!homeVisitCharges || homeVisitCharges === 0) {
                 setShowHvcConfirm(true);
                 return;
               }
               saveMutation.mutate();
             }}
-            disabled={saveMutation.isPending}
+            disabled={saveMutation.isPending || (selectedTests.length === 0 && !(homeVisitCharges > 0))}
           >
             <Send className="h-4 w-4 mr-2" />Save & Send Visit Confirmation
           </Button>

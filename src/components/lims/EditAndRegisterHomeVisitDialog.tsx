@@ -240,7 +240,12 @@ const EditAndRegisterHomeVisitDialog = ({ visit, open, onClose }: Props) => {
       if (!whatsappNumber || whatsappNumber.replace(/\D/g, "").length < 10) throw new Error("Valid mobile number required");
       if (!dob) throw new Error("Date of birth is required");
       if (!gender) throw new Error("Gender is required");
-      if (selectedTests.length === 0) throw new Error("Select at least one test");
+      if (selectedTests.length === 0 && !(Number(calculations.hvCharges) > 0)) {
+        throw new Error("Select at least one test, or enter Home Visit Charges only");
+      }
+      if (selectedTests.length === 0 && Number(calculations.hvCharges) > 0 && globalDiscountValue > 0) {
+        throw new Error("Discount is not allowed on home visit charge only");
+      }
       if (!address.trim()) throw new Error("Address is required");
       if (totalPaid > calculations.finalAmount + 0.01) {
         throw new Error("Payment amount cannot exceed the bill value");
@@ -277,10 +282,12 @@ const EditAndRegisterHomeVisitDialog = ({ visit, open, onClose }: Props) => {
         discounted_price: t.discountedPrice,
         item_type: (t as any).item_type || "test",
       }));
-      await supabase.from("estimate_tests").insert(testRows);
+      if (testRows.length > 0) {
+        await supabase.from("estimate_tests").insert(testRows);
+      }
 
-      // Build test list for registration
-      const regTests = calculations.testDetails.map(t => ({
+      const hvOnly = selectedTests.length === 0 && Number(calculations.hvCharges) > 0;
+      const regTests = hvOnly ? [] : calculations.testDetails.map(t => ({
         test_id: t.test_id, test_name: t.test_name, price: t.price,
         discounted_price: t.discountedPrice,
         discount_applicable: t.discount_applicable, fasting_required: t.fasting_required,
@@ -304,13 +311,15 @@ const EditAndRegisterHomeVisitDialog = ({ visit, open, onClose }: Props) => {
       const stampedBy = getCurrentUserName();
       if (!stampedBy) throw new Error("Please sign in again before saving the registration");
 
-      const tubeGroups = await buildSampleTubeGroups(
-        calculations.testDetails.map((t: any) => ({
-          test_id: t.test_id,
-          test_name: t.test_name,
-          item_type: (t as any).item_type || "test",
-        })),
-      );
+      const tubeGroups = hvOnly
+        ? []
+        : await buildSampleTubeGroups(
+          calculations.testDetails.map((t: any) => ({
+            test_id: t.test_id,
+            test_name: t.test_name,
+            item_type: (t as any).item_type || "test",
+          })),
+        );
 
       await registerPatientAtomic({
         registration: {
@@ -325,20 +334,22 @@ const EditAndRegisterHomeVisitDialog = ({ visit, open, onClose }: Props) => {
           address: address.toUpperCase(),
           visit_type: "home_visit",
           tests: regTests,
-          gross_amount: calculations.totalAmount,
-          discount_amount: calculations.totalDiscount,
-          net_amount: calculations.totalAmount - calculations.totalDiscount,
+          gross_amount: hvOnly ? 0 : calculations.totalAmount,
+          discount_amount: hvOnly ? 0 : calculations.totalDiscount,
+          net_amount: hvOnly ? 0 : calculations.totalAmount - calculations.totalDiscount,
           home_visit_charges: calculations.hvCharges,
-          final_amount: calculations.finalAmount,
+          final_amount: hvOnly ? calculations.hvCharges : calculations.finalAmount,
+          hv_charge_only: hvOnly,
           paid_amount: totalPaid,
           due_amount: dueAmount,
           payments: payments,
           status: "registered",
           home_visit_id: visit.id,
-          global_discount_type: globalDiscountValue > 0 ? globalDiscountType : null,
-          global_discount_value: globalDiscountValue,
+          global_discount_type: hvOnly ? null : (globalDiscountValue > 0 ? globalDiscountType : null),
+          global_discount_value: hvOnly ? 0 : globalDiscountValue,
           registered_by: stampedBy,
-          is_stat: !!visit.is_stat,
+          completing_phlebo_name: getCurrentUserName()?.trim() || null,
+          is_stat: hvOnly ? false : !!visit.is_stat,
           report_language: visit.report_language || "English",
         },
         tubes: tubeGroups,

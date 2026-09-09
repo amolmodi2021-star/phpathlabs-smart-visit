@@ -307,7 +307,12 @@ const EditHomeVisitDialog = ({ visit, open, onClose, completionMode, onCompletio
       }
       if (!patientName.trim()) throw new Error("Patient name is required");
       if (!whatsappNumber || whatsappNumber.replace(/\D/g, "").length < 10) throw new Error("Valid WhatsApp number required");
-      if (selectedTests.length === 0) throw new Error("Select at least one test");
+      if (selectedTests.length === 0 && !(Number(calculations.hvCharges) > 0)) {
+        throw new Error("Select at least one test, or enter Home Visit Charges only");
+      }
+      if (selectedTests.length === 0 && Number(calculations.hvCharges) > 0 && Number(globalDiscountValue) > 0) {
+        throw new Error("Discount is not allowed on home visit charge only");
+      }
       if (!visitDate || !visitTime || !address.trim()) throw new Error("Visit date, time, and address are required");
 
       const cleanNumber = whatsappNumber.replace(/\D/g, "").slice(-10);
