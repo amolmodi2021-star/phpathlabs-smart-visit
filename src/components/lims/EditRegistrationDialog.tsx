@@ -1,5 +1,15 @@
 import { useState, useMemo, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -68,6 +78,7 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
 
   // Cancel entire bill
   const [refundMode, setRefundMode] = useState<string>("Cash");
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [showCancelBillPwd, setShowCancelBillPwd] = useState(false);
   const [showCancelUnlockPwd, setShowCancelUnlockPwd] = useState(false);
   const [cancelBillUnlocked, setCancelBillUnlocked] = useState(false);
@@ -81,6 +92,7 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
     if (reg && open) {
       setPaymentUnlocked(false);
       setCancelBillUnlocked(false);
+      setShowCancelConfirm(false);
       setPatientName(reg.patient_name || "");
       setTitle(reg.title || "");
       setGender(reg.gender || "");
@@ -889,16 +901,7 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
                   <Button
                     variant="destructive"
                     className="w-full"
-                    onClick={() => {
-                      const inv = reg?.invoice_number || "";
-                      const isOldBill = /^\d{6}/.test(inv) &&
-                        `${inv.slice(4, 6)}-${inv.slice(2, 4)}-20${inv.slice(0, 2)}` !== format(new Date(), "dd-MM-yyyy");
-                      if (isOldBill) {
-                        setShowCancelBillPwd(true);
-                      } else {
-                        void processCancelBill();
-                      }
-                    }}
+                    onClick={() => setShowCancelConfirm(true)}
                     disabled={saving}
                   >
                     <Ban className="h-4 w-4 mr-2" />Cancel Entire Bill
@@ -909,6 +912,47 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
           )}
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={showCancelConfirm} onOpenChange={setShowCancelConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancel entire bill?</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-sm text-muted-foreground">
+                <p>
+                  This will permanently cancel invoice <span className="font-medium text-foreground">{reg.invoice_number}</span>.
+                  This action cannot be undone.
+                </p>
+                <p>
+                  Paid amount ₹{Number(reg.paid_amount || 0)} will be refunded via <span className="font-medium text-foreground">{refundMode}</span>
+                  {" "}and recorded in today&apos;s Daily Report. The original Registration row stays frozen as evidence.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={saving}>Go Back</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={saving}
+              onClick={(e) => {
+                e.preventDefault();
+                setShowCancelConfirm(false);
+                const inv = reg?.invoice_number || "";
+                const isOldBill = /^\d{6}/.test(inv) &&
+                  `${inv.slice(4, 6)}-${inv.slice(2, 4)}-20${inv.slice(0, 2)}` !== format(new Date(), "dd-MM-yyyy");
+                if (isOldBill) {
+                  setShowCancelBillPwd(true);
+                } else {
+                  void processCancelBill();
+                }
+              }}
+            >
+              Confirm Cancel
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <DeletePasswordDialog
         open={showCancelBillPwd}
