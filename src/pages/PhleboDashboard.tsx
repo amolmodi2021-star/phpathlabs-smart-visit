@@ -5,13 +5,29 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { format, startOfMonth, endOfMonth, subMonths } from "date-fns";
-import { IndianRupee, TrendingUp, Download, Wallet, ChevronDown, ChevronUp, MapPin, Phone } from "lucide-react";
+import { IndianRupee, TrendingUp, Download, Wallet, ChevronDown, ChevronUp, MapPin, Phone, Trophy } from "lucide-react";
 import ExportPasswordDialog from "@/components/ExportPasswordDialog";
 import PhleboExportDialog from "@/components/PhleboExportDialog";
 import { formatDateDDMMYYYY } from "@/lib/utils";
 import { patientDisplayName } from "@/lib/patientDisplayName";
+import {
+  buildIncentiveMap,
+  registrationHvc,
+  registrationIncentiveAmount,
+  registrationPayoutBucket,
+} from "@/lib/phleboPayout";
 
 type PeriodKey = "current" | "previous";
+
+type BucketTotals = { earned: number; hold: number; deducted: number };
+
+const emptyBucket = (): BucketTotals => ({ earned: 0, hold: 0, deducted: 0 });
+
+const money = (n: number) => {
+  const v = Number(n) || 0;
+  const abs = Math.abs(v).toLocaleString("en-IN");
+  return v < 0 ? `-₹${abs}` : `₹${abs}`;
+};
 
 const PhleboDashboard = () => {
   const [showPasswordDialog, setShowPasswordDialog] = useState(false);
@@ -40,11 +56,11 @@ const PhleboDashboard = () => {
 
   const togglePanel = (set: Set<string>, setter: (s: Set<string>) => void, key: string) => {
     const next = new Set(set);
-    if (next.has(key)) next.delete(key); else next.add(key);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
     setter(next);
   };
 
-  // Fetch all phlebotomists
   const { data: phlebotomists = [] } = useQuery({
     queryKey: ["phlebotomists_dashboard"],
     queryFn: async () => {
@@ -53,7 +69,6 @@ const PhleboDashboard = () => {
     },
   });
 
-  // Fetch Registered home visits for current and previous month
   const { data: visits = [], isLoading: visitsLoading } = useQuery({
     queryKey: ["phlebo_dashboard_visits", prevMonthStart, currentMonthEnd],
     queryFn: async () => {
@@ -67,182 +82,194 @@ const PhleboDashboard = () => {
     },
   });
 
-  const estimateIds = useMemo(() => [...new Set(visits.map((v) => v.estimate_id))], [visits]);
   const visitIds = useMemo(() => visits.map((v) => v.id), [visits]);
 
-  const { data: estimates = [], isLoading: estimatesLoading } = useQuery({
-    queryKey: ["phlebo_dashboard_estimates", estimateIds],
-    queryFn: async () => {
-      if (estimateIds.length === 0) return [];
-      const { data } = await supabase
-        .from("estimates")
-        .select("id, home_visit_charges, patient_name, title, gender, whatsapp_number")
-        .in("id", estimateIds);
-      return data || [];
-    },
-    enabled: estimateIds.length > 0,
-  });
-
-  const { data: estimateTests = [], isLoading: testsLoading } = useQuery({
-    queryKey: ["phlebo_dashboard_estimate_tests", estimateIds],
-    queryFn: async () => {
-      if (estimateIds.length === 0) return [];
-      const { data } = await supabase
-        .from("estimate_tests")
-        .select("estimate_id, test_id")
-        .in("estimate_id", estimateIds);
-      return data || [];
-    },
-    enabled: estimateIds.length > 0,
-  });
-
-  const { data: tests = [] } = useQuery({
-    queryKey: ["phlebo_dashboard_tests"],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("tests")
-        .select("id, incentive_allowed, incentive_amount");
-      return data || [];
-    },
-  });
-
-  // Fetch matching patient_registrations (live state — bill_cancelled, due, current HVC)
   const { data: registrations = [], isLoading: regsLoading } = useQuery({
     queryKey: ["phlebo_dashboard_registrations", visitIds],
     queryFn: async () => {
       if (visitIds.length === 0) return [];
       const { data } = await supabase
         .from("patient_registrations")
-        .select("id, home_visit_id, home_visit_charges, due_amount, final_amount, paid_amount, bill_cancelled, refund_amount, patient_name, title, gender, mobile_number, umr_number, invoice_number, tests, status")
+        .select(
+          "id, home_visit_id, home_visit_charges, due_amount, final_amount, paid_amount, bill_cancelled, refund_amount, patient_name, title, gender, mobile_number, umr_number, invoice_number, tests, cancelled_tests, status, completing_phlebo_name",
+        )
         .in("home_visit_id", visitIds);
       return data || [];
     },
     enabled: visitIds.length > 0,
   });
 
-  const isLoading = visitsLoading || estimatesLoading || testsLoading || regsLoading;
+  const { data: incentiveSources, isLoading: incentivesLoading } = useQuery({
+    queryKey: ["phlebo_dashboard_incentive_catalog"],
+    queryFn: async () => {
+      const [tests, checkups, profiles, combos] = await Promise.all([
+        supabase.from("tests").select("id, incentive_allowed, incentive_amount"),
+        supabase.from("health_checkups").select("id, incentive_allowed, incentive_amount"),
+        supabase.from("billing_profiles").select("id, incentive_allowed, incentive_amount"),
+        (supabase as any).from("combos").select("id, incentive_allowed, incentive_amount"),
+      ]);
+      return {
+        tests: tests.data || [],
+        checkups: checkups.data || [],
+        profiles: profiles.data || [],
+        combos: combos.data || [],
+      };
+    },
+  });
 
-  // Lookup maps
-  const estimateMap = useMemo(() => {
+  const isLoading = visitsLoading || regsLoading || incentivesLoading;
+
+  const visitMap = useMemo(() => {
     const m: Record<string, any> = {};
-    estimates.forEach((e: any) => (m[e.id] = e));
-    return m;
-  }, [estimates]);
-
-  const regByVisitId = useMemo(() => {
-    const m: Record<string, any> = {};
-    registrations.forEach((r: any) => { if (r.home_visit_id) m[r.home_visit_id] = r; });
-    return m;
-  }, [registrations]);
-
-  const testIncentiveMap = useMemo(() => {
-    const m: Record<string, number> = {};
-    tests.forEach((t: any) => { if (t.incentive_allowed) m[t.id] = Number(t.incentive_amount) || 0; });
-    return m;
-  }, [tests]);
-
-  const estimateIncentiveMap = useMemo(() => {
-    const m: Record<string, number> = {};
-    estimateTests.forEach((et: any) => {
-      const inc = testIncentiveMap[et.test_id];
-      if (inc !== undefined) m[et.estimate_id] = (m[et.estimate_id] || 0) + inc;
+    visits.forEach((v: any) => {
+      m[v.id] = v;
     });
     return m;
-  }, [estimateTests, testIncentiveMap]);
+  }, [visits]);
 
-  // Aggregate per phlebotomist per month — visit charges (gross), incentives, payout buckets
-  const { amountData, incentiveData, payoutData, holdDetails, deductedDetails } = useMemo(() => {
+  const incentiveById = useMemo(
+    () =>
+      buildIncentiveMap([
+        incentiveSources?.tests || [],
+        incentiveSources?.checkups || [],
+        incentiveSources?.profiles || [],
+        incentiveSources?.combos || [],
+      ]),
+    [incentiveSources],
+  );
+
+  const {
+    amountData,
+    incentiveData,
+    payoutHvc,
+    payoutInc,
+    holdDetails,
+    deductedDetails,
+  } = useMemo(() => {
     const amounts: Record<string, { current: number; previous: number }> = {};
     const incentives: Record<string, { current: number; previous: number }> = {};
-    const payouts: Record<string, { current: { earned: number; hold: number; deducted: number }; previous: { earned: number; hold: number; deducted: number } }> = {};
+    const hvcPay: Record<string, { current: BucketTotals; previous: BucketTotals }> = {};
+    const incPay: Record<string, { current: BucketTotals; previous: BucketTotals }> = {};
     const holdRows: Record<string, { current: any[]; previous: any[] }> = {};
     const deductedRows: Record<string, { current: any[]; previous: any[] }> = {};
 
-    phlebotomists.forEach((p: any) => {
-      amounts[p.id] = { current: 0, previous: 0 };
-      incentives[p.id] = { current: 0, previous: 0 };
-      payouts[p.id] = { current: { earned: 0, hold: 0, deducted: 0 }, previous: { earned: 0, hold: 0, deducted: 0 } };
-      holdRows[p.id] = { current: [], previous: [] };
-      deductedRows[p.id] = { current: [], previous: [] };
-    });
+    const ensure = (pid: string) => {
+      if (!amounts[pid]) amounts[pid] = { current: 0, previous: 0 };
+      if (!incentives[pid]) incentives[pid] = { current: 0, previous: 0 };
+      if (!hvcPay[pid]) hvcPay[pid] = { current: emptyBucket(), previous: emptyBucket() };
+      if (!incPay[pid]) incPay[pid] = { current: emptyBucket(), previous: emptyBucket() };
+      if (!holdRows[pid]) holdRows[pid] = { current: [], previous: [] };
+      if (!deductedRows[pid]) deductedRows[pid] = { current: [], previous: [] };
+    };
 
-    visits.forEach((v: any) => {
-      if (!v.phlebotomist_id) return;
-      const isCurrent = v.visit_date >= currentMonthStart && v.visit_date <= currentMonthEnd;
-      const isPrev = v.visit_date >= prevMonthStart && v.visit_date <= prevMonthEnd;
+    phlebotomists.forEach((p: any) => ensure(p.id));
+
+    // One row per registration (all family members on a visit), attributed to visit phlebo.
+    registrations.forEach((reg: any) => {
+      const visit = visitMap[reg.home_visit_id];
+      if (!visit?.phlebotomist_id) return;
+
+      const isCurrent = visit.visit_date >= currentMonthStart && visit.visit_date <= currentMonthEnd;
+      const isPrev = visit.visit_date >= prevMonthStart && visit.visit_date <= prevMonthEnd;
       const period: PeriodKey | null = isCurrent ? "current" : isPrev ? "previous" : null;
       if (!period) return;
 
-      const pid = v.phlebotomist_id;
-      if (!amounts[pid]) amounts[pid] = { current: 0, previous: 0 };
-      if (!incentives[pid]) incentives[pid] = { current: 0, previous: 0 };
-      if (!payouts[pid]) payouts[pid] = { current: { earned: 0, hold: 0, deducted: 0 }, previous: { earned: 0, hold: 0, deducted: 0 } };
-      if (!holdRows[pid]) holdRows[pid] = { current: [], previous: [] };
-      if (!deductedRows[pid]) deductedRows[pid] = { current: [], previous: [] };
+      const pid = visit.phlebotomist_id;
+      ensure(pid);
 
-      const est = estimateMap[v.estimate_id];
-      const originalHvc = Number(est?.home_visit_charges || 0);
+      const hvc = registrationHvc(reg);
+      const incentive = registrationIncentiveAmount(reg, incentiveById);
+      const bucket = registrationPayoutBucket(reg);
 
-      // Gross charges (informational — what the phlebo brought in)
-      amounts[pid][period] += originalHvc;
-      incentives[pid][period] += estimateIncentiveMap[v.estimate_id] || 0;
+      // Gross month totals (what was billed on registrations)
+      amounts[pid][period] += hvc;
+      incentives[pid][period] += incentive;
 
-      // Payout bucket — based on linked registration
-      const reg = regByVisitId[v.id];
-      if (!reg) {
-        // Registered visit but no patient_registration row found — treat as earned (defensive)
-        if (originalHvc > 0) payouts[pid][period].earned += originalHvc;
-        return;
-      }
-
-      const billCancelled = !!reg.bill_cancelled;
-      const currentHvc = Number(reg.home_visit_charges || 0);
-      const dueAmount = Number(reg.due_amount || 0);
-
-      const detailRow = {
-        visit: v,
-        registration: reg,
-        estimate: est,
-        originalHvc,
-        currentHvc,
-        dueAmount,
-      };
-
-      if (billCancelled) {
-        // Whole bill cancelled — phlebo loses the original HVC
-        payouts[pid][period].deducted += originalHvc;
-        deductedRows[pid][period].push({ ...detailRow, reason: "Bill cancelled" });
-      } else if (originalHvc > 0 && currentHvc === 0) {
-        // HVC was explicitly refunded later — phlebo loses the original HVC
-        payouts[pid][period].deducted += originalHvc;
-        deductedRows[pid][period].push({ ...detailRow, reason: "Home visit charge refunded" });
-      } else if (currentHvc > 0 && dueAmount > 0) {
-        // Patient still owes money — hold the HVC until due is cleared
-        payouts[pid][period].hold += currentHvc;
-        holdRows[pid][period].push(detailRow);
-      } else if (currentHvc > 0) {
-        // Fully paid (or zero-due) and HVC retained — phlebo earns
-        payouts[pid][period].earned += currentHvc;
+      if (bucket === "earned") {
+        hvcPay[pid][period].earned += hvc;
+        incPay[pid][period].earned += incentive;
+      } else if (bucket === "hold") {
+        hvcPay[pid][period].hold += hvc;
+        incPay[pid][period].hold += incentive;
+        if (hvc > 0 || incentive > 0) {
+          holdRows[pid][period].push({
+            visit,
+            registration: reg,
+            hvc,
+            incentive,
+            reason: "Payment due — held until collected",
+          });
+        }
+      } else if (bucket === "deducted") {
+        hvcPay[pid][period].deducted += hvc;
+        incPay[pid][period].deducted += incentive;
+        if (hvc > 0 || incentive > 0) {
+          deductedRows[pid][period].push({
+            visit,
+            registration: reg,
+            hvc,
+            incentive,
+            reason: "Bill cancelled — not payable",
+          });
+        }
       }
     });
 
-    return { amountData: amounts, incentiveData: incentives, payoutData: payouts, holdDetails: holdRows, deductedDetails: deductedRows };
-  }, [visits, phlebotomists, estimateMap, regByVisitId, estimateIncentiveMap, currentMonthStart, currentMonthEnd, prevMonthStart, prevMonthEnd]);
+    return {
+      amountData: amounts,
+      incentiveData: incentives,
+      payoutHvc: hvcPay,
+      payoutInc: incPay,
+      holdDetails: holdRows,
+      deductedDetails: deductedRows,
+    };
+  }, [
+    registrations,
+    visitMap,
+    phlebotomists,
+    incentiveById,
+    currentMonthStart,
+    currentMonthEnd,
+    prevMonthStart,
+    prevMonthEnd,
+  ]);
 
   const phleboMap = useMemo(() => {
     const m: Record<string, string> = {};
-    phlebotomists.forEach((p: any) => (m[p.id] = p.name));
+    phlebotomists.forEach((p: any) => {
+      m[p.id] = p.name;
+    });
     return m;
   }, [phlebotomists]);
 
   const activePhleboIds = useMemo(() => {
     const ids = new Set<string>();
-    visits.forEach((v: any) => { if (v.phlebotomist_id) ids.add(v.phlebotomist_id); });
+    visits.forEach((v: any) => {
+      if (v.phlebotomist_id) ids.add(v.phlebotomist_id);
+    });
     return [...ids].sort((a, b) => (phleboMap[a] || "").localeCompare(phleboMap[b] || ""));
   }, [visits, phleboMap]);
 
+  const leaderboard = useMemo(() => {
+    return activePhleboIds
+      .map((id) => {
+        const hvc = payoutHvc[id]?.current || emptyBucket();
+        const inc = payoutInc[id]?.current || emptyBucket();
+        const net =
+          hvc.earned - hvc.deducted + inc.earned - inc.deducted;
+        return {
+          id,
+          name: phleboMap[id] || "Unknown",
+          hvcGross: amountData[id]?.current || 0,
+          incentiveGross: incentiveData[id]?.current || 0,
+          net,
+          hold: hvc.hold + inc.hold,
+        };
+      })
+      .sort((a, b) => b.net - a.net || a.name.localeCompare(b.name));
+  }, [activePhleboIds, payoutHvc, payoutInc, amountData, incentiveData, phleboMap]);
+
   const renderDetailRow = (row: any) => {
-    const e = row.estimate || {};
     const reg = row.registration || {};
     const v = row.visit || {};
     const testList: any[] = Array.isArray(reg.tests) ? reg.tests : [];
@@ -250,7 +277,7 @@ const PhleboDashboard = () => {
       <div className="bg-background border rounded-md p-3 space-y-2">
         <div className="flex items-start justify-between gap-2">
           <div>
-            <div className="text-sm font-semibold">{patientDisplayName(reg?.patient_name ? reg : e)}</div>
+            <div className="text-sm font-semibold">{patientDisplayName(reg)}</div>
             <div className="text-xs text-muted-foreground space-x-2">
               {reg.umr_number && <span>UMR: {reg.umr_number}</span>}
               {reg.invoice_number && <span>• Inv: {reg.invoice_number}</span>}
@@ -261,11 +288,17 @@ const PhleboDashboard = () => {
           </Badge>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 text-xs text-muted-foreground">
-          {(reg.mobile_number || e.whatsapp_number) && (
-            <span className="flex items-center gap-1"><Phone className="h-3 w-3" />{reg.mobile_number || e.whatsapp_number}</span>
+          {reg.mobile_number && (
+            <span className="flex items-center gap-1">
+              <Phone className="h-3 w-3" />
+              {reg.mobile_number}
+            </span>
           )}
           {v.address && (
-            <span className="flex items-start gap-1"><MapPin className="h-3 w-3 mt-0.5 shrink-0" /><span className="break-words">{v.address}</span></span>
+            <span className="flex items-start gap-1">
+              <MapPin className="h-3 w-3 mt-0.5 shrink-0" />
+              <span className="break-words">{v.address}</span>
+            </span>
           )}
         </div>
         {testList.length > 0 && (
@@ -274,29 +307,123 @@ const PhleboDashboard = () => {
             <span>{testList.map((t: any) => t.test_name).filter(Boolean).join(", ")}</span>
           </div>
         )}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 text-xs pt-1 border-t">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-1 text-xs pt-1 border-t">
           <div>
             <span className="text-muted-foreground">HVC: </span>
-            <span className="font-semibold text-primary">₹{Number(row.currentHvc || row.originalHvc || 0).toLocaleString("en-IN")}</span>
+            <span className="font-semibold text-primary">{money(row.hvc || 0)}</span>
+          </div>
+          <div>
+            <span className="text-muted-foreground">Incentive: </span>
+            <span className="font-semibold text-primary">{money(row.incentive || 0)}</span>
           </div>
           <div>
             <span className="text-muted-foreground">Final: </span>
-            <span className="font-medium">₹{Number(reg.final_amount || 0).toLocaleString("en-IN")}</span>
+            <span className="font-medium">{money(Number(reg.final_amount || 0))}</span>
           </div>
           <div>
             <span className="text-muted-foreground">Paid: </span>
-            <span className="font-medium">₹{Number(reg.paid_amount || 0).toLocaleString("en-IN")}</span>
+            <span className="font-medium">{money(Number(reg.paid_amount || 0))}</span>
           </div>
           <div>
             <span className="text-muted-foreground">Due: </span>
             <span className={`font-semibold ${Number(reg.due_amount || 0) > 0 ? "text-destructive" : "text-success"}`}>
-              ₹{Number(reg.due_amount || 0).toLocaleString("en-IN")}
+              {money(Number(reg.due_amount || 0))}
             </span>
           </div>
         </div>
-        {row.reason && (
-          <div className="text-[11px] text-destructive italic">{row.reason}</div>
-        )}
+        {row.reason && <div className="text-[11px] text-destructive italic">{row.reason}</div>}
+      </div>
+    );
+  };
+
+  const renderPayoutPeriod = (
+    id: string,
+    label: string,
+    period: PeriodKey,
+    hvc: BucketTotals,
+    inc: BucketTotals,
+  ) => {
+    const holdKey = `${id}-${period}-hold`;
+    const dedKey = `${id}-${period}-ded`;
+    const holdRows = holdDetails[id]?.[period] || [];
+    const dedRows = deductedDetails[id]?.[period] || [];
+    const isHoldOpen = expandedHold.has(holdKey);
+    const isDedOpen = expandedDeducted.has(dedKey);
+    const earned = hvc.earned + inc.earned;
+    const hold = hvc.hold + inc.hold;
+    const deducted = hvc.deducted + inc.deducted;
+    const net = earned - deducted;
+
+    return (
+      <div className="border rounded-md p-3 space-y-2 bg-muted/20">
+        <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{label}</div>
+        <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-sm">
+          <div className="flex justify-between col-span-2">
+            <span className="text-muted-foreground">Earned (HVC + Incentive)</span>
+            <span className="font-medium text-success">{money(earned)}</span>
+          </div>
+          <div className="flex justify-between col-span-2 text-xs text-muted-foreground pl-1">
+            <span>HVC {money(hvc.earned)} · Incentive {money(inc.earned)}</span>
+          </div>
+          <div className="col-span-2">
+            <button
+              type="button"
+              onClick={() => holdRows.length > 0 && togglePanel(expandedHold, setExpandedHold, holdKey)}
+              className={`w-full flex justify-between items-center text-left ${holdRows.length > 0 ? "cursor-pointer hover:bg-muted/40 rounded px-1 -mx-1" : ""}`}
+            >
+              <span className="text-muted-foreground flex items-center gap-1">
+                On Hold
+                {holdRows.length > 0 && (
+                  <>
+                    <Badge variant="outline" className="h-4 text-[10px] px-1">
+                      {holdRows.length}
+                    </Badge>
+                    {isHoldOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                  </>
+                )}
+              </span>
+              <span className="font-medium text-amber-600 dark:text-amber-400">{money(hold)}</span>
+            </button>
+          </div>
+          {isHoldOpen && holdRows.length > 0 && (
+            <div className="col-span-2 space-y-2 mt-1">
+              {holdRows.map((row: any, i: number) => (
+                <div key={`${row.registration?.id || i}-h`}>{renderDetailRow(row)}</div>
+              ))}
+            </div>
+          )}
+          <div className="col-span-2">
+            <button
+              type="button"
+              onClick={() => dedRows.length > 0 && togglePanel(expandedDeducted, setExpandedDeducted, dedKey)}
+              className={`w-full flex justify-between items-center text-left ${dedRows.length > 0 ? "cursor-pointer hover:bg-muted/40 rounded px-1 -mx-1" : ""}`}
+            >
+              <span className="text-muted-foreground flex items-center gap-1">
+                Deducted (cancelled bills)
+                {dedRows.length > 0 && (
+                  <>
+                    <Badge variant="outline" className="h-4 text-[10px] px-1">
+                      {dedRows.length}
+                    </Badge>
+                    {isDedOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                  </>
+                )}
+              </span>
+              <span className="font-medium text-destructive">{money(-deducted)}</span>
+            </button>
+          </div>
+          {isDedOpen && dedRows.length > 0 && (
+            <div className="col-span-2 space-y-2 mt-1">
+              {dedRows.map((row: any, i: number) => (
+                <div key={`${row.registration?.id || i}-d`}>{renderDetailRow(row)}</div>
+              ))}
+            </div>
+          )}
+          <div className="flex justify-between col-span-2 border-t pt-2 mt-1">
+            <span className="font-semibold">Net Payable</span>
+            <span className="font-bold text-primary">{money(net)}</span>
+          </div>
+        </div>
       </div>
     );
   };
@@ -304,7 +431,12 @@ const PhleboDashboard = () => {
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold">Phlebo Dashboard</h1>
+        <div>
+          <h1 className="text-xl font-bold">Phlebo Dashboard</h1>
+          <p className="text-sm text-muted-foreground">
+            Month-end home visit charges + test incentives by phlebo. Cancelled bills are deducted.
+          </p>
+        </div>
         <Button variant="outline" size="sm" onClick={() => setShowPasswordDialog(true)}>
           <Download className="h-4 w-4 mr-1" /> Export Report
         </Button>
@@ -319,11 +451,49 @@ const PhleboDashboard = () => {
         <p className="text-sm text-muted-foreground text-center py-8">No registered visits found for current or previous month.</p>
       ) : (
         <>
-          {/* Section 1: Visit Amounts (gross) */}
+          {/* Competition leaderboard */}
+          <div className="space-y-3">
+            <h2 className="text-lg font-semibold flex items-center gap-2">
+              <Trophy className="h-5 w-5 text-primary" />
+              Leaderboard — {currentMonthLabel}
+            </h2>
+            <Card>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b bg-muted/40 text-left">
+                        <th className="px-4 py-2 font-medium w-12">#</th>
+                        <th className="px-4 py-2 font-medium">Phlebo</th>
+                        <th className="px-4 py-2 font-medium text-right">HVC</th>
+                        <th className="px-4 py-2 font-medium text-right">Incentive</th>
+                        <th className="px-4 py-2 font-medium text-right">On Hold</th>
+                        <th className="px-4 py-2 font-medium text-right">Net Payable</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {leaderboard.map((row, idx) => (
+                        <tr key={row.id} className="border-b last:border-0">
+                          <td className="px-4 py-2 tabular-nums text-muted-foreground">{idx + 1}</td>
+                          <td className="px-4 py-2 font-medium">{row.name}</td>
+                          <td className="px-4 py-2 text-right tabular-nums">{money(row.hvcGross)}</td>
+                          <td className="px-4 py-2 text-right tabular-nums">{money(row.incentiveGross)}</td>
+                          <td className="px-4 py-2 text-right tabular-nums text-amber-600">{money(row.hold)}</td>
+                          <td className="px-4 py-2 text-right tabular-nums font-semibold text-primary">{money(row.net)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Gross HVC */}
           <div className="space-y-3">
             <h2 className="text-lg font-semibold flex items-center gap-2">
               <IndianRupee className="h-5 w-5 text-primary" />
-              Home Visit Charges (Completed)
+              Home Visit Charges (billed)
             </h2>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {activePhleboIds.map((id) => (
@@ -334,11 +504,11 @@ const PhleboDashboard = () => {
                   <CardContent className="px-4 pb-4 space-y-1">
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">{currentMonthLabel}</span>
-                      <span className="font-medium">₹{(amountData[id]?.current || 0).toLocaleString("en-IN")}</span>
+                      <span className="font-medium">{money(amountData[id]?.current || 0)}</span>
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">{prevMonthLabel}</span>
-                      <span className="font-medium">₹{(amountData[id]?.previous || 0).toLocaleString("en-IN")}</span>
+                      <span className="font-medium">{money(amountData[id]?.previous || 0)}</span>
                     </div>
                   </CardContent>
                 </Card>
@@ -346,11 +516,11 @@ const PhleboDashboard = () => {
             </div>
           </div>
 
-          {/* Section 2: Incentives */}
+          {/* Gross incentives */}
           <div className="space-y-3">
             <h2 className="text-lg font-semibold flex items-center gap-2">
               <TrendingUp className="h-5 w-5 text-primary" />
-              Incentive Earnings
+              Incentive Earnings (tests / packages / combos)
             </h2>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {activePhleboIds.map((id) => (
@@ -361,11 +531,11 @@ const PhleboDashboard = () => {
                   <CardContent className="px-4 pb-4 space-y-1">
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">{currentMonthLabel}</span>
-                      <span className="font-medium text-primary">₹{(incentiveData[id]?.current || 0).toLocaleString("en-IN")}</span>
+                      <span className="font-medium text-primary">{money(incentiveData[id]?.current || 0)}</span>
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">{prevMonthLabel}</span>
-                      <span className="font-medium text-primary">₹{(incentiveData[id]?.previous || 0).toLocaleString("en-IN")}</span>
+                      <span className="font-medium text-primary">{money(incentiveData[id]?.previous || 0)}</span>
                     </div>
                   </CardContent>
                 </Card>
@@ -373,106 +543,36 @@ const PhleboDashboard = () => {
             </div>
           </div>
 
-          {/* Section 3: Payout Summary (Earned / Hold / Deducted / Net Payable) */}
+          {/* Payout summary */}
           <div className="space-y-3">
             <h2 className="text-lg font-semibold flex items-center gap-2">
               <Wallet className="h-5 w-5 text-primary" />
-              Home Visit Payout Summary
+              Month-end Payout (HVC + Incentive)
             </h2>
             <div className="grid gap-3 lg:grid-cols-2">
-              {activePhleboIds.map((id) => {
-                const cur = payoutData[id]?.current || { earned: 0, hold: 0, deducted: 0 };
-                const prv = payoutData[id]?.previous || { earned: 0, hold: 0, deducted: 0 };
-                const curNet = cur.earned - cur.deducted;
-                const prvNet = prv.earned - prv.deducted;
-
-                const renderPeriod = (label: string, period: PeriodKey, vals: { earned: number; hold: number; deducted: number }, net: number) => {
-                  const holdKey = `${id}-${period}-hold`;
-                  const dedKey = `${id}-${period}-ded`;
-                  const holdRows = holdDetails[id]?.[period] || [];
-                  const dedRows = deductedDetails[id]?.[period] || [];
-                  const isHoldOpen = expandedHold.has(holdKey);
-                  const isDedOpen = expandedDeducted.has(dedKey);
-
-                  return (
-                    <div className="border rounded-md p-3 space-y-2 bg-muted/20">
-                      <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{label}</div>
-                      <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-sm">
-                        <div className="flex justify-between col-span-2">
-                          <span className="text-muted-foreground">Earned</span>
-                          <span className="font-medium text-success">₹{vals.earned.toLocaleString("en-IN")}</span>
-                        </div>
-                        <div className="col-span-2">
-                          <button
-                            type="button"
-                            onClick={() => holdRows.length > 0 && togglePanel(expandedHold, setExpandedHold, holdKey)}
-                            className={`w-full flex justify-between items-center text-left ${holdRows.length > 0 ? "cursor-pointer hover:bg-muted/40 rounded px-1 -mx-1" : ""}`}
-                          >
-                            <span className="text-muted-foreground flex items-center gap-1">
-                              On Hold
-                              {holdRows.length > 0 && (
-                                <>
-                                  <Badge variant="outline" className="h-4 text-[10px] px-1">{holdRows.length}</Badge>
-                                  {isHoldOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                                </>
-                              )}
-                            </span>
-                            <span className="font-medium text-amber-600 dark:text-amber-400">₹{vals.hold.toLocaleString("en-IN")}</span>
-                          </button>
-                        </div>
-                        {isHoldOpen && holdRows.length > 0 && (
-                          <div className="col-span-2 space-y-2 mt-1">
-                            {holdRows.map((row: any, i: number) => (
-                              <div key={`${row.visit?.id || i}-h`}>{renderDetailRow(row)}</div>
-                            ))}
-                          </div>
-                        )}
-                        <div className="col-span-2">
-                          <button
-                            type="button"
-                            onClick={() => dedRows.length > 0 && togglePanel(expandedDeducted, setExpandedDeducted, dedKey)}
-                            className={`w-full flex justify-between items-center text-left ${dedRows.length > 0 ? "cursor-pointer hover:bg-muted/40 rounded px-1 -mx-1" : ""}`}
-                          >
-                            <span className="text-muted-foreground flex items-center gap-1">
-                              Deducted
-                              {dedRows.length > 0 && (
-                                <>
-                                  <Badge variant="outline" className="h-4 text-[10px] px-1">{dedRows.length}</Badge>
-                                  {isDedOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                                </>
-                              )}
-                            </span>
-                            <span className="font-medium text-destructive">−₹{vals.deducted.toLocaleString("en-IN")}</span>
-                          </button>
-                        </div>
-                        {isDedOpen && dedRows.length > 0 && (
-                          <div className="col-span-2 space-y-2 mt-1">
-                            {dedRows.map((row: any, i: number) => (
-                              <div key={`${row.visit?.id || i}-d`}>{renderDetailRow(row)}</div>
-                            ))}
-                          </div>
-                        )}
-                        <div className="flex justify-between col-span-2 border-t pt-2 mt-1">
-                          <span className="font-semibold">Net Payable</span>
-                          <span className="font-bold text-primary">₹{net.toLocaleString("en-IN")}</span>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                };
-
-                return (
-                  <Card key={id}>
-                    <CardHeader className="pb-2 pt-4 px-4">
-                      <CardTitle className="text-sm font-semibold">{phleboMap[id] || "Unknown"}</CardTitle>
-                    </CardHeader>
-                    <CardContent className="px-4 pb-4 space-y-3">
-                      {renderPeriod(currentMonthLabel, "current", cur, curNet)}
-                      {renderPeriod(prevMonthLabel, "previous", prv, prvNet)}
-                    </CardContent>
-                  </Card>
-                );
-              })}
+              {activePhleboIds.map((id) => (
+                <Card key={id}>
+                  <CardHeader className="pb-2 pt-4 px-4">
+                    <CardTitle className="text-sm font-semibold">{phleboMap[id] || "Unknown"}</CardTitle>
+                  </CardHeader>
+                  <CardContent className="px-4 pb-4 space-y-3">
+                    {renderPayoutPeriod(
+                      id,
+                      currentMonthLabel,
+                      "current",
+                      payoutHvc[id]?.current || emptyBucket(),
+                      payoutInc[id]?.current || emptyBucket(),
+                    )}
+                    {renderPayoutPeriod(
+                      id,
+                      prevMonthLabel,
+                      "previous",
+                      payoutHvc[id]?.previous || emptyBucket(),
+                      payoutInc[id]?.previous || emptyBucket(),
+                    )}
+                  </CardContent>
+                </Card>
+              ))}
             </div>
           </div>
         </>
