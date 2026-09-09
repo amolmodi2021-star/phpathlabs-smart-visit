@@ -197,7 +197,7 @@ const PhleboDashboard = () => {
             registration: reg,
             hvc,
             incentive,
-            reason: "Payment due — held until collected",
+            reason: "Payment due - held until collected",
           });
         }
       } else if (bucket === "deducted") {
@@ -209,7 +209,7 @@ const PhleboDashboard = () => {
             registration: reg,
             hvc,
             incentive,
-            reason: "Bill cancelled — not payable",
+            reason: "Bill cancelled - not payable",
           });
         }
       }
