@@ -211,12 +211,13 @@ const DuePayments = () => {
         direction: "in",
         payments: newEntries,
         total_amount: collectTotal,
-        // Delta-only row: snapshot fields zeroed so Daily Report totals don't double-count
+        // Delta-only for bill figures; Due is negative so Daily Report Due nets
+        // with the frozen Registration Due (collections were clearing that balance).
         gross_amount: 0,
         discount_amount: 0,
         final_amount: 0,
         paid_amount: 0,
-        due_amount: 0,
+        due_amount: -collectTotal,
       });
       queryClient.invalidateQueries({ queryKey: ["lims-due-payments"] });
       queryClient.invalidateQueries({ queryKey: ["lims-dispatch"] });

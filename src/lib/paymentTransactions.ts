@@ -186,6 +186,8 @@ export async function syncRegistrationPaymentRow(params: SyncRegistrationPayment
       // Only overwrite the original registration-time payment split when explicitly
       // requested (e.g. user corrected a mode typo). Otherwise leave cash/gpay/... and
       // paid/total frozen so later due-collection rows don't get double-counted.
+      // Due / Gross / Discount / Final are never rewritten here — Registration stays
+      // frozen evidence of what was booked at registration time.
       if (params.sync_payment_split) {
         updateRow.cash_amount = modes.cash;
         updateRow.gpay_amount = modes.gpay;
@@ -194,11 +196,6 @@ export async function syncRegistrationPaymentRow(params: SyncRegistrationPayment
         updateRow.neft_amount = modes.neft;
         updateRow.total_amount = params.paid_amount;
         updateRow.paid_amount = params.paid_amount;
-        // Keep due coherent with whatever Final is already on the row.
-        if (!params.sync_bill_snapshot) {
-          const frozenFinal = Number(row.final_amount || 0);
-          updateRow.due_amount = Math.max(0, frozenFinal - params.paid_amount);
-        }
       }
       const { error: updErr } = await supabase
         .from("payment_transactions" as any)
