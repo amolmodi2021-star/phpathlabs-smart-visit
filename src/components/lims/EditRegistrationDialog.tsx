@@ -4,7 +4,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -12,16 +11,22 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { Save, Ban, RotateCcw, Lock } from "lucide-react";
+import { Save, Ban, Lock } from "lucide-react";
 import DeletePasswordDialog from "@/components/DeletePasswordDialog";
-import { recalculateRegistrationStatus } from "@/lib/limsStatus";
-import { logPaymentTransaction, syncRegistrationPaymentRow, syncDueCollectionPaymentModes, splitPaymentModes, fetchFrozenRegistrationBillSnapshot, sumLoggedRefunds, resolveCancelBillSnapshot } from "@/lib/paymentTransactions";
+import {
+  syncRegistrationPaymentRow,
+  syncDueCollectionPaymentModes,
+  splitPaymentModes,
+  fetchFrozenRegistrationBillSnapshot,
+  sumLoggedRefunds,
+  resolveCancelBillSnapshot,
+  logPaymentTransaction,
+} from "@/lib/paymentTransactions";
 import {
   applyDueCollectionGroupEdits,
   dueCollectionGroupEditsChanged,
   groupDueCollectionsByDate,
   mergeEditedRegistrationSplit,
-  rebuildPaymentsForPaidCap,
   splitRegistrationAndDuePayments,
   sumPaymentEntries,
   maxAmountForModeSplit,
@@ -30,9 +35,9 @@ import {
 import { syncPatientDemographicsByUmr, invalidatePatientCaches } from "@/lib/syncPatientDemographics";
 import DoctorAutocomplete, { ensureDoctor } from "@/components/lims/DoctorAutocomplete";
 import { genderFromTitle, PATIENT_TITLES } from "@/lib/normalizePatientFields";
-import { isHvChargeOnlyRegistration, refundableHomeVisitCharges } from "@/lib/hvChargeOnly";
 
 const TITLES = [...PATIENT_TITLES];
+const PAYMENT_MODES = ["Cash", "GPay", "Paytm", "Credit Card", "NEFT"];
 
 interface EditRegistrationDialogProps {
   open: boolean;
@@ -43,7 +48,7 @@ interface EditRegistrationDialogProps {
 const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditRegistrationDialogProps) => {
   const qc = useQueryClient();
 
-  // Editable fields
+  // Editable demographics
   const [patientName, setPatientName] = useState("");
   const [title, setTitle] = useState("");
   const [gender, setGender] = useState("");
@@ -51,57 +56,28 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
   const [ageText, setAgeText] = useState("");
   const [email, setEmail] = useState("");
   const [doctorName, setDoctorName] = useState("");
-  const [umrNumber, setUmrNumber] = useState("");
   const [address, setAddress] = useState("");
   const [mobileNumber, setMobileNumber] = useState("");
-  const [status, setStatus] = useState("");
   const [remarks, setRemarks] = useState("");
   const [isStat, setIsStat] = useState(false);
 
-  // Payment editing
+  // Payment mode editing (registration + due collections)
   const [selectedModes, setSelectedModes] = useState<Set<string>>(new Set());
   const [modeAmounts, setModeAmounts] = useState<Record<string, number>>({});
-  /** Per due-collection event (same timestamp): mode split like registration. */
   const [dueGroupEdits, setDueGroupEdits] = useState<Array<DueCollectionGroupEdit & { selectedModes: string[] }>>([]);
 
-  // Cancel / Refund
-  const [cancelledTestIds, setCancelledTestIds] = useState<Set<string>>(new Set());
+  // Cancel entire bill
   const [refundMode, setRefundMode] = useState<string>("Cash");
   const [showCancelBillPwd, setShowCancelBillPwd] = useState(false);
-  const [showRefundPwd, setShowRefundPwd] = useState(false);
-  const [showRefundUnlockPwd, setShowRefundUnlockPwd] = useState(false);
-  const [refundUnlocked, setRefundUnlocked] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [homeVisitRefundRequested, setHomeVisitRefundRequested] = useState(false);
-
-  // Overpayment refund (from discount change)
-  const [overpaymentRefundMode, setOverpaymentRefundMode] = useState<string>("Cash");
-  const [showOverpaymentRefundPwd, setShowOverpaymentRefundPwd] = useState(false);
-
-  // Discount editing
-  const [editTests, setEditTests] = useState<any[]>([]);
-  const [globalDiscountType, setGlobalDiscountType] = useState<"percent" | "amount">("percent");
-  const [globalDiscountValue, setGlobalDiscountValue] = useState(0);
-  /** Snapshot of global discount when dialog opened — used to detect real edits vs round-up mismatch. */
-  const [globalDiscountBaseline, setGlobalDiscountBaseline] = useState<{ type: "percent" | "amount"; value: number }>({
-    type: "percent",
-    value: 0,
-  });
-  const [allowIneligibleDiscount, setAllowIneligibleDiscount] = useState(false);
-  const [showDiscountUnlockPwd, setShowDiscountUnlockPwd] = useState(false);
-  const [discountUnlocked, setDiscountUnlocked] = useState(false);
 
   // Payment-mode lock for invoices older than today
   const [showPaymentUnlockPwd, setShowPaymentUnlockPwd] = useState(false);
   const [paymentUnlocked, setPaymentUnlocked] = useState(false);
 
-  // Populate on open
   useEffect(() => {
     if (reg && open) {
-      setRefundUnlocked(false);
-      setDiscountUnlocked(false);
       setPaymentUnlocked(false);
-      setHomeVisitRefundRequested(false);
       setPatientName(reg.patient_name || "");
       setTitle(reg.title || "");
       setGender(reg.gender || "");
@@ -109,14 +85,12 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
       setAgeText(reg.age_text || "");
       setEmail(reg.email || "");
       setDoctorName(reg.doctor_name || "");
-      setUmrNumber(reg.umr_number || "");
       setAddress(reg.address || "");
       setMobileNumber(reg.mobile_number || "");
-      setStatus(reg.status || "registered");
       setRemarks(reg.remarks || "");
       setIsStat(reg.is_stat || false);
-      // Populate only the original at-registration split (no `date`).
-      // Due-collection rows must not be treated as a second registration payment.
+      setRefundMode("Cash");
+
       const existingPayments: any[] = Array.isArray(reg.payments) ? reg.payments : [];
       const { registration: originalSplit, dueCollections } = splitRegistrationAndDuePayments(existingPayments);
       const modes = new Set<string>(originalSplit.map((p: any) => p.mode).filter(Boolean));
@@ -141,53 +115,20 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
           };
         }),
       );
-      const existing = Array.isArray(reg.cancelled_tests) ? reg.cancelled_tests : [];
-      setCancelledTestIds(new Set(existing.map((t: any) => t.test_id || t)));
-      setRefundMode("Cash");
-      // Populate tests for discount editing — seed ₹ individual discounts from frozen
-      // registration line amounts so round-up / backfilled bills still show the given discount.
-      const regTests: any[] = Array.isArray(reg.tests) ? reg.tests : [];
-      setEditTests(regTests.map((t: any) => {
-        const price = Number(t.price || 0);
-        const storedDisc = Number(t.discount || 0)
-          || Math.max(0, price - Number(t.discounted_price ?? price));
-        const hasIndividual = t.individual_discount_type && Number(t.individual_discount_value || 0) > 0;
-        return {
-          ...t,
-          discount: storedDisc,
-          discounted_price: t.discounted_price != null ? Number(t.discounted_price) : Math.max(0, price - storedDisc),
-          individual_discount_type: hasIndividual
-            ? t.individual_discount_type
-            : (storedDisc > 0 ? "amount" : null),
-          individual_discount_value: hasIndividual
-            ? Number(t.individual_discount_value || 0)
-            : (storedDisc > 0 ? storedDisc : 0),
-          discount_applicable: t.discount_applicable !== false,
-        };
-      }));
-      const gType = ((reg.global_discount_type as "percent" | "amount") || "percent");
-      const gVal = Number(reg.global_discount_value || 0);
-      setGlobalDiscountType(gType);
-      setGlobalDiscountValue(gVal);
-      setGlobalDiscountBaseline({ type: gType, value: gVal });
-      setAllowIneligibleDiscount(false);
     }
   }, [reg, open]);
 
-  // Title → Gender auto
   useEffect(() => {
     const g = genderFromTitle(title);
     if (g) setGender(g);
   }, [title]);
 
   const tests: any[] = reg ? (Array.isArray(reg.tests) ? reg.tests : []) : [];
-  const alreadyCancelled = reg ? new Set((Array.isArray(reg.cancelled_tests) ? reg.cancelled_tests : []).map((t: any) => t.test_id || t)) : new Set<string>();
+  const alreadyCancelled = reg
+    ? new Set((Array.isArray(reg.cancelled_tests) ? reg.cancelled_tests : []).map((t: any) => t.test_id || t))
+    : new Set<string>();
   const isBillCancelled = reg?.bill_cancelled;
-  const isPastAccepted = ["sample_accepted", "processing", "partial_processing", "processed", "partial_verified", "verified", "partially_approved", "approved", "partially_dispatched", "dispatched"].includes(reg?.status || "");
-  const isRefundBlocked = isPastAccepted && !refundUnlocked;
-  const isDiscountLocked = isPastAccepted && !discountUnlocked;
 
-  // Payment mode lock: invoices created before today require password to modify
   const isInvoiceOlderThanToday = useMemo(() => {
     if (!reg?.created_at) return false;
     const d = new Date(reg.created_at);
@@ -197,35 +138,18 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
   }, [reg?.created_at]);
   const isPaymentLocked = isInvoiceOlderThanToday && !paymentUnlocked;
 
-  const newlyCancelled = [...cancelledTestIds].filter(id => !alreadyCancelled.has(id));
-  const refundCalc = useMemo(() => {
-    let refundAmount = 0;
-    newlyCancelled.forEach(testId => {
-      const test = tests.find((t: any) => t.test_id === testId);
-      if (test) {
-        refundAmount += Number(test.discounted_price || test.price || 0);
-      }
-    });
-    if (homeVisitRefundRequested) {
-      // Only money actually received toward HVC (not unpaid due).
-      refundAmount += refundableHomeVisitCharges(reg);
-    }
-    // Never offer to refund more than collected on this invoice.
-    return Math.min(refundAmount, Number(reg?.paid_amount || 0));
-  }, [newlyCancelled, tests, homeVisitRefundRequested, reg]);
-
-  const PAYMENT_MODES = ["Cash", "GPay", "Paytm", "Credit Card", "NEFT"];
-  const lockedPaidAmount = Number(reg?.paid_amount || 0);
   const originalRegPaid = useMemo(() => {
     const existingPayments: any[] = Array.isArray(reg?.payments) ? reg.payments : [];
     return sumPaymentEntries(splitRegistrationAndDuePayments(existingPayments).registration);
   }, [reg?.payments]);
+
   const dueCollectionGroups = useMemo(() => {
     const existingPayments: any[] = Array.isArray(reg?.payments) ? reg.payments : [];
     return groupDueCollectionsByDate(
       splitRegistrationAndDuePayments(existingPayments).dueCollections,
     );
   }, [reg?.payments]);
+
   const dueModesDirty = useMemo(
     () => dueCollectionGroupEditsChanged(
       reg?.payments,
@@ -233,6 +157,7 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
     ),
     [reg?.payments, dueGroupEdits],
   );
+
   const dueGroupsMismatch = useMemo(() => {
     return dueGroupEdits.some((g) => {
       const allocated = Object.values(g.modeAmounts || {}).reduce((s, n) => s + Number(n || 0), 0);
@@ -241,11 +166,37 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
     });
   }, [dueGroupEdits]);
 
+  const registrationSplitChanged = useMemo(() => {
+    if (!reg) return false;
+    const existingPayments: any[] = Array.isArray(reg.payments) ? reg.payments : [];
+    const { registration: originalRegEntries } = splitRegistrationAndDuePayments(existingPayments);
+    const editedSplit = Array.from(selectedModes)
+      .filter((m) => (modeAmounts[m] || 0) > 0)
+      .map((m) => ({ mode: m, amount: modeAmounts[m] || 0 }));
+    const origModes = splitPaymentModes(originalRegEntries);
+    const newModes = splitPaymentModes(editedSplit);
+    return (
+      origModes.cash !== newModes.cash ||
+      origModes.gpay !== newModes.gpay ||
+      origModes.paytm !== newModes.paytm ||
+      origModes.credit_card !== newModes.credit_card ||
+      origModes.neft !== newModes.neft
+    );
+  }, [reg, selectedModes, modeAmounts]);
+
   const togglePaymentMode = (mode: string) => {
-    setSelectedModes(prev => {
+    setSelectedModes((prev) => {
       const next = new Set(prev);
-      if (next.has(mode)) { next.delete(mode); setModeAmounts(a => { const n = { ...a }; delete n[mode]; return n; }); }
-      else next.add(mode);
+      if (next.has(mode)) {
+        next.delete(mode);
+        setModeAmounts((a) => {
+          const n = { ...a };
+          delete n[mode];
+          return n;
+        });
+      } else {
+        next.add(mode);
+      }
       return next;
     });
   };
@@ -269,8 +220,7 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
     }));
   };
 
-  // Auto-fill when single mode selected — only the original registration payment,
-  // never the later due-collection total (that caused a second GPay line).
+  // Auto-fill when single mode selected — original registration payment only
   useEffect(() => {
     if (selectedModes.size === 1) {
       const mode = Array.from(selectedModes)[0];
@@ -278,150 +228,54 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
     }
   }, [selectedModes.size, originalRegPaid]);
 
-  // Discount calculations
-  // Prefer frozen per-test `discount` from registration when the user has not edited
-  // Global Discount. Round-up billing lowers line discounts but leaves global % stale
-  // (e.g. 20% → ₹74) while stored discounts are the true bill (e.g. ₹70).
-  const globalDiscountDirty =
-    globalDiscountType !== globalDiscountBaseline.type
-    || Math.abs(globalDiscountValue - globalDiscountBaseline.value) > 0.001;
-
-  const discountCalc = useMemo(() => {
-    let totalAmount = 0;
-    let totalDiscount = 0;
-    const updatedTests = editTests.map(t => {
-      if (alreadyCancelled.has(t.test_id)) {
-        return { ...t, discounted_price: 0, discount: 0 };
-      }
-      const price = Number(t.price || 0);
-      totalAmount += price;
-      let discount = 0;
-      const discountOk = t.discount_applicable !== false || allowIneligibleDiscount;
-      const hasIndividual = t.individual_discount_type && t.individual_discount_value > 0 && discountOk;
-      const storedLineDiscount = Number(t.discount || 0)
-        || Math.max(0, price - Number(t.discounted_price ?? price));
-      if (hasIndividual) {
-        discount = t.individual_discount_type === "percent"
-          ? Math.round((price * t.individual_discount_value) / 100)
-          : Math.round(t.individual_discount_value);
-      } else if (discountOk && globalDiscountDirty) {
-        if (globalDiscountValue > 0) {
-          discount = globalDiscountType === "percent"
-            ? Math.round((price * globalDiscountValue) / 100)
-            : Math.round(globalDiscountValue);
-        } else {
-          discount = 0;
-        }
-      } else if (discountOk && storedLineDiscount > 0) {
-        discount = Math.round(storedLineDiscount);
-      } else if (discountOk && globalDiscountValue > 0) {
-        discount = globalDiscountType === "percent"
-          ? Math.round((price * globalDiscountValue) / 100)
-          : Math.round(globalDiscountValue);
-      }
-      discount = Math.min(Math.max(0, discount), price);
-      totalDiscount += discount;
-      return { ...t, discount, discounted_price: price - discount };
-    });
-    const hvc = Number(reg?.home_visit_charges || 0);
-    const finalAmount = totalAmount - totalDiscount + hvc;
-    return { totalAmount, totalDiscount, finalAmount, hvc, updatedTests };
-  }, [
-    editTests,
-    globalDiscountType,
-    globalDiscountValue,
-    globalDiscountDirty,
-    alreadyCancelled,
-    reg,
-    allowIneligibleDiscount,
-  ]);
-
-  const discountChanged = useMemo(() => {
-    return Math.abs(discountCalc.finalAmount - Number(reg?.final_amount || 0)) > 0.01 ||
-      Math.abs(discountCalc.totalDiscount - Number(reg?.discount_amount || 0)) > 0.01;
-  }, [discountCalc, reg]);
-
-  const updateTestDiscount = (testId: string, field: string, value: any) => {
-    setEditTests(prev => prev.map(t =>
-      t.test_id === testId ? { ...t, [field]: value } : t
-    ));
-  };
-
   const editPaidAmount = Array.from(selectedModes).reduce((sum, mode) => sum + (modeAmounts[mode] || 0), 0);
   const paymentModesMismatch = originalRegPaid > 0 && selectedModes.size > 1 && Math.abs(editPaidAmount - originalRegPaid) > 0.01;
-
-  // Overpayment detection when discount reduces final below paid
-  const discountOverpayment = discountChanged && discountCalc.finalAmount < lockedPaidAmount
-    ? lockedPaidAmount - discountCalc.finalAmount : 0;
-
-  // Disable save if overpayment exists but no refund mode acknowledged via password
-  const overpaymentBlocksSave = discountOverpayment > 0;
 
   if (!reg) return null;
 
   const handleSaveDetails = async () => {
     setSaving(true);
     try {
-      if (isPaymentLocked && dueModesDirty) {
-        throw new Error("Unlock payment mode editing for older invoices before changing due collection modes");
+      if (isPaymentLocked && (dueModesDirty || registrationSplitChanged)) {
+        throw new Error("Unlock payment mode editing for older invoices before changing payment modes");
       }
       if (dueGroupsMismatch) {
         throw new Error("Each due collection's payment modes must add up to that collection's total");
       }
 
       const editedSplit = Array.from(selectedModes)
-        .filter(m => (modeAmounts[m] || 0) > 0)
-        .map(m => ({ mode: m, amount: modeAmounts[m] || 0 }));
+        .filter((m) => (modeAmounts[m] || 0) > 0)
+        .map((m) => ({ mode: m, amount: modeAmounts[m] || 0 }));
 
       const existingPayments: any[] = Array.isArray(reg.payments) ? reg.payments : [];
       const { registration: originalRegEntries } = splitRegistrationAndDuePayments(existingPayments);
-      const newFinalForCap = discountChanged ? discountCalc.finalAmount : Number(reg.final_amount || 0);
-      // Remap each due-collection event's mode split (totals/dates fixed), then apply
-      // any at-registration split edit — never invents a second registration payment.
+      const paidCap = Number(reg.final_amount || 0);
       const paymentsWithDueModes = applyDueCollectionGroupEdits(
         existingPayments,
         dueGroupEdits.map(({ date, total, modeAmounts: amts }) => ({ date, total, modeAmounts: amts })),
       );
-      const payments = mergeEditedRegistrationSplit(paymentsWithDueModes, editedSplit, newFinalForCap);
+      const payments = mergeEditedRegistrationSplit(paymentsWithDueModes, editedSplit, paidCap);
 
       const updateData: any = {
-        patient_name: patientName.replace(/\s+/g, ' ').trim().toUpperCase(),
+        patient_name: patientName.replace(/\s+/g, " ").trim().toUpperCase(),
         title,
         gender,
         dob: dob || null,
         age_text: reg.visit_type === "pickup_point" ? (ageText.trim() || null) : null,
         email: email || null,
         doctor_name: (doctorName || "SELF").toUpperCase(),
-        address: address.replace(/\s+/g, ' ').trim().toUpperCase(),
+        address: address.replace(/\s+/g, " ").trim().toUpperCase(),
         mobile_number: mobileNumber.replace(/\D/g, "").slice(-10),
-        remarks: remarks.replace(/\s+/g, ' ').trim().toUpperCase() || null,
+        remarks: remarks.replace(/\s+/g, " ").trim().toUpperCase() || null,
         is_stat: isStat,
         payments,
       };
 
-      // Include discount data if changed
-      if (discountChanged) {
-        updateData.tests = discountCalc.updatedTests;
-        updateData.gross_amount = discountCalc.totalAmount;
-        updateData.discount_amount = discountCalc.totalDiscount;
-        updateData.final_amount = discountCalc.finalAmount;
-        updateData.net_amount = discountCalc.totalAmount - discountCalc.totalDiscount;
-        updateData.global_discount_type = globalDiscountValue > 0 ? globalDiscountType : null;
-        updateData.global_discount_value = globalDiscountValue;
-        // Recalculate due_amount to keep Due Payments section accurate
-        updateData.due_amount = Math.max(0, discountCalc.finalAmount - lockedPaidAmount);
-      }
-
       const { error } = await supabase.from("patient_registrations").update(updateData).eq("id", reg.id);
       if (error) throw error;
 
-      // Add doctor to master list (history) — non-fatal
       ensureDoctor(updateData.doctor_name);
 
-  // Fan-out demographics to ALL records sharing this UMR (sister visits,
-  // approved report snapshots, patient master, linked home-visit estimates,
-  // and pending LIMS analyzer orders). Audit-trail tables are intentionally
-  // left untouched. Failures here are non-fatal — the primary save succeeded.
       try {
         const syncResult = await syncPatientDemographicsByUmr(reg.id, {
           umr_number: reg.umr_number,
@@ -439,7 +293,6 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
           // eslint-disable-next-line no-console
           console.warn("[EditRegistration] demographic sync warnings:", syncResult.warnings);
         }
-        // Pickup (no UMR): still refresh this registration's approved report snapshot.
         if (!String(reg.umr_number || "").trim()) {
           await supabase
             .from("approved_reports")
@@ -463,9 +316,6 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
 
       invalidatePatientCaches(qc);
 
-      // Sync registration_payment only for at-registration payment-mode corrections.
-      // Discount changes must NOT rewrite the frozen Registration Gross/Discount/Final —
-      // those deltas belong on discount_applied / post_discount_refund rows.
       {
         const origModes = splitPaymentModes(originalRegEntries);
         const newModes = splitPaymentModes(editedSplit);
@@ -477,42 +327,18 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
           origModes.neft !== newModes.neft;
         if (splitChanged) {
           const syncedPaid = editedSplit.reduce((s, p) => s + (p.amount || 0), 0);
-          // Mode-only correction: never rewrite frozen Gross/Discount/Final.
           await syncRegistrationPaymentRow({
             registration_id: reg.id,
             invoice_number: reg.invoice_number,
             patient_name: patientName,
             payments: editedSplit,
             paid_amount: syncedPaid,
-            final_amount: Number(reg.final_amount || 0), // unused when sync_bill_snapshot is false
+            final_amount: Number(reg.final_amount || 0),
             due_amount: 0,
             change_reason: "Payment mode edited",
             sync_payment_split: true,
             sync_bill_snapshot: false,
           });
-        }
-        if (discountChanged) {
-          const prevDiscount = Number(reg.discount_amount || 0);
-          const prevFinal = Number(reg.final_amount || 0);
-          const discDelta = discountCalc.totalDiscount - prevDiscount;
-          const finalDelta = discountCalc.finalAmount - prevFinal;
-          if (Math.abs(discDelta) > 0.009 || Math.abs(finalDelta) > 0.009) {
-            logPaymentTransaction({
-              registration_id: reg.id,
-              invoice_number: reg.invoice_number,
-              patient_name: patientName,
-              transaction_type: "discount_applied",
-              direction: finalDelta < 0 ? "out" : "in",
-              payments: [],
-              total_amount: 0,
-              gross_amount: 0,
-              discount_amount: discDelta,
-              final_amount: finalDelta,
-              paid_amount: 0,
-              due_amount: 0,
-              remarks: `Discount edited — Disc ${discDelta >= 0 ? "+" : ""}₹${discDelta}, Final ${finalDelta >= 0 ? "+" : ""}₹${finalDelta}`,
-            });
-          }
         }
       }
 
@@ -533,293 +359,6 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
     }
   };
 
-  const processOverpaymentRefund = async () => {
-    setSaving(true);
-    try {
-      const existingRefund = Number(reg.refund_amount || 0);
-      const existingPayments: any[] = Array.isArray(reg.payments) ? reg.payments : [];
-      const preferredSplit = Array.from(selectedModes)
-        .filter(m => (modeAmounts[m] || 0) > 0)
-        .map(m => ({ mode: m, amount: modeAmounts[m] || 0 }));
-      // Cap payments to the new final; never drop due-collection rows or invent a
-      // second registration payment on top of money already collected as due.
-      const payments = rebuildPaymentsForPaidCap(
-        existingPayments,
-        discountCalc.finalAmount,
-        preferredSplit,
-      );
-      const updateData: any = {
-        tests: discountCalc.updatedTests,
-        gross_amount: discountCalc.totalAmount,
-        discount_amount: discountCalc.totalDiscount,
-        final_amount: discountCalc.finalAmount,
-        net_amount: discountCalc.totalAmount - discountCalc.totalDiscount,
-        global_discount_type: globalDiscountValue > 0 ? globalDiscountType : null,
-        global_discount_value: globalDiscountValue,
-        due_amount: 0,
-        paid_amount: discountCalc.finalAmount,
-        refund_amount: existingRefund + discountOverpayment,
-        refund_mode: overpaymentRefundMode,
-        refund_date: new Date().toISOString(),
-        payments,
-      };
-      const { error } = await supabase.from("patient_registrations").update(updateData).eq("id", reg.id);
-      if (error) throw error;
-      qc.invalidateQueries({ queryKey: ["patient_registrations"] });
-
-      // Do NOT sync/mutate the frozen registration_payment Gross/Discount/Final/Paid.
-      // Post-discount cash-out + Disc/Final deltas go on a dedicated audit row.
-      const additionalDiscount = Math.max(
-        0,
-        discountCalc.totalDiscount - Number(reg.discount_amount || 0),
-      );
-      const discForRow = additionalDiscount > 0.009 ? additionalDiscount : discountOverpayment;
-      logPaymentTransaction({
-        registration_id: reg.id,
-        invoice_number: reg.invoice_number,
-        patient_name: patientName,
-        transaction_type: "post_discount_refund",
-        direction: "out",
-        payments: [{ mode: overpaymentRefundMode, amount: discountOverpayment }],
-        total_amount: discountOverpayment,
-        gross_amount: 0,
-        discount_amount: discForRow,
-        final_amount: -discountOverpayment,
-        paid_amount: 0,
-        due_amount: 0,
-        refund_amount: discountOverpayment,
-        remarks: `Post discount refund ₹${discountOverpayment} via ${overpaymentRefundMode}`,
-      });
-      toast.success(`Discount applied & ₹${discountOverpayment} refunded via ${overpaymentRefundMode}`);
-      onOpenChange(false);
-    } catch (e: any) {
-      toast.error(e.message);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleCancelTests = async () => {
-    if (newlyCancelled.length === 0 && !homeVisitRefundRequested) {
-      toast.error("No tests selected for cancellation and no home visit refund requested");
-      return;
-    }
-    // HV charge-only: Refund HVC alone is a full bill cancel — use Cancel Entire Bill
-    // so Daily Report gets Registration(+) + Bill Cancel(−) + Refund(−).
-    if (
-      isHvChargeOnlyRegistration(reg)
-      && homeVisitRefundRequested
-      && newlyCancelled.length === 0
-    ) {
-      const inv = reg?.invoice_number || "";
-      const isOldBill = /^\d{6}/.test(inv) &&
-        `${inv.slice(4, 6)}-${inv.slice(2, 4)}-20${inv.slice(0, 2)}` !== format(new Date(), "dd-MM-yyyy");
-      if (isOldBill) setShowCancelBillPwd(true);
-      else void processCancelBill();
-      return;
-    }
-    setShowRefundPwd(true);
-  };
-
-  const processCancelTests = async () => {
-    setSaving(true);
-    try {
-      const allCancelled = [...cancelledTestIds].map(id => {
-        const test = tests.find((t: any) => t.test_id === id);
-        const price = Number(test?.price || 0);
-        const discount = Number(test?.discount || 0)
-          || Math.max(0, price - Number(test?.discounted_price ?? price));
-        return {
-          test_id: id,
-          test_name: test?.test_name || "",
-          price,
-          discount,
-          refund_amount: Number(test?.discounted_price || test?.price || 0),
-        };
-      });
-
-      const testBillReduction = newlyCancelled.reduce((sum, id) => {
-        const test = tests.find((t: any) => t.test_id === id);
-        return sum + Number(test?.discounted_price || test?.price || 0);
-      }, 0);
-      let cancelledGross = 0;
-      let cancelledDiscount = 0;
-      newlyCancelled.forEach((id) => {
-        const test = tests.find((t: any) => t.test_id === id);
-        if (!test) return;
-        const price = Number(test.price || 0);
-        const lineDisc = Number(test.discount || 0)
-          || Math.max(0, price - Number(test.discounted_price ?? price));
-        cancelledGross += price;
-        cancelledDiscount += Math.min(Math.max(0, lineDisc), price);
-      });
-      const hvcBill = homeVisitRefundRequested ? Number(reg.home_visit_charges || 0) : 0;
-      const hvcCashRefund = homeVisitRefundRequested ? refundableHomeVisitCharges(reg) : 0;
-      // Bill drops by full cancelled value; cash refund is only what was received.
-      const billReduction = testBillReduction + hvcBill;
-      const cashRefund = Math.min(
-        Number(reg.paid_amount || 0),
-        testBillReduction + hvcCashRefund,
-      );
-
-      const totalRefund = Number(reg.refund_amount || 0) + cashRefund;
-      const newGrossAmount = Math.max(0, Number(reg.gross_amount || 0) - cancelledGross);
-      const newDiscountAmount = Math.max(0, Number(reg.discount_amount || 0) - cancelledDiscount);
-      const newFinalAmount = Math.max(0, Number(reg.final_amount) - billReduction);
-      const newPaid = Math.max(0, Number(reg.paid_amount) - cashRefund);
-      // Keep payments[] in sync with paid/final or DB trigger rejects the update.
-      const scaledPayments = rebuildPaymentsForPaidCap(reg.payments, newPaid);
-
-      const updatePayload: any = {
-        cancelled_tests: allCancelled,
-        refund_amount: totalRefund,
-        refund_mode: refundMode,
-        refund_date: new Date().toISOString(),
-        // Shrink bill snapshot so Daily Report Gross/Discount/Final don't stay inflated
-        // after partial test cancel (cash stays on frozen registration_payment + Refund −).
-        gross_amount: newGrossAmount,
-        discount_amount: newDiscountAmount,
-        net_amount: Math.max(0, newGrossAmount - newDiscountAmount),
-        final_amount: newFinalAmount,
-        paid_amount: newPaid,
-        due_amount: Math.max(0, newFinalAmount - newPaid),
-        payments: scaledPayments,
-      };
-      if (homeVisitRefundRequested) {
-        updatePayload.home_visit_charges = 0;
-      }
-
-      const { error } = await supabase.from("patient_registrations").update(updatePayload).eq("id", reg.id);
-      if (error) throw error;
-
-      // Cascading cleanup for each newly cancelled test
-      for (const testId of newlyCancelled) {
-        // 1. Delete patient_results
-        await supabase.from("patient_results").delete().eq("registration_id", reg.id).eq("test_id", testId);
-
-        // 2. Delete outsourced_test_snips
-        await supabase.from("outsourced_test_snips").delete().eq("registration_id", reg.id).eq("test_id", testId);
-
-        // 2b. Update or delete sample_tubes containing this cancelled test
-        const { data: regTubes } = await supabase
-          .from("sample_tubes" as any)
-          .select("id, test_ids, test_names")
-          .eq("registration_id", reg.id);
-        if (regTubes) {
-          // Build a name lookup from registration tests
-          const testNameById: Record<string, string> = {};
-          (Array.isArray(reg.tests) ? reg.tests : []).forEach((t: any) => {
-            if (t.test_id) testNameById[t.test_id] = t.test_name || "";
-          });
-
-          const affectedTubes = (regTubes as any[]).filter((t: any) =>
-            (t.test_ids || []).includes(testId)
-          );
-          for (const tube of affectedTubes) {
-            const remainingIds = (tube.test_ids || []).filter((id: string) => id !== testId);
-            if (remainingIds.length === 0) {
-              await supabase.from("sample_tubes" as any).delete().eq("id", tube.id);
-            } else {
-              const remainingNames = remainingIds.map((id: string) => testNameById[id] || "");
-              await supabase.from("sample_tubes" as any)
-                .update({ test_ids: remainingIds, test_names: remainingNames } as any)
-                .eq("id", tube.id);
-            }
-          }
-        }
-
-        // 3. Clean up lims_test_orders - gather param codes and test code
-        const cancelledCodes: string[] = [];
-
-        // Get test code from tests table
-        const { data: testRow } = await supabase.from("tests").select("test_code").eq("id", testId).maybeSingle();
-        if (testRow?.test_code) cancelledCodes.push(testRow.test_code);
-
-        // Get param codes via test_parameters → report_test_parameters
-        const { data: tpRows } = await supabase.from("test_parameters" as any).select("parameter_id").eq("test_id", testId);
-        if (tpRows && tpRows.length > 0) {
-          const paramIds = (tpRows as any[]).map((r: any) => r.parameter_id);
-          const { data: paramRows } = await supabase.from("report_test_parameters").select("param_code").in("id", paramIds);
-          if (paramRows) {
-            paramRows.forEach((p: any) => { if (p.param_code) cancelledCodes.push(p.param_code); });
-          }
-        }
-
-        if (cancelledCodes.length > 0) {
-          // Find interface orders matching this invoice
-          const { data: orders } = await supabase.from("lims_test_orders")
-            .select("id, tests")
-            .like("sample_id", `${reg.invoice_number}%`)
-            .in("status", ["pending", "in_progress"]);
-
-          if (orders) {
-            for (const order of orders) {
-              const orderTests = Array.isArray(order.tests) ? order.tests : [];
-              const filtered = (orderTests as any[]).filter((t: any) => !cancelledCodes.includes(t.code));
-              if (filtered.length === 0) {
-                await supabase.from("lims_test_orders").delete().eq("id", order.id);
-              } else {
-                await supabase.from("lims_test_orders").update({ tests: filtered } as any).eq("id", order.id);
-              }
-            }
-          }
-        }
-      }
-
-      // 4. Recalculate registration status
-      await recalculateRegistrationStatus(reg.id);
-
-      // One NEW audit row per cancel action (never updates prior cancellations).
-      // Later test cancels insert additional rows — they stay separate on Daily Report.
-      if (cancelledGross > 0.009 || cancelledDiscount > 0.009 || billReduction > 0.009 || cashRefund > 0.009) {
-        const cancelParts: string[] = [];
-        if (newlyCancelled.length > 0) cancelParts.push(`${newlyCancelled.length} test(s) cancelled`);
-        if (homeVisitRefundRequested) {
-          cancelParts.push(hvcCashRefund > 0 ? "HV charges refunded" : "HV charges removed");
-        }
-        logPaymentTransaction({
-          registration_id: reg.id,
-          invoice_number: reg.invoice_number,
-          patient_name: patientName,
-          transaction_type: "test_cancellation",
-          direction: "out",
-          payments: cashRefund > 0 ? [{ mode: refundMode, amount: cashRefund }] : [],
-          total_amount: cashRefund,
-          gross_amount: -cancelledGross,
-          discount_amount: -cancelledDiscount,
-          final_amount: -billReduction,
-          paid_amount: 0,
-          due_amount: 0,
-          refund_amount: cashRefund,
-          remarks: cancelParts.length
-            ? `${cancelParts.join(" + ")}${cashRefund > 0 ? ` — refund ₹${cashRefund} via ${refundMode}` : ""}`
-            : `Test cancellation${cashRefund > 0 ? ` — refund ₹${cashRefund}` : ""}`,
-        });
-      }
-
-      qc.invalidateQueries({ queryKey: ["patient_registrations"] });
-      qc.invalidateQueries({ queryKey: ["sample_tubes_collection"] });
-      qc.invalidateQueries({ queryKey: ["sample_collection_regs"] });
-      qc.invalidateQueries({ queryKey: ["sample_tubes_acceptance_pending"] });
-      qc.invalidateQueries({ queryKey: ["sample_tubes_acceptance_accepted"] });
-      const parts: string[] = [];
-      if (newlyCancelled.length > 0) parts.push(`${newlyCancelled.length} test(s) cancelled`);
-      if (homeVisitRefundRequested) {
-        parts.push(hvcCashRefund > 0 ? "Home visit charges refunded" : "Home visit charges removed");
-      }
-      toast.success(
-        cashRefund > 0
-          ? `${parts.join(". ")}. Refund: ₹${cashRefund} via ${refundMode}`
-          : `${parts.join(". ")}.`,
-      );
-      onOpenChange(false);
-    } catch (e: any) {
-      toast.error(e.message);
-    } finally {
-      setSaving(false);
-    }
-  };
-
   const processCancelBill = async () => {
     setSaving(true);
     try {
@@ -833,20 +372,15 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
       const totalPaid = refundCash;
       const regDate = reg.created_at ? new Date(reg.created_at) : new Date();
       const regDateStr = (reg.invoice_number && /^\d{6}/.test(reg.invoice_number))
-        ? `${reg.invoice_number.slice(4,6)}-${reg.invoice_number.slice(2,4)}-20${reg.invoice_number.slice(0,2)}`
+        ? `${reg.invoice_number.slice(4, 6)}-${reg.invoice_number.slice(2, 4)}-20${reg.invoice_number.slice(0, 2)}`
         : format(regDate, "dd-MM-yyyy");
-      // Detect original payment modes for audit context in remarks
       const origPayments: Array<{ mode: string; amount: number }> = Array.isArray(reg.payments) ? reg.payments : [];
       const origModesLabel = origPayments.length
         ? Array.from(new Set(origPayments.map((p: any) => p.mode))).join("/")
         : "—";
 
       // Freeze pattern: do NOT mutate the original registration_payment audit row.
-      // Daily Report cash tally = frozen Registration (+) + Refund (−).
-      // Keep home_visit_charges on the live row so Gross (tests + HVC) still
-      // matches the frozen registration_payment snapshot after cancel.
-      // Clear payments[] in the same write — otherwise enforce_bill_payment_cap
-      // rejects (lines still sum to old paid while final/paid are zeroed).
+      // Clear payments[] in the same write — otherwise enforce_bill_payment_cap rejects.
       const { error } = await supabase.from("patient_registrations").update({
         bill_cancelled: true,
         status: "cancelled",
@@ -860,7 +394,6 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
       } as any).eq("id", reg.id);
       if (error) throw error;
 
-      // Drop leftover collection-queue tubes so cancelled bills never inflate Pending counts.
       await supabase
         .from("sample_tubes" as any)
         .delete()
@@ -875,10 +408,6 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
       qc.invalidateQueries({ queryKey: ["sample_tubes_acceptance_pending"] });
       qc.invalidateQueries({ queryKey: ["sample_acceptance_regs"] });
 
-      // Log TWO entries dated today — both audit-correct and cash-drawer-correct.
-      // 1) Refund row: actual cash outflow in chosen mode (Cash or NEFT only).
-      //    Skip if HVC/tests refund already covered the paid amount.
-      // 2) Bill cancellation marker: negative gross/final so Daily Report nets to 0.
       const todayStr = format(new Date(), "dd-MM-yyyy");
       const isCrossDay = regDateStr !== todayStr;
       if (totalPaid > 0) {
@@ -907,7 +436,7 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
           patient_name: patientName,
           transaction_type: isCrossDay ? "old_bill_cancellation" : "bill_cancellation",
           direction: "out",
-          payments: [], // no mode amounts — refund row already captured the cash movement
+          payments: [],
           total_amount: 0,
           gross_amount: -origGross,
           discount_amount: -origDiscount,
@@ -947,18 +476,8 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
             <DialogTitle className="flex items-center gap-2">
               Edit Registration — {reg.invoice_number}
               {isBillCancelled && <Badge variant="destructive">CANCELLED</Badge>}
-              {isHvChargeOnlyRegistration(reg) && (
-                <Badge variant="outline" className="border-sky-500 text-sky-700">HV Charge Only</Badge>
-              )}
             </DialogTitle>
           </DialogHeader>
-
-          {isHvChargeOnlyRegistration(reg) && (
-            <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900 dark:border-sky-800 dark:bg-sky-950 dark:text-sky-100">
-              This invoice is home visit charge only. Tests cannot be added here — create a new registration for lab tests.
-              Discount is not applicable on home visit charges.
-            </div>
-          )}
 
           {/* Patient Details */}
           <div className="space-y-3">
@@ -966,20 +485,20 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label>Mobile Number</Label>
-                <Input value={mobileNumber} onChange={e => setMobileNumber(e.target.value)} disabled={isBillCancelled} />
+                <Input value={mobileNumber} onChange={(e) => setMobileNumber(e.target.value)} disabled={isBillCancelled} />
               </div>
               <div>
                 <Label>Title</Label>
                 <Select value={title} onValueChange={setTitle} disabled={isBillCancelled}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>{TITLES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
+                  <SelectContent>{TITLES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label>Patient Name</Label>
-                <Input value={patientName} onChange={e => setPatientName(e.target.value.toUpperCase())} disabled={isBillCancelled} />
+                <Input value={patientName} onChange={(e) => setPatientName(e.target.value.toUpperCase())} disabled={isBillCancelled} />
               </div>
               <div>
                 <Label>Gender</Label>
@@ -1008,13 +527,13 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
                 ) : (
                   <>
                     <Label>DOB {age && <span className="text-muted-foreground ml-1">({age})</span>}</Label>
-                    <Input type="date" value={dob} onChange={e => setDob(e.target.value)} disabled={isBillCancelled} />
+                    <Input type="date" value={dob} onChange={(e) => setDob(e.target.value)} disabled={isBillCancelled} />
                   </>
                 )}
               </div>
               <div>
                 <Label>Email</Label>
-                <Input value={email} onChange={e => setEmail(e.target.value)} disabled={isBillCancelled} />
+                <Input value={email} onChange={(e) => setEmail(e.target.value)} disabled={isBillCancelled} />
               </div>
             </div>
             <div>
@@ -1023,25 +542,32 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
             </div>
             <div>
               <Label>Address</Label>
-              <Input value={address} onChange={e => setAddress(e.target.value.toUpperCase())} disabled={isBillCancelled} />
+              <Input value={address} onChange={(e) => setAddress(e.target.value.toUpperCase())} disabled={isBillCancelled} />
             </div>
             <div>
               <Label>Remarks</Label>
-              <Input value={remarks} onChange={e => setRemarks(e.target.value.toUpperCase())} placeholder="Optional remarks" className="uppercase" disabled={isBillCancelled} />
+              <Input value={remarks} onChange={(e) => setRemarks(e.target.value.toUpperCase())} placeholder="Optional remarks" className="uppercase" disabled={isBillCancelled} />
             </div>
             <div className="flex items-center justify-between rounded-lg border border-destructive/30 p-3">
               <div className="flex items-center gap-2">
-                {isStat && <span className="relative flex h-3 w-3"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75"></span><span className="relative inline-flex rounded-full h-3 w-3 bg-destructive"></span></span>}
+                {isStat && (
+                  <span className="relative flex h-3 w-3">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" />
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-destructive" />
+                  </span>
+                )}
                 <Label className="text-destructive font-semibold cursor-pointer" htmlFor="edit-stat-toggle">STAT (Urgent)</Label>
               </div>
               <Switch id="edit-stat-toggle" checked={isStat} onCheckedChange={setIsStat} className="data-[state=checked]:bg-destructive" disabled={isBillCancelled} />
             </div>
 
-            {/* Payment Mode Redistribution — only the original registration split */}
+            {/* Registration Payment Mode */}
             {!isBillCancelled && originalRegPaid > 0 && (
               <div className="space-y-2">
                 <h3 className="font-semibold text-sm">Registration Payment Mode</h3>
-                <div className="text-sm text-muted-foreground mb-1">Paid at registration: <span className="font-semibold text-foreground">₹{originalRegPaid}</span></div>
+                <div className="text-sm text-muted-foreground mb-1">
+                  Paid at registration: <span className="font-semibold text-foreground">₹{originalRegPaid}</span>
+                </div>
 
                 {isPaymentLocked && (
                   <div className="p-3 rounded border border-orange-300 bg-orange-50 space-y-2">
@@ -1050,21 +576,26 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
                       Payment mode editing is locked for invoices from previous dates. Enter admin password to unlock.
                     </div>
                     <Button variant="outline" size="sm" onClick={() => setShowPaymentUnlockPwd(true)}>
-                      🔓 Unlock Payment Mode
+                      Unlock Payment Mode
                     </Button>
                   </div>
                 )}
 
                 <fieldset disabled={isPaymentLocked} className={isPaymentLocked ? "opacity-60 pointer-events-none" : ""}>
                   <div className="flex flex-wrap gap-2">
-                    {PAYMENT_MODES.map(mode => (
-                      <Button key={mode} type="button" size="sm"
+                    {PAYMENT_MODES.map((mode) => (
+                      <Button
+                        key={mode}
+                        type="button"
+                        size="sm"
                         variant={selectedModes.has(mode) ? "default" : "outline"}
                         onClick={() => togglePaymentMode(mode)}
-                      >{mode}</Button>
+                      >
+                        {mode}
+                      </Button>
                     ))}
                   </div>
-                  {Array.from(selectedModes).map(mode => {
+                  {Array.from(selectedModes).map((mode) => {
                     const maxForThisMode = maxAmountForModeSplit(
                       originalRegPaid,
                       modeAmounts,
@@ -1100,10 +631,15 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
                   })}
                   {selectedModes.size > 1 && (
                     <div className="text-sm space-y-1 pt-1">
-                      <div className="flex justify-between"><span>Allocated:</span><span className={`font-medium ${paymentModesMismatch ? "text-destructive" : ""}`}>₹{editPaidAmount} / ₹{originalRegPaid}</span></div>
+                      <div className="flex justify-between">
+                        <span>Allocated:</span>
+                        <span className={`font-medium ${paymentModesMismatch ? "text-destructive" : ""}`}>
+                          ₹{editPaidAmount} / ₹{originalRegPaid}
+                        </span>
+                      </div>
                       {paymentModesMismatch && (
                         <div className="text-destructive text-xs font-medium">
-                          ⚠ Split amounts must equal ₹{originalRegPaid}
+                          Split amounts must equal ₹{originalRegPaid}
                         </div>
                       )}
                     </div>
@@ -1112,7 +648,7 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
               </div>
             )}
 
-            {/* Due collections — one editable mode-split block per collection event */}
+            {/* Due Collection Payment Modes */}
             {!isBillCancelled && dueCollectionGroups.length > 0 && (
               <div className="space-y-3">
                 <div>
@@ -1129,7 +665,7 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
                       Due collection mode editing is locked for invoices from previous dates. Enter admin password to unlock.
                     </div>
                     <Button variant="outline" size="sm" onClick={() => setShowPaymentUnlockPwd(true)}>
-                      🔓 Unlock Payment Mode
+                      Unlock Payment Mode
                     </Button>
                   </div>
                 )}
@@ -1221,7 +757,7 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
                             </div>
                             {mismatch && (
                               <div className="text-destructive text-xs font-medium">
-                                ⚠ Split amounts must equal ₹{group.total}
+                                Split amounts must equal ₹{group.total}
                               </div>
                             )}
                           </div>
@@ -1241,253 +777,81 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
             {!isBillCancelled && (
               <Button
                 onClick={handleSaveDetails}
-                disabled={saving || paymentModesMismatch || dueGroupsMismatch || overpaymentBlocksSave}
+                disabled={saving || paymentModesMismatch || dueGroupsMismatch}
                 className="w-full"
               >
-                <Save className="h-4 w-4 mr-2" />{overpaymentBlocksSave ? "Process Refund Below First" : "Save Details"}
+                <Save className="h-4 w-4 mr-2" />Save Details
               </Button>
             )}
           </div>
 
           <Separator />
 
-          {/* Tests & Discounts */}
+          {/* Tests (read-only) */}
           <div className="space-y-3">
-            <h3 className="font-semibold text-sm">Tests & Discounts ({editTests.length})</h3>
-
-            {/* Discount unlock gate for post-accepted stages */}
-            {isPastAccepted && !discountUnlocked && !isBillCancelled && (
-              <div className="p-3 rounded border border-orange-300 bg-orange-50 space-y-2">
-                <div className="text-sm text-orange-700 flex items-center gap-2">
-                  <Lock className="h-4 w-4" />
-                  Discount editing is locked after sample acceptance. Enter admin password to unlock.
-                </div>
-                <Button variant="outline" size="sm" onClick={() => setShowDiscountUnlockPwd(true)}>
-                  🔓 Unlock Discounts
-                </Button>
-              </div>
-            )}
-
+            <h3 className="font-semibold text-sm">Tests ({tests.length})</h3>
+            <p className="text-xs text-muted-foreground">
+              Bill amounts, tests, and discounts cannot be edited here. To fix billing, Cancel Entire Bill below and register a new invoice.
+            </p>
             <div className="space-y-2">
-              {editTests.map((t: any, i: number) => {
+              {tests.map((t: any, i: number) => {
                 const isCancelled = alreadyCancelled.has(t.test_id);
-                const isNewCancel = cancelledTestIds.has(t.test_id) && !isCancelled;
-                const canEditDiscount = !isBillCancelled && !isCancelled && !isDiscountLocked && (t.discount_applicable || allowIneligibleDiscount);
+                const price = Number(t.price || 0);
+                const lineDisc = Number(t.discount || 0)
+                  || Math.max(0, price - Number(t.discounted_price ?? price));
+                const net = t.discounted_price != null
+                  ? Number(t.discounted_price)
+                  : Math.max(0, price - lineDisc);
                 return (
-                  <div key={t.test_id || i} className={`p-2 rounded border ${isCancelled ? "bg-destructive/10 line-through opacity-60" : isNewCancel ? "bg-yellow-50 border-yellow-300" : ""}`}>
-                    <div className="flex items-center gap-3">
-                      {!isBillCancelled && !isCancelled && !isRefundBlocked && (
-                        <Checkbox
-                          checked={cancelledTestIds.has(t.test_id)}
-                          onCheckedChange={(checked) => {
-                            setCancelledTestIds(prev => {
-                              const next = new Set(prev);
-                              if (checked) next.add(t.test_id);
-                              else next.delete(t.test_id);
-                              return next;
-                            });
-                          }}
-                        />
-                      )}
-                      <span className="flex-1 text-sm">{t.test_name}</span>
-                      <span className="text-sm text-muted-foreground">₹{t.price}</span>
-                      {!isCancelled && (() => {
-                        const updated = discountCalc.updatedTests.find((u: any) => u.test_id === t.test_id);
-                        const lineDisc = Number(updated?.discount ?? t.discount ?? 0);
-                        const net = updated?.discounted_price ?? Math.max(0, Number(t.price || 0) - lineDisc);
-                        return (
-                          <>
-                            {lineDisc > 0 && (
-                              <span className="text-sm text-green-600 font-medium">-₹{lineDisc}</span>
-                            )}
-                            <span className="text-sm font-medium">₹{net}</span>
-                          </>
-                        );
-                      })()}
-                      {isCancelled && <Badge variant="destructive" className="text-xs">Cancelled</Badge>}
-                    </div>
-                    {/* Individual discount controls */}
-                    {canEditDiscount && (
-                      <div className="flex items-center gap-2 mt-1 ml-8">
-                        <span className="text-xs text-muted-foreground">Discount:</span>
-                        <Select value={t.individual_discount_type || ""} onValueChange={v => updateTestDiscount(t.test_id, "individual_discount_type", v || null)}>
-                          <SelectTrigger className="w-16 h-7 text-xs"><SelectValue placeholder="—" /></SelectTrigger>
-                          <SelectContent><SelectItem value="percent">%</SelectItem><SelectItem value="amount">₹</SelectItem></SelectContent>
-                        </Select>
-                        {t.individual_discount_type && (
-                          <Input type="number" className="w-20 h-7 text-xs" min={0}
-                            value={t.individual_discount_value || ""}
-                            onChange={e => updateTestDiscount(t.test_id, "individual_discount_value", parseFloat(e.target.value) || 0)}
-                            placeholder="Value" />
-                        )}
-                        {!t.individual_discount_type && Number(discountCalc.updatedTests.find((u: any) => u.test_id === t.test_id)?.discount || t.discount || 0) > 0 && (
-                          <span className="text-xs text-green-600">
-                            -₹{Number(discountCalc.updatedTests.find((u: any) => u.test_id === t.test_id)?.discount || t.discount || 0)}
-                          </span>
-                        )}
-                      </div>
+                  <div
+                    key={t.test_id || i}
+                    className={`p-2 rounded border flex items-center gap-3 ${isCancelled ? "bg-destructive/10 line-through opacity-60" : ""}`}
+                  >
+                    <span className="flex-1 text-sm">{t.test_name}</span>
+                    <span className="text-sm text-muted-foreground">₹{price}</span>
+                    {!isCancelled && lineDisc > 0 && (
+                      <span className="text-sm text-green-600 font-medium">-₹{lineDisc}</span>
                     )}
+                    {!isCancelled && <span className="text-sm font-medium">₹{net}</span>}
+                    {isCancelled && <Badge variant="destructive" className="text-xs">Cancelled</Badge>}
                   </div>
                 );
               })}
             </div>
 
-            {/* Global Discount */}
-            {!isBillCancelled && !isDiscountLocked && (
-              <div className="p-3 rounded border bg-muted/30 space-y-2">
-                <div className="flex items-start gap-3">
-                  <Switch
-                    checked={allowIneligibleDiscount}
-                    onCheckedChange={setAllowIneligibleDiscount}
-                    id="edit-allow-ineligible-discount"
-                  />
-                  <div className="space-y-0.5">
-                    <Label htmlFor="edit-allow-ineligible-discount" className="cursor-pointer text-sm font-medium">
-                      Allow discount on non-eligible items
-                    </Label>
-                    <p className="text-xs text-muted-foreground">
-                      Applies global and per-item discounts to tests/packages marked not discount-eligible.
-                    </p>
-                  </div>
-                </div>
-                <Label className="text-sm font-medium">Global Discount</Label>
-                <div className="flex gap-2 items-center">
-                  <Select value={globalDiscountType} onValueChange={(v: any) => setGlobalDiscountType(v)}>
-                    <SelectTrigger className="w-20"><SelectValue /></SelectTrigger>
-                    <SelectContent><SelectItem value="percent">%</SelectItem><SelectItem value="amount">₹</SelectItem></SelectContent>
-                  </Select>
-                  <Input type="number" className="w-28" min={0}
-                    value={globalDiscountValue || ""}
-                    onChange={e => setGlobalDiscountValue(parseFloat(e.target.value) || 0)}
-                    placeholder="Value" />
-                </div>
-                <p className="text-xs text-muted-foreground">Applied to tests without individual discounts</p>
-              </div>
-            )}
-
-            {/* Discount change summary */}
-            {discountChanged && (
-              <div className={`p-3 rounded border space-y-1 text-sm ${discountOverpayment > 0 ? "border-orange-400 bg-orange-50" : "border-blue-300 bg-blue-50"}`}>
-                <div className={`font-medium ${discountOverpayment > 0 ? "text-orange-700" : "text-blue-700"}`}>Discount Changed</div>
-                <div className="flex justify-between"><span>New Gross:</span><span>₹{discountCalc.totalAmount}</span></div>
-                <div className="flex justify-between text-green-600"><span>New Discount:</span><span>-₹{discountCalc.totalDiscount}</span></div>
-                {discountCalc.hvc > 0 && <div className="flex justify-between"><span>Home Visit:</span><span>+₹{discountCalc.hvc}</span></div>}
-                <div className="flex justify-between font-bold border-t pt-1"><span>New Final:</span><span>₹{discountCalc.finalAmount}</span></div>
-                <div className="flex justify-between"><span>Paid:</span><span>₹{lockedPaidAmount}</span></div>
-
-                {discountOverpayment > 0 ? (
-                  <>
-                    <div className="flex justify-between text-orange-700 font-bold"><span>⚠ Overpaid:</span><span>₹{discountOverpayment}</span></div>
-                    <Separator className="my-2" />
-                    <div className="space-y-2">
-                      <div className="text-sm font-medium text-orange-800">Refund ₹{discountOverpayment} to patient</div>
-                      <div className="flex items-center gap-3">
-                        <Label className="text-sm">Refund Mode:</Label>
-                        <Select value={overpaymentRefundMode} onValueChange={setOverpaymentRefundMode}>
-                          <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="Cash">Cash</SelectItem>
-                            <SelectItem value="NEFT">NEFT</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <Button variant="destructive" size="sm" onClick={() => setShowOverpaymentRefundPwd(true)} disabled={saving}>
-                        <RotateCcw className="h-4 w-4 mr-2" />Apply Discount & Process Refund
-                      </Button>
-                    </div>
-                  </>
-                ) : (
-                  <div className="flex justify-between text-destructive"><span>New Due:</span><span>₹{Math.max(0, discountCalc.finalAmount - lockedPaidAmount)}</span></div>
-                )}
-              </div>
-            )}
-
-            {/* Home Visit Charges Refund — not for HV charge-only (use Cancel Entire Bill) */}
-            {!isBillCancelled && !isRefundBlocked && Number(reg.home_visit_charges || 0) > 0 && !isHvChargeOnlyRegistration(reg) && (
-              <div className="p-3 rounded border bg-muted/50 space-y-2">
-                <div className="flex items-center gap-3">
-                  <Checkbox
-                    checked={homeVisitRefundRequested}
-                    onCheckedChange={(checked) => setHomeVisitRefundRequested(!!checked)}
-                  />
-                  <span className="text-sm font-medium">
-                    Refund Home Visit Charges — ₹{reg.home_visit_charges}
-                    {refundableHomeVisitCharges(reg) < Number(reg.home_visit_charges || 0)
-                      ? ` (cash refund ₹${refundableHomeVisitCharges(reg)} received)`
-                      : ""}
-                  </span>
-                </div>
-              </div>
-            )}
-
-            {isHvChargeOnlyRegistration(reg) && !isBillCancelled && !isRefundBlocked && (
-              <p className="text-xs text-muted-foreground rounded border bg-muted/40 px-3 py-2">
-                Home visit charge only — cancel with <span className="font-medium">Cancel Entire Bill</span> below. There is no separate HVC refund on this invoice.
-              </p>
-            )}
-            {!isBillCancelled && !isRefundBlocked && (newlyCancelled.length > 0 || homeVisitRefundRequested) && (
-              <div className="p-3 rounded border bg-muted/50 space-y-2">
-                <div className="text-sm font-medium">
-                  {newlyCancelled.length > 0 && `Cancel ${newlyCancelled.length} test(s)`}
-                  {newlyCancelled.length > 0 && homeVisitRefundRequested && " + "}
-                  {homeVisitRefundRequested && "Refund HVC"}
-                  {" — Refund: ₹"}{refundCalc}
-                </div>
-                <div className="flex items-center gap-3">
-                  <Label className="text-sm">Refund Mode:</Label>
-                  <Select value={refundMode} onValueChange={setRefundMode}>
-                    <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Cash">Cash</SelectItem>
-                      <SelectItem value="NEFT">NEFT</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <Button variant="destructive" size="sm" onClick={handleCancelTests} disabled={saving}>
-                  <RotateCcw className="h-4 w-4 mr-2" />Process Refund
-                </Button>
-              </div>
-            )}
-
-            {reg.refund_amount > 0 && (
+            {Number(reg.refund_amount || 0) > 0 && (
               <div className="p-3 rounded border bg-muted/50 text-sm space-y-1">
                 <div className="font-medium">Previous Refund</div>
                 <div>Amount: ₹{reg.refund_amount} via {reg.refund_mode}</div>
                 {reg.refund_date && <div>Date: {format(new Date(reg.refund_date), "dd-MM-yyyy hh:mm a")}</div>}
               </div>
             )}
-            {isRefundBlocked && !isBillCancelled && (
-              <div className="p-3 rounded border border-orange-300 bg-orange-50 space-y-2">
-                <div className="text-sm text-orange-700">
-                  Refund / cancellation is locked after sample acceptance. Enter admin password to unlock.
-                </div>
-                <Button variant="outline" size="sm" onClick={() => setShowRefundUnlockPwd(true)}>
-                  🔓 Unlock Refund
-                </Button>
-              </div>
-            )}
           </div>
 
           <Separator />
 
-          {/* Bill Summary */}
+          {/* Bill Summary (read-only from reg) */}
           <div className="space-y-2 text-sm">
             <h3 className="font-semibold">Bill Summary</h3>
-            <div className="flex justify-between"><span>Gross Amount:</span><span>₹{discountChanged ? discountCalc.totalAmount : reg.gross_amount}</span></div>
-            {(discountChanged ? discountCalc.totalDiscount : reg.discount_amount) > 0 && <div className="flex justify-between text-green-600"><span>Discount:</span><span>-₹{discountChanged ? discountCalc.totalDiscount : reg.discount_amount}</span></div>}
-            {(discountChanged ? discountCalc.hvc : reg.home_visit_charges) > 0 && <div className="flex justify-between"><span>Home Visit Charges:</span><span>+₹{discountChanged ? discountCalc.hvc : reg.home_visit_charges}</span></div>}
-            <div className="flex justify-between font-bold border-t pt-1"><span>Final Amount:</span><span>₹{discountChanged ? discountCalc.finalAmount : reg.final_amount}</span></div>
-            <div className="flex justify-between"><span>Paid:</span><span>₹{reg.paid_amount}</span></div>
-            {discountOverpayment > 0 ? (
-              <div className="flex justify-between text-orange-600 font-bold"><span>To Refund:</span><span>₹{discountOverpayment}</span></div>
-            ) : (
-              (discountChanged ? Math.max(0, discountCalc.finalAmount - lockedPaidAmount) : reg.due_amount) > 0 && <div className="flex justify-between text-destructive font-bold"><span>Due:</span><span>₹{discountChanged ? Math.max(0, discountCalc.finalAmount - lockedPaidAmount) : reg.due_amount}</span></div>
+            <div className="flex justify-between"><span>Gross Amount:</span><span>₹{reg.gross_amount}</span></div>
+            {Number(reg.discount_amount || 0) > 0 && (
+              <div className="flex justify-between text-green-600"><span>Discount:</span><span>-₹{reg.discount_amount}</span></div>
             )}
-            {reg.refund_amount > 0 && <div className="flex justify-between text-orange-600"><span>Refunded:</span><span>₹{reg.refund_amount}</span></div>}
+            {Number(reg.home_visit_charges || 0) > 0 && (
+              <div className="flex justify-between"><span>Home Visit Charges:</span><span>+₹{reg.home_visit_charges}</span></div>
+            )}
+            <div className="flex justify-between font-bold border-t pt-1"><span>Final Amount:</span><span>₹{reg.final_amount}</span></div>
+            <div className="flex justify-between"><span>Paid:</span><span>₹{reg.paid_amount}</span></div>
+            {Number(reg.due_amount || 0) > 0 && (
+              <div className="flex justify-between text-destructive font-bold"><span>Due:</span><span>₹{reg.due_amount}</span></div>
+            )}
+            {Number(reg.refund_amount || 0) > 0 && (
+              <div className="flex justify-between text-orange-600"><span>Refunded:</span><span>₹{reg.refund_amount}</span></div>
+            )}
           </div>
 
-          {/* Cancel Bill */}
-          {!isBillCancelled && !isRefundBlocked && (
+          {/* Cancel Entire Bill — always available when not already cancelled */}
+          {!isBillCancelled && (
             <>
               <Separator />
               <div className="space-y-2">
@@ -1501,16 +865,21 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
                     </SelectContent>
                   </Select>
                 </div>
-                <Button variant="destructive" className="w-full" onClick={() => {
-                  const inv = reg?.invoice_number || "";
-                  const isOldBill = /^\d{6}/.test(inv) &&
-                    `${inv.slice(4,6)}-${inv.slice(2,4)}-20${inv.slice(0,2)}` !== format(new Date(), "dd-MM-yyyy");
-                  if (isOldBill) {
-                    setShowCancelBillPwd(true);
-                  } else {
-                    processCancelBill();
-                  }
-                }} disabled={saving}>
+                <Button
+                  variant="destructive"
+                  className="w-full"
+                  onClick={() => {
+                    const inv = reg?.invoice_number || "";
+                    const isOldBill = /^\d{6}/.test(inv) &&
+                      `${inv.slice(4, 6)}-${inv.slice(2, 4)}-20${inv.slice(0, 2)}` !== format(new Date(), "dd-MM-yyyy");
+                    if (isOldBill) {
+                      setShowCancelBillPwd(true);
+                    } else {
+                      void processCancelBill();
+                    }
+                  }}
+                  disabled={saving}
+                >
                   <Ban className="h-4 w-4 mr-2" />Cancel Entire Bill
                 </Button>
               </div>
@@ -1526,29 +895,6 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
         description={`This will cancel invoice ${reg.invoice_number}. Refund ₹${reg.paid_amount} via ${refundMode} will be recorded in TODAY's Daily Report. The original registration entry will remain unchanged.`}
       />
       <DeletePasswordDialog
-        open={showRefundPwd}
-        onOpenChange={setShowRefundPwd}
-        onSuccess={processCancelTests}
-        description={`This will ${newlyCancelled.length > 0 ? `cancel ${newlyCancelled.length} test(s)` : ""}${newlyCancelled.length > 0 && homeVisitRefundRequested ? " and " : ""}${homeVisitRefundRequested ? "refund home visit charges" : ""} — Refund ₹${refundCalc} via ${refundMode}.`}
-      />
-      <DeletePasswordDialog
-        open={showRefundUnlockPwd}
-        onOpenChange={setShowRefundUnlockPwd}
-        onSuccess={() => {
-          setRefundUnlocked(true);
-          toast.success("Refund unlocked for this session");
-        }}
-        description="Sample has passed accepted stage. Enter admin password to unlock refund/cancellation."
-      />
-      <DeletePasswordDialog
-        open={showDiscountUnlockPwd}
-        onOpenChange={setShowDiscountUnlockPwd}
-        onSuccess={() => {
-          setDiscountUnlocked(true);
-          toast.success("Discount editing unlocked for this session");
-        }}
-      />
-      <DeletePasswordDialog
         open={showPaymentUnlockPwd}
         onOpenChange={setShowPaymentUnlockPwd}
         onSuccess={() => {
@@ -1556,12 +902,6 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
           toast.success("Payment mode editing unlocked for this session");
         }}
         description={`Invoice ${reg.invoice_number} is from a previous date. Enter admin password to unlock registration / due collection payment mode editing.`}
-      />
-      <DeletePasswordDialog
-        open={showOverpaymentRefundPwd}
-        onOpenChange={setShowOverpaymentRefundPwd}
-        onSuccess={processOverpaymentRefund}
-        description={`Applying discount will reduce the final amount to ₹${discountCalc.finalAmount}. Refund ₹${discountOverpayment} to patient via ${overpaymentRefundMode}.`}
       />
     </>
   );
