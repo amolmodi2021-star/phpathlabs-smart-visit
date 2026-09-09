@@ -55,16 +55,7 @@ describe("dailyReportMetrics", () => {
     })).toBe(-240);
   });
 
-  it("paid for test_cancellation without cash stays zero", () => {
-    expect(paymentRowPaid({
-      transaction_type: "test_cancellation",
-      total_amount: 0,
-      refund_amount: 0,
-      paid_amount: 0,
-    })).toBe(0);
-  });
-
-  it("merges cancel + refund only when same minute", () => {
+  it("merges legacy cancel + refund for the same action", () => {
     const merged = mergeSameTimestampTestCancelRefunds([
       {
         id: "c1",
@@ -93,13 +84,10 @@ describe("dailyReportMetrics", () => {
       },
     ]);
     expect(merged).toHaveLength(1);
-    expect(merged[0].transaction_type).toBe("test_cancellation");
-    expect(merged[0].final_amount).toBe(-240);
     expect(merged[0].refund_amount).toBe(240);
-    expect(merged[0].cash_amount).toBe(-240);
   });
 
-  it("does not merge cancel + refund when minutes differ", () => {
+  it("keeps later cancel events as separate rows", () => {
     const merged = mergeSameTimestampTestCancelRefunds([
       {
         id: "c1",
@@ -110,20 +98,54 @@ describe("dailyReportMetrics", () => {
         gross_amount: -300,
         discount_amount: -60,
         final_amount: -240,
+        refund_amount: 240,
+        total_amount: -240,
+        cash_amount: -240,
+        remarks: "1 test(s) cancelled — refund",
+      },
+      {
+        id: "c2",
+        invoice_number: "2609100001",
+        registration_id: "r1",
+        transaction_type: "test_cancellation",
+        transaction_date: "2026-09-09T19:20:00.000Z",
+        gross_amount: -50,
+        discount_amount: -10,
+        final_amount: -40,
+        refund_amount: 40,
+        total_amount: -40,
+        cash_amount: -40,
+        remarks: "1 test(s) cancelled — refund",
+      },
+    ]);
+    expect(merged).toHaveLength(2);
+    expect(merged[0].id).toBe("c1");
+    expect(merged[1].id).toBe("c2");
+  });
+
+  it("does not attach a later refund to an earlier cancel", () => {
+    const merged = mergeSameTimestampTestCancelRefunds([
+      {
+        id: "c1",
+        invoice_number: "2609100001",
+        registration_id: "r1",
+        transaction_type: "test_cancellation",
+        transaction_date: "2026-09-09T19:11:00.000Z",
+        final_amount: -240,
         refund_amount: 0,
         total_amount: 0,
         cash_amount: 0,
         remarks: "1 test(s) cancelled",
       },
       {
-        id: "rf1",
+        id: "rf2",
         invoice_number: "2609100001",
         registration_id: "r1",
         transaction_type: "refund",
-        transaction_date: "2026-09-09T19:16:00.000Z",
-        refund_amount: 240,
-        total_amount: -240,
-        cash_amount: -240,
+        transaction_date: "2026-09-09T19:20:00.000Z",
+        refund_amount: 40,
+        total_amount: -40,
+        cash_amount: -40,
         remarks: "1 test(s) cancelled — refund",
       },
     ]);

@@ -207,6 +207,8 @@ const DailyReport = () => {
       if (rankDiff !== 0) return rankDiff;
       return new Date(a.transaction_date).getTime() - new Date(b.transaction_date).getTime();
     });
+    // Legacy split cancel+refund pairs (same action) → one display row.
+    // Separate cancel actions (later cancels) are never folded together.
     const merged = mergeSameTimestampTestCancelRefunds(sorted);
     return merged.filter((t: any) => {
       if (userFilter !== "ALL" && t.performed_by !== userFilter) return false;

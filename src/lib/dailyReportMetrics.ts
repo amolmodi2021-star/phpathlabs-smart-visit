@@ -102,9 +102,9 @@ function isTestCancelCashRefund(row: {
 }
 
 /**
- * Merge Test Cancellation + Refund into one display row only when they share the
- * same invoice and the same minute. Different timestamps stay as separate rows.
- * Already-combined test_cancellation rows (with cash/refund on the row) pass through.
+ * Legacy only: merge a cashless Test Cancellation with its paired Refund when they
+ * share invoice + minute + matching amount. Never merges two cancel events together —
+ * each cancel action stays its own Daily Report row.
  */
 export function mergeSameTimestampTestCancelRefunds<T extends {
   id?: string;
@@ -131,12 +131,19 @@ export function mergeSameTimestampTestCancelRefunds<T extends {
     const id = String(row.id || "");
     if (id && used.has(id)) continue;
 
+    // Already a combined cancel row (new logging) — leave alone; do not fold into others.
+    if (row.transaction_type === "test_cancellation" && !isCashlessTestCancellation(row)) {
+      out.push(row);
+      continue;
+    }
+
     if (!isCashlessTestCancellation(row)) {
       out.push(row);
       continue;
     }
 
     const minute = transactionMinuteKey(row.transaction_date);
+    const cancelFinal = Math.abs(Number(row.final_amount || 0));
     const partner = rows.find((cand) => {
       const cid = String(cand.id || "");
       if (!cid || cid === id || used.has(cid)) return false;
@@ -144,8 +151,11 @@ export function mergeSameTimestampTestCancelRefunds<T extends {
       if ((cand.invoice_number || "") !== (row.invoice_number || "")) return false;
       if ((cand.registration_id || "") && (row.registration_id || "")
         && cand.registration_id !== row.registration_id) return false;
-      // Different minute → do not merge
+      // Different cancel actions (different minute) stay separate.
       if (!minute || transactionMinuteKey(cand.transaction_date) !== minute) return false;
+      // Amount must match this cancel's Final so a later cancel's refund is not attached.
+      const refundAmt = Math.abs(Number(cand.refund_amount || cand.total_amount || 0));
+      if (cancelFinal > 0.009 && Math.abs(refundAmt - cancelFinal) > 0.05) return false;
       return true;
     });
 
