@@ -30,7 +30,7 @@ import {
 import { syncPatientDemographicsByUmr, invalidatePatientCaches } from "@/lib/syncPatientDemographics";
 import DoctorAutocomplete, { ensureDoctor } from "@/components/lims/DoctorAutocomplete";
 import { genderFromTitle, PATIENT_TITLES } from "@/lib/normalizePatientFields";
-import { isHvChargeOnlyRegistration } from "@/lib/hvChargeOnly";
+import { isHvChargeOnlyRegistration, refundableHomeVisitCharges } from "@/lib/hvChargeOnly";
 
 const TITLES = [...PATIENT_TITLES];
 
@@ -207,9 +207,11 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
       }
     });
     if (homeVisitRefundRequested) {
-      refundAmount += Number(reg?.home_visit_charges || 0);
+      // Only money actually received toward HVC (not unpaid due).
+      refundAmount += refundableHomeVisitCharges(reg);
     }
-    return refundAmount;
+    // Never offer to refund more than collected on this invoice.
+    return Math.min(refundAmount, Number(reg?.paid_amount || 0));
   }, [newlyCancelled, tests, homeVisitRefundRequested, reg]);
 
   const PAYMENT_MODES = ["Cash", "GPay", "Paytm", "Credit Card", "NEFT"];
@@ -615,16 +617,24 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
         return { test_id: id, test_name: test?.test_name || "", refund_amount: Number(test?.discounted_price || test?.price || 0) };
       });
 
-      const testRefundAmount = newlyCancelled.reduce((sum, id) => {
+      const testBillReduction = newlyCancelled.reduce((sum, id) => {
         const test = tests.find((t: any) => t.test_id === id);
         return sum + Number(test?.discounted_price || test?.price || 0);
       }, 0);
-      const hvcRefund = homeVisitRefundRequested ? Number(reg.home_visit_charges || 0) : 0;
-      const totalNewRefund = testRefundAmount + hvcRefund;
+      const hvcBill = homeVisitRefundRequested ? Number(reg.home_visit_charges || 0) : 0;
+      const hvcCashRefund = homeVisitRefundRequested ? refundableHomeVisitCharges(reg) : 0;
+      // Bill drops by full cancelled value; cash refund is only what was received.
+      const billReduction = testBillReduction + hvcBill;
+      const cashRefund = Math.min(
+        Number(reg.paid_amount || 0),
+        testBillReduction + hvcCashRefund,
+      );
 
-      const totalRefund = Number(reg.refund_amount || 0) + totalNewRefund;
-      const newFinalAmount = Math.max(0, Number(reg.final_amount) - totalNewRefund);
-      const newPaid = Math.max(0, Number(reg.paid_amount) - totalNewRefund);
+      const totalRefund = Number(reg.refund_amount || 0) + cashRefund;
+      const newFinalAmount = Math.max(0, Number(reg.final_amount) - billReduction);
+      const newPaid = Math.max(0, Number(reg.paid_amount) - cashRefund);
+      // Keep payments[] in sync with paid/final or DB trigger rejects the update.
+      const scaledPayments = rebuildPaymentsForPaidCap(reg.payments, newPaid);
 
       const updatePayload: any = {
         cancelled_tests: allCancelled,
@@ -634,6 +644,7 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
         final_amount: newFinalAmount,
         paid_amount: newPaid,
         due_amount: Math.max(0, newFinalAmount - newPaid),
+        payments: scaledPayments,
       };
       if (homeVisitRefundRequested) {
         updatePayload.home_visit_charges = 0;
@@ -721,17 +732,6 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
 
       // Sync registration_payment row so Daily Report reflects reduced totals after test cancellation
       {
-        const currentPayments = Array.isArray(reg.payments) ? reg.payments : [];
-        // Proportionally scale existing payment modes to match new paid amount
-        const origPaid = Number(reg.paid_amount || 0);
-        const scaledPayments: Array<{ mode: string; amount: number; date?: string }> =
-          origPaid > 0 && newPaid !== origPaid
-            ? currentPayments.map((p: any) => ({
-                mode: p.mode,
-                amount: Number(((Number(p.amount || 0) * newPaid) / origPaid).toFixed(2)),
-                ...(p.date ? { date: p.date } : {}),
-              }))
-            : currentPayments;
         await syncRegistrationPaymentRow({
           registration_id: reg.id,
           invoice_number: reg.invoice_number,
@@ -743,6 +743,7 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
           gross_amount: Number(reg.gross_amount || 0),
           discount_amount: Number(reg.discount_amount || 0),
           change_reason: `${newlyCancelled.length} test(s) cancelled${homeVisitRefundRequested ? " + HV refunded" : ""}`,
+          sync_payment_split: true,
         });
       }
 
@@ -753,11 +754,17 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
       qc.invalidateQueries({ queryKey: ["sample_tubes_acceptance_accepted"] });
       const parts: string[] = [];
       if (newlyCancelled.length > 0) parts.push(`${newlyCancelled.length} test(s) cancelled`);
-      if (homeVisitRefundRequested) parts.push("Home visit charges refunded");
-      toast.success(`${parts.join(". ")}. Refund: ₹${refundCalc} via ${refundMode}`);
+      if (homeVisitRefundRequested) {
+        parts.push(hvcCashRefund > 0 ? "Home visit charges refunded" : "Home visit charges removed");
+      }
+      toast.success(
+        cashRefund > 0
+          ? `${parts.join(". ")}. Refund: ₹${cashRefund} via ${refundMode}`
+          : `${parts.join(". ")}.`,
+      );
       // Log cancellation refund — money-out delta only.
       // Registration snapshot fields zeroed; reduced totals already on the synced registration_payment row.
-      if (refundCalc > 0) {
+      if (cashRefund > 0) {
         const cTodayStr = format(new Date(), "dd-MM-yyyy");
         const cInvDateStr = (reg.invoice_number && /^\d{6}/.test(reg.invoice_number))
           ? `${reg.invoice_number.slice(4,6)}-${reg.invoice_number.slice(2,4)}-20${reg.invoice_number.slice(0,2)}`
@@ -769,14 +776,14 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
           patient_name: patientName,
           transaction_type: cIsCrossDay ? "old_bill_refund" : "refund",
           direction: "out",
-          payments: [{ mode: refundMode, amount: refundCalc }],
-          total_amount: refundCalc,
+          payments: [{ mode: refundMode, amount: cashRefund }],
+          total_amount: cashRefund,
           gross_amount: 0,
           discount_amount: 0,
           final_amount: 0,
           paid_amount: 0,
           due_amount: 0,
-          refund_amount: refundCalc,
+          refund_amount: cashRefund,
           remarks: `${newlyCancelled.length} test(s) cancelled${homeVisitRefundRequested ? " + HV charges refunded" : ""}`,
         });
       }
@@ -809,7 +816,8 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
         : "—";
 
       // Freeze pattern: do NOT mutate the original registration_payment audit row.
-      // Update live registration state only.
+      // Update live registration state only. Clear payments[] in the same write —
+      // otherwise enforce_bill_payment_cap rejects (lines still sum to old paid).
       const { error } = await supabase.from("patient_registrations").update({
         bill_cancelled: true,
         status: "cancelled",
@@ -819,6 +827,8 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
         final_amount: 0,
         paid_amount: 0,
         due_amount: 0,
+        payments: [],
+        home_visit_charges: 0,
       } as any).eq("id", reg.id);
       if (error) throw error;
 
@@ -1368,7 +1378,12 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
                     checked={homeVisitRefundRequested}
                     onCheckedChange={(checked) => setHomeVisitRefundRequested(!!checked)}
                   />
-                  <span className="text-sm font-medium">Refund Home Visit Charges — ₹{reg.home_visit_charges}</span>
+                  <span className="text-sm font-medium">
+                    Refund Home Visit Charges — ₹{reg.home_visit_charges}
+                    {refundableHomeVisitCharges(reg) < Number(reg.home_visit_charges || 0)
+                      ? ` (cash refund ₹${refundableHomeVisitCharges(reg)} received)`
+                      : ""}
+                  </span>
                 </div>
               </div>
             )}

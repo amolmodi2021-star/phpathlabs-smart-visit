@@ -26,3 +26,20 @@ export function canSaveHvChargeOnly(opts: {
     && Number(opts.homeVisitCharges || 0) > 0
   );
 }
+
+/**
+ * Cash/UPI already received toward home-visit charges.
+ * Tests portion of the bill is assumed paid first; remainder applies to HVC.
+ */
+export function refundableHomeVisitCharges(reg: {
+  home_visit_charges?: number | string | null;
+  final_amount?: number | string | null;
+  paid_amount?: number | string | null;
+} | null | undefined): number {
+  const hvc = Number(reg?.home_visit_charges || 0);
+  if (!(hvc > 0)) return 0;
+  const finalAmt = Number(reg?.final_amount || 0);
+  const paid = Number(reg?.paid_amount || 0);
+  const testsPortion = Math.max(0, finalAmt - hvc);
+  return Math.min(hvc, Math.max(0, paid - testsPortion));
+}

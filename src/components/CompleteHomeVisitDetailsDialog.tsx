@@ -595,7 +595,6 @@ const CompleteHomeVisitDetailsDialog = ({ visit, open, onClose, onCompleted }: P
             onCompleted?.();
           }}
           hidePrint
-          autoQueueWhatsApp
         />
       )}
 

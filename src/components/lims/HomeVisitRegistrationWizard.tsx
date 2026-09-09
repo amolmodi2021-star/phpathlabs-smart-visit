@@ -324,15 +324,23 @@ const HomeVisitRegistrationWizard = ({ visit, open, onClose }: Props) => {
           if (patientPayments[0].amount < 0) patientPayments[0].amount = 0;
         }
 
-        const tubeGroups = await buildSampleTubeGroups(
-          draft.calculations.testDetails.map((t: any) => ({
-            test_id: t.test_id,
-            test_name: t.test_name,
-            item_type: t.item_type || "test",
-          })),
-        );
-
         const isPrimary = i === 0;
+        const draftTests = Array.isArray(draft.calculations.testDetails)
+          ? draft.calculations.testDetails
+          : [];
+        const draftHvc = isPrimary ? Number(draft.calculations.homeVisitCharges || 0) : 0;
+        const hvOnly = draftTests.length === 0 && draftHvc > 0;
+
+        const tubeGroups = hvOnly
+          ? []
+          : await buildSampleTubeGroups(
+              draftTests.map((t: any) => ({
+                test_id: t.test_id,
+                test_name: t.test_name,
+                item_type: t.item_type || "test",
+              })),
+            );
+
         // Always link extra family members to this visit. Invoice + UMR numbers
         // are allocated inside register_patient_atomic (row-locked counters) and
         // this loop awaits each patient so allocations stay in session order.
@@ -348,7 +356,9 @@ const HomeVisitRegistrationWizard = ({ visit, open, onClose }: Props) => {
           umr_number: draft.umr,
           visit_type: "home_visit",
           channel_id: draft.channelId,
-          tests: draft.calculations.testDetails.map((t: any) => ({
+          tests: hvOnly
+            ? []
+            : draftTests.map((t: any) => ({
             test_id: t.test_id,
             test_name: t.test_name,
             price: t.price,
@@ -357,20 +367,21 @@ const HomeVisitRegistrationWizard = ({ visit, open, onClose }: Props) => {
             fasting_required: t.fasting_required,
             item_type: t.item_type || "test",
           })),
-          gross_amount: draft.calculations.totalAmount,
-          discount_amount: draft.calculations.totalDiscount,
-          net_amount: draft.calculations.totalAmount - draft.calculations.totalDiscount,
-          home_visit_charges: isPrimary ? draft.calculations.homeVisitCharges : 0,
+          gross_amount: hvOnly ? 0 : draft.calculations.totalAmount,
+          discount_amount: hvOnly ? 0 : draft.calculations.totalDiscount,
+          net_amount: hvOnly ? 0 : draft.calculations.totalAmount - draft.calculations.totalDiscount,
+          home_visit_charges: draftHvc,
           final_amount: draft.calculations.finalAmount,
+          hv_charge_only: hvOnly,
           payments: patientPayments,
           paid_amount: patientPaid,
           due_amount: patientDue,
-          global_discount_type: roundUpSelected
+          global_discount_type: hvOnly || roundUpSelected
             ? null
             : (draft.globalDiscountValue > 0 ? draft.globalDiscountType : null),
-          global_discount_value: roundUpSelected ? 0 : draft.globalDiscountValue,
+          global_discount_value: hvOnly || roundUpSelected ? 0 : draft.globalDiscountValue,
           remarks: draft.remarks,
-          is_stat: draft.isStat,
+          is_stat: hvOnly ? false : draft.isStat,
           report_language: (draft.reportLanguage || "English").toUpperCase(),
           registered_by: stampedBy,
           completing_phlebo_name: phlebo,
@@ -386,8 +397,8 @@ const HomeVisitRegistrationWizard = ({ visit, open, onClose }: Props) => {
           payment: {
             payments: patientPayments,
             total_amount: patientPaid,
-            gross_amount: draft.calculations.totalAmount,
-            discount_amount: draft.calculations.totalDiscount,
+            gross_amount: hvOnly ? 0 : draft.calculations.totalAmount,
+            discount_amount: hvOnly ? 0 : draft.calculations.totalDiscount,
             final_amount: draft.calculations.finalAmount,
             paid_amount: patientPaid,
             due_amount: patientDue,
@@ -482,7 +493,7 @@ const HomeVisitRegistrationWizard = ({ visit, open, onClose }: Props) => {
       setPreviewOpen(true);
       setQueueRequest(null);
       setStep("invoices");
-      void sendAllInvoicesRef.current(regs);
+      // Do not auto-queue WhatsApp — user must click Send WhatsApp.
     },
     onError: (e: Error) => {
       if (isOverpaymentMessage(e.message)) {
@@ -924,7 +935,7 @@ const HomeVisitRegistrationWizard = ({ visit, open, onClose }: Props) => {
               </div>
               {sendStatus ? <p className="text-sm font-medium text-primary">{sendStatus}</p> : (
                 <p className="text-xs text-muted-foreground">
-                  Invoices send automatically in registration order. WhatsApp keeps one message per number in flight so family invoices stay in sequence.
+                  Preview invoices first, then click Send WhatsApp. Messages queue in registration order (one in flight per number).
                 </p>
               )}
               <div className="flex gap-2">

@@ -356,9 +356,9 @@ const EditAndRegisterHomeVisitDialog = ({ visit, open, onClose }: Props) => {
         payment: {
           payments,
           total_amount: totalPaid,
-          gross_amount: calculations.totalAmount,
-          discount_amount: calculations.totalDiscount,
-          final_amount: calculations.finalAmount,
+          gross_amount: hvOnly ? 0 : calculations.totalAmount,
+          discount_amount: hvOnly ? 0 : calculations.totalDiscount,
+          final_amount: hvOnly ? calculations.hvCharges : calculations.finalAmount,
           paid_amount: totalPaid,
           due_amount: dueAmount,
         },
