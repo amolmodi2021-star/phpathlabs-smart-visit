@@ -730,7 +730,8 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
       // 4. Recalculate registration status
       await recalculateRegistrationStatus(reg.id);
 
-      // Sync registration_payment row so Daily Report reflects reduced totals after test cancellation
+      // Sync registration_payment bill snapshot only. Do NOT overwrite cash/paid
+      // modes — Daily Report nets Registration (+) with a separate Refund (−).
       {
         await syncRegistrationPaymentRow({
           registration_id: reg.id,
@@ -743,7 +744,6 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
           gross_amount: Number(reg.gross_amount || 0),
           discount_amount: Number(reg.discount_amount || 0),
           change_reason: `${newlyCancelled.length} test(s) cancelled${homeVisitRefundRequested ? " + HV refunded" : ""}`,
-          sync_payment_split: true,
         });
       }
 
@@ -816,8 +816,11 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
         : "—";
 
       // Freeze pattern: do NOT mutate the original registration_payment audit row.
-      // Update live registration state only. Clear payments[] in the same write —
-      // otherwise enforce_bill_payment_cap rejects (lines still sum to old paid).
+      // Daily Report cash tally = frozen Registration (+) + Refund (−).
+      // Keep home_visit_charges on the live row so Gross (tests + HVC) still
+      // matches the frozen registration_payment snapshot after cancel.
+      // Clear payments[] in the same write — otherwise enforce_bill_payment_cap
+      // rejects (lines still sum to old paid while final/paid are zeroed).
       const { error } = await supabase.from("patient_registrations").update({
         bill_cancelled: true,
         status: "cancelled",
@@ -828,7 +831,6 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
         paid_amount: 0,
         due_amount: 0,
         payments: [],
-        home_visit_charges: 0,
       } as any).eq("id", reg.id);
       if (error) throw error;
 

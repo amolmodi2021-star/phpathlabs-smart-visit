@@ -4,6 +4,8 @@ export function paymentRowGross(
   row: {
     transaction_type?: string | null;
     gross_amount?: number | null;
+    final_amount?: number | null;
+    discount_amount?: number | null;
     registration_id?: string | null;
   },
   homeVisitChargesByRegId: Record<string, number>,
@@ -12,7 +14,15 @@ export function paymentRowGross(
   const type = row.transaction_type || "";
   if (type === "bill_cancellation" || type === "old_bill_cancellation") return base;
   if (type === "registration_payment" || type === "discount_applied") {
-    const hvc = Number(homeVisitChargesByRegId[row.registration_id || ""] || 0);
+    let hvc = Number(homeVisitChargesByRegId[row.registration_id || ""] || 0);
+    // Live HVC may be cleared after cancel; recover from frozen snapshot:
+    // final = (tests gross - discount) + HVC  =>  HVC = final + discount - gross
+    if (hvc <= 0.009) {
+      const final = Number(row.final_amount || 0);
+      const discount = Number(row.discount_amount || 0);
+      const inferred = final + discount - base;
+      if (inferred > 0.009) hvc = inferred;
+    }
     return base + hvc;
   }
   return base;
