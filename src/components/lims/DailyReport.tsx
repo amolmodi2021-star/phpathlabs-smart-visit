@@ -163,10 +163,32 @@ const DailyReport = () => {
 
   const getRowPaid = (r: any): number => paymentRowPaid(r);
 
-  const formatSignedRupee = (v: number): { text: string; negative: boolean } => {
-    if (v === 0) return { text: "₹0", negative: false };
-    if (v < 0) return { text: `-₹${Math.abs(v)}`, negative: true };
-    return { text: `₹${v}`, negative: false };
+  /** Uniform money display: `-₹123` (sign before ₹), never `₹-123`. */
+  const formatSignedRupee = (v: number, decimals?: number): { text: string; negative: boolean } => {
+    const n = Number(v) || 0;
+    const abs = decimals != null ? Math.abs(n).toFixed(decimals) : String(Math.abs(n));
+    if (n === 0) return { text: decimals != null ? `₹${(0).toFixed(decimals)}` : "₹0", negative: false };
+    if (n < 0) return { text: `-₹${abs}`, negative: true };
+    return { text: `₹${abs}`, negative: false };
+  };
+
+  const moneyCell = (
+    v: number,
+    opts?: { dangerOnPositive?: boolean; zeroAsDash?: boolean; decimals?: number; key?: string; fontMedium?: boolean },
+  ) => {
+    if (opts?.zeroAsDash && (Number(v) || 0) === 0) {
+      return <TableCell key={opts.key} className="text-right text-sm">-</TableCell>;
+    }
+    const shown = formatSignedRupee(v, opts?.decimals);
+    const danger = shown.negative || (opts?.dangerOnPositive && Number(v) > 0);
+    return (
+      <TableCell
+        key={opts?.key}
+        className={`text-right text-sm ${opts?.fontMedium ? "font-medium" : ""} ${danger ? "text-destructive font-medium" : ""}`}
+      >
+        {shown.text}
+      </TableCell>
+    );
   };
 
 
@@ -1163,7 +1185,9 @@ const DailyReport = () => {
         </div>
         <div className="rounded-lg border p-3 text-center">
           <p className="text-xs text-muted-foreground">Net Collection</p>
-          <p className="text-lg font-bold">₹{(totals.total_in + totals.total_out).toFixed(2)}</p>
+          <p className={`text-lg font-bold ${totals.total_in + totals.total_out < 0 ? "text-destructive" : ""}`}>
+            {formatSignedRupee(totals.total_in + totals.total_out, 2).text}
+          </p>
         </div>
         <div className="rounded-lg border p-3 text-center">
           <p className="text-xs text-muted-foreground">Transactions</p>
@@ -1247,38 +1271,17 @@ const DailyReport = () => {
                       </>
                     );
                   })()}
-                  <TableCell className="text-right text-sm">₹{getRowGross(r)}</TableCell>
-                  <TableCell className="text-right text-sm">₹{Number(r.discount_amount || 0)}</TableCell>
-                  <TableCell className="text-right text-sm font-medium">₹{Number(r.final_amount || 0)}</TableCell>
-                  {(() => {
-                    const paid = getRowPaid(r);
-                    const shown = formatSignedRupee(paid);
-                    return (
-                      <TableCell className={`text-right text-sm ${shown.negative ? "text-destructive font-medium" : ""}`}>
-                        {shown.text}
-                      </TableCell>
-                    );
-                  })()}
-                  {(() => {
-                    const due = Number(r.due_amount || 0);
-                    const shown = formatSignedRupee(due);
-                    return (
-                      <TableCell className={`text-right text-sm ${shown.negative || due > 0 ? "text-destructive font-medium" : ""}`}>
-                        {due === 0 ? "₹0" : shown.text}
-                      </TableCell>
-                    );
-                  })()}
-                  {(["cash_amount","gpay_amount","paytm_amount","neft_amount","credit_card_amount"] as const).map((k) => {
-                    const v = Number(r[k] || 0);
-                    if (v === 0) return <TableCell key={k} className="text-right text-sm">-</TableCell>;
-                    const isNeg = v < 0;
-                    return (
-                      <TableCell key={k} className={`text-right text-sm ${isNeg ? "text-destructive font-medium" : ""}`}>
-                        {isNeg ? `-₹${Math.abs(v)}` : `₹${v}`}
-                      </TableCell>
-                    );
-                  })}
-                  <TableCell className="text-right text-sm">{Number(r.refund_amount || 0) > 0 ? <span className="text-destructive">₹{r.refund_amount}</span> : "-"}</TableCell>
+                  {moneyCell(getRowGross(r))}
+                  {moneyCell(Number(r.discount_amount || 0))}
+                  {moneyCell(Number(r.final_amount || 0), { fontMedium: true })}
+                  {moneyCell(getRowPaid(r))}
+                  {moneyCell(Number(r.due_amount || 0), { dangerOnPositive: true })}
+                  {(["cash_amount","gpay_amount","paytm_amount","neft_amount","credit_card_amount"] as const).map((k) =>
+                    moneyCell(Number(r[k] || 0), { zeroAsDash: true, key: k }),
+                  )}
+                  {Number(r.refund_amount || 0) > 0
+                    ? moneyCell(Number(r.refund_amount || 0), { dangerOnPositive: true })
+                    : <TableCell className="text-right text-sm">-</TableCell>}
                   <TableCell className="text-xs max-w-[120px] truncate">{r.remarks || "-"}</TableCell>
                 </TableRow>
               ))}
@@ -1286,21 +1289,17 @@ const DailyReport = () => {
             <TableFooter>
               <TableRow className="font-semibold">
                 <TableCell colSpan={9} className="text-right">Totals</TableCell>
-                <TableCell className="text-right">₹{totals.gross.toFixed(2)}</TableCell>
-                <TableCell className="text-right">₹{totals.discount.toFixed(2)}</TableCell>
-                <TableCell className="text-right">₹{totals.final.toFixed(2)}</TableCell>
-                <TableCell className={`text-right ${totals.paid < 0 ? "text-destructive" : ""}`}>
-                  {totals.paid < 0 ? `-₹${Math.abs(totals.paid).toFixed(2)}` : `₹${totals.paid.toFixed(2)}`}
-                </TableCell>
-                <TableCell className={`text-right ${totals.due < 0 ? "text-destructive" : totals.due > 0 ? "text-destructive" : ""}`}>
-                  {totals.due < 0 ? `-₹${Math.abs(totals.due).toFixed(2)}` : `₹${totals.due.toFixed(2)}`}
-                </TableCell>
-                <TableCell className="text-right">₹{totals.cash.toFixed(2)}</TableCell>
-                <TableCell className="text-right">₹{totals.gpay.toFixed(2)}</TableCell>
-                <TableCell className="text-right">₹{totals.paytm.toFixed(2)}</TableCell>
-                <TableCell className="text-right">₹{totals.neft.toFixed(2)}</TableCell>
-                <TableCell className="text-right">₹{totals.credit_card.toFixed(2)}</TableCell>
-                <TableCell className="text-right">₹{totals.refund.toFixed(2)}</TableCell>
+                {moneyCell(totals.gross, { decimals: 2 })}
+                {moneyCell(totals.discount, { decimals: 2 })}
+                {moneyCell(totals.final, { decimals: 2 })}
+                {moneyCell(totals.paid, { decimals: 2 })}
+                {moneyCell(totals.due, { decimals: 2, dangerOnPositive: true })}
+                {moneyCell(totals.cash, { decimals: 2 })}
+                {moneyCell(totals.gpay, { decimals: 2 })}
+                {moneyCell(totals.paytm, { decimals: 2 })}
+                {moneyCell(totals.neft, { decimals: 2 })}
+                {moneyCell(totals.credit_card, { decimals: 2 })}
+                {moneyCell(totals.refund, { decimals: 2, dangerOnPositive: true })}
                 <TableCell></TableCell>
               </TableRow>
             </TableFooter>
