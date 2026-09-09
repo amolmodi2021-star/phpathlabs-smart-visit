@@ -69,6 +69,8 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
   // Cancel entire bill
   const [refundMode, setRefundMode] = useState<string>("Cash");
   const [showCancelBillPwd, setShowCancelBillPwd] = useState(false);
+  const [showCancelUnlockPwd, setShowCancelUnlockPwd] = useState(false);
+  const [cancelBillUnlocked, setCancelBillUnlocked] = useState(false);
   const [saving, setSaving] = useState(false);
 
   // Payment-mode lock for invoices older than today
@@ -78,6 +80,7 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
   useEffect(() => {
     if (reg && open) {
       setPaymentUnlocked(false);
+      setCancelBillUnlocked(false);
       setPatientName(reg.patient_name || "");
       setTitle(reg.title || "");
       setGender(reg.gender || "");
@@ -128,6 +131,20 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
     ? new Set((Array.isArray(reg.cancelled_tests) ? reg.cancelled_tests : []).map((t: any) => t.test_id || t))
     : new Set<string>();
   const isBillCancelled = reg?.bill_cancelled;
+  // After sample acceptance (and later pipeline stages), Cancel Entire Bill needs admin unlock.
+  const isPastAccepted = [
+    "sample_accepted",
+    "processing",
+    "partial_processing",
+    "processed",
+    "partial_verified",
+    "verified",
+    "partially_approved",
+    "approved",
+    "partially_dispatched",
+    "dispatched",
+  ].includes(reg?.status || "");
+  const isCancelBillLocked = isPastAccepted && !cancelBillUnlocked;
 
   const isInvoiceOlderThanToday = useMemo(() => {
     if (!reg?.created_at) return false;
@@ -850,39 +867,51 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
             )}
           </div>
 
-          {/* Cancel Entire Bill — always available when not already cancelled */}
+          {/* Cancel Entire Bill — locked after sample acceptance until admin password */}
           {!isBillCancelled && (
             <>
               <Separator />
-              <div className="space-y-2">
-                <div className="flex items-center gap-3">
-                  <Label className="text-sm">Refund Mode for Full Cancellation:</Label>
-                  <Select value={refundMode} onValueChange={setRefundMode}>
-                    <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Cash">Cash</SelectItem>
-                      <SelectItem value="NEFT">NEFT</SelectItem>
-                    </SelectContent>
-                  </Select>
+              {isCancelBillLocked ? (
+                <div className="p-3 rounded border border-orange-300 bg-orange-50 space-y-2">
+                  <div className="text-sm text-orange-700 flex items-center gap-2">
+                    <Lock className="h-4 w-4 shrink-0" />
+                    Cancel Entire Bill is locked after sample acceptance. Enter admin password to unlock.
+                  </div>
+                  <Button variant="outline" size="sm" onClick={() => setShowCancelUnlockPwd(true)}>
+                    Unlock Cancel Bill
+                  </Button>
                 </div>
-                <Button
-                  variant="destructive"
-                  className="w-full"
-                  onClick={() => {
-                    const inv = reg?.invoice_number || "";
-                    const isOldBill = /^\d{6}/.test(inv) &&
-                      `${inv.slice(4, 6)}-${inv.slice(2, 4)}-20${inv.slice(0, 2)}` !== format(new Date(), "dd-MM-yyyy");
-                    if (isOldBill) {
-                      setShowCancelBillPwd(true);
-                    } else {
-                      void processCancelBill();
-                    }
-                  }}
-                  disabled={saving}
-                >
-                  <Ban className="h-4 w-4 mr-2" />Cancel Entire Bill
-                </Button>
-              </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-3">
+                    <Label className="text-sm">Refund Mode for Full Cancellation:</Label>
+                    <Select value={refundMode} onValueChange={setRefundMode}>
+                      <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Cash">Cash</SelectItem>
+                        <SelectItem value="NEFT">NEFT</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button
+                    variant="destructive"
+                    className="w-full"
+                    onClick={() => {
+                      const inv = reg?.invoice_number || "";
+                      const isOldBill = /^\d{6}/.test(inv) &&
+                        `${inv.slice(4, 6)}-${inv.slice(2, 4)}-20${inv.slice(0, 2)}` !== format(new Date(), "dd-MM-yyyy");
+                      if (isOldBill) {
+                        setShowCancelBillPwd(true);
+                      } else {
+                        void processCancelBill();
+                      }
+                    }}
+                    disabled={saving}
+                  >
+                    <Ban className="h-4 w-4 mr-2" />Cancel Entire Bill
+                  </Button>
+                </div>
+              )}
             </>
           )}
         </DialogContent>
@@ -893,6 +922,15 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
         onOpenChange={setShowCancelBillPwd}
         onSuccess={processCancelBill}
         description={`This will cancel invoice ${reg.invoice_number}. Refund ₹${reg.paid_amount} via ${refundMode} will be recorded in TODAY's Daily Report. The original registration entry will remain unchanged.`}
+      />
+      <DeletePasswordDialog
+        open={showCancelUnlockPwd}
+        onOpenChange={setShowCancelUnlockPwd}
+        onSuccess={() => {
+          setCancelBillUnlocked(true);
+          toast.success("Cancel Entire Bill unlocked for this session");
+        }}
+        description="Sample has passed acceptance. Enter admin password to unlock Cancel Entire Bill for this invoice."
       />
       <DeletePasswordDialog
         open={showPaymentUnlockPwd}
