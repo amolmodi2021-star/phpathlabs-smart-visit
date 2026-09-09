@@ -30,3 +30,14 @@ alwaysApply: true
 - When user is ready: wipe patient data / start fresh only on the project they name
 - After create: `supabase link` → `db push` → deploy functions → set `DESKTOP_API_KEY` etc. → point `.env` at new project
 - Never commit DB password, service_role key, or `.env` secrets
+
+# Durable CLI auth (daily migrations — no interactive login)
+
+- **Required secrets** (gitignored `supabase/.env.cli-auth`, template: `supabase/.env.cli-auth.example`):
+  1. `SUPABASE_ACCESS_TOKEN` — Account → [Access Tokens](https://supabase.com/dashboard/account/tokens) (personal access token `sbp_…`). Current machine token name: **`cursor-phpl-daily`**, expires **2027-03-09**.
+  2. `SUPABASE_DB_PASSWORD` — PHPL database password (Settings → Database, or reset via Management API). Needed for `db push` / `link`, separate from the access token.
+- Do **not** rely on interactive `npx supabase login` (browser session expires). Prefer:
+  - `powershell -File scripts/supabase-db-push.ps1` (loads `.env.cli-auth`, links, pushes), or
+  - Load `.env.cli-auth` into the shell env, then `npx supabase db push --linked`.
+- CLI may also be logged in via `npx supabase login --token <token> --name cursor-phpl-daily` (one-time; still keep `.env.cli-auth` as source of truth).
+- Renew the access token before **2027-03-09** (or earlier if revoked). Never commit `.env.cli-auth`.

@@ -468,14 +468,37 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
     return (snip as any).outsource_status || "pending";
   };
 
+  const DONE_OUTSOURCE = ["entered", "results_entered", "verified", "approved", "dispatched"] as const;
+  const DONE_RESULT = ["entered", "results_entered", "verified", "approved", "dispatched"] as const;
+
+  /** True when this outsourced test already left the Outsourced queue (verify/approve/dispatch). */
+  const isOutsourcedTestDone = (regId: string, testId: string, outsourcedParamIds?: string[]) => {
+    const snip = getSnip(regId, testId);
+    if (snip) {
+      return DONE_OUTSOURCE.includes((snip as any).outsource_status);
+    }
+
+    // No snip row: natural outsourced often reaches dispatch via patient_results only.
+    const rows = existingResults.filter(
+      (r: any) => r.registration_id === regId && r.test_id === testId,
+    );
+    if (!rows.length) return false;
+
+    if (outsourcedParamIds && outsourcedParamIds.length > 0) {
+      const relevant = rows.filter((r: any) => outsourcedParamIds.includes(r.parameter_id));
+      return relevant.length > 0 && relevant.every((r: any) => DONE_RESULT.includes(r.status));
+    }
+
+    return rows.some((r: any) => DONE_RESULT.includes(r.status));
+  };
+
   // Get test display status
-  const getTestStatus = (regId: string, testId: string) => {
-    const outsourceStatus = getOutsourceStatus(regId, testId);
-    if (outsourceStatus === "pending") return "not_sent";
-    // Tests that have progressed past the results stage — hide from outsourced view
-    if (["results_entered", "verified", "approved", "dispatched"].includes(outsourceStatus)) {
+  const getTestStatus = (regId: string, testId: string, outsourcedParamIds?: string[]) => {
+    if (isOutsourcedTestDone(regId, testId, outsourcedParamIds)) {
       return "completed" as any;
     }
+    const outsourceStatus = getOutsourceStatus(regId, testId);
+    if (outsourceStatus === "pending") return "not_sent";
     if (outsourceStatus === "results_saved") {
       // Verify actual data exists — if artifact was removed, status may be stale
       const snip = getSnip(regId, testId);
@@ -512,7 +535,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
       const next = new Set(prev);
       for (const t of entry.outsourcedTests) {
         const key = `${entry.registration.id}||${t.testId}`;
-        const status = getTestStatus(entry.registration.id, t.testId);
+        const status = getTestStatus(entry.registration.id, t.testId, t.outsourcedParameterIds);
         if (status === "not_sent") {
           if (checked) next.add(key); else next.delete(key);
         }
@@ -1121,9 +1144,9 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
       for (const t of e.outsourcedTests) {
         // Skip tests that have already moved past results section
         const snip = getSnip(e.registration.id, t.testId);
-        if (snip && ["results_entered", "entered", "verified", "approved"].includes(snip.outsource_status)) continue;
+        if (snip && ["results_entered", "entered", "verified", "approved", "dispatched"].includes(snip.outsource_status)) continue;
 
-        const s = getTestStatus(e.registration.id, t.testId);
+        const s = getTestStatus(e.registration.id, t.testId, t.outsourcedParameterIds);
         // results_saved always counts — draft or Verification send-back
         if (s === "not_sent") notSent++;
         else if (s === "awaiting_results") awaiting++;
@@ -1140,7 +1163,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
     const testKey = `${regId}||${testId}`;
     const isExpanded = expandedTest === testKey;
     const snip = getSnip(regId, test.testId);
-    const status = getTestStatus(regId, test.testId);
+    const status = getTestStatus(regId, test.testId, test.outsourcedParameterIds);
     const params = testParamsMap[test.testId] || [];
     const linkedParams = params.filter((tp: any) => !tp.is_subheader && tp.report_test_parameters);
     // For parameter-level outsource, only linked outsourced params count as "enterable"
@@ -1570,7 +1593,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
             const reg = entry.registration;
             // Filter out tests where all results are already filled AND finalised
             const visibleTests = entry.outsourcedTests.filter(t => {
-              const status = getTestStatus(reg.id, t.testId);
+              const status = getTestStatus(reg.id, t.testId, t.outsourcedParameterIds);
               // Hide only after transfer to Verification (or later stages).
               // results_saved must stay visible — that is the Outsourced draft /
               // Verification send-back state (params and/or snips ready to edit).
@@ -1579,10 +1602,10 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
             });
             if (visibleTests.length === 0) return null;
             const isExpanded = expandedPatient === reg.id;
-            const notSentCount = visibleTests.filter(t => getTestStatus(reg.id, t.testId) === "not_sent").length;
-            const awaitingCount = visibleTests.filter(t => getTestStatus(reg.id, t.testId) === "awaiting_results").length;
+            const notSentCount = visibleTests.filter(t => getTestStatus(reg.id, t.testId, t.outsourcedParameterIds) === "not_sent").length;
+            const awaitingCount = visibleTests.filter(t => getTestStatus(reg.id, t.testId, t.outsourcedParameterIds) === "awaiting_results").length;
             const allNotSentSelected = visibleTests
-              .filter(t => getTestStatus(reg.id, t.testId) === "not_sent")
+              .filter(t => getTestStatus(reg.id, t.testId, t.outsourcedParameterIds) === "not_sent")
               .every(t => selectedTests.has(`${reg.id}||${t.testId}`));
 
             return (

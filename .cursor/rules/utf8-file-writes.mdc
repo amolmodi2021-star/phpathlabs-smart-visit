@@ -1,0 +1,23 @@
+---
+description: Always write text files as UTF-8 (no UTF-16) on Windows
+alwaysApply: true
+---
+
+# UTF-8 file writes (Windows)
+
+Never write source/config/scripts as UTF-16. UTF-16 breaks PowerShell (`.ps1`), SQL, and wastes time rewriting.
+
+## Required
+
+1. Prefer the Cursor **Write** / **StrReplace** tools for `.ts`, `.tsx`, `.sql`, `.md`, `.mdc`, `.json`.
+2. For **`.ps1` / `.bat` / `.cmd`**, do **not** rely on PowerShell `Set-Content` / `Out-File` (they often emit UTF-16). Use:
+   ```powershell
+   [System.IO.File]::WriteAllText($path, $text, [System.Text.UTF8Encoding]::new($false))
+   ```
+3. After creating a `.ps1`, smoke-check the first bytes are ASCII (e.g. `#` = `35`), not `255,254` (UTF-16 LE BOM) and not `0`-interleaved ASCII.
+4. If a file was accidentally saved as UTF-16, rewrite immediately with `WriteAllText` + `UTF8Encoding(false)` — do not iterate calendar/UI work while stuck on encoding.
+
+## Do not
+
+- `Set-Content` / `Out-File` without an explicit UTF-8 no-BOM encoding for scripts
+- Re-save the same script multiple times "to fix encoding" without verifying bytes
