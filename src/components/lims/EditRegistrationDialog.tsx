@@ -15,7 +15,7 @@ import { format } from "date-fns";
 import { Save, Ban, RotateCcw, Lock } from "lucide-react";
 import DeletePasswordDialog from "@/components/DeletePasswordDialog";
 import { recalculateRegistrationStatus } from "@/lib/limsStatus";
-import { logPaymentTransaction, syncRegistrationPaymentRow, syncDueCollectionPaymentModes, splitPaymentModes } from "@/lib/paymentTransactions";
+import { logPaymentTransaction, syncRegistrationPaymentRow, syncDueCollectionPaymentModes, splitPaymentModes, fetchFrozenRegistrationBillSnapshot, sumLoggedRefunds, resolveCancelBillSnapshot } from "@/lib/paymentTransactions";
 import {
   applyDueCollectionGroupEdits,
   dueCollectionGroupEditsChanged,
@@ -606,6 +606,20 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
       toast.error("No tests selected for cancellation and no home visit refund requested");
       return;
     }
+    // HV charge-only: Refund HVC alone is a full bill cancel — use Cancel Entire Bill
+    // so Daily Report gets Registration(+) + Bill Cancel(−) + Refund(−).
+    if (
+      isHvChargeOnlyRegistration(reg)
+      && homeVisitRefundRequested
+      && newlyCancelled.length === 0
+    ) {
+      const inv = reg?.invoice_number || "";
+      const isOldBill = /^\d{6}/.test(inv) &&
+        `${inv.slice(4, 6)}-${inv.slice(2, 4)}-20${inv.slice(0, 2)}` !== format(new Date(), "dd-MM-yyyy");
+      if (isOldBill) setShowCancelBillPwd(true);
+      else void processCancelBill();
+      return;
+    }
     setShowRefundPwd(true);
   };
 
@@ -798,13 +812,14 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
   const processCancelBill = async () => {
     setSaving(true);
     try {
-      const totalPaid = Number(reg.paid_amount || 0);
-      // Include home_visit_charges in gross so the cancellation marker is internally consistent:
-      // Final = Gross − Discount must hold (gross_amount column stores tests-only subtotal).
-      const origHomeVisit = Number(reg.home_visit_charges || 0);
-      const origGross = Number(reg.gross_amount || 0) + origHomeVisit;
-      const origDiscount = Number(reg.discount_amount || 0);
-      const origFinal = Number(reg.final_amount || 0);
+      const frozen = await fetchFrozenRegistrationBillSnapshot(reg.id);
+      const alreadyRefunded = await sumLoggedRefunds(reg.id);
+      const { origGross, origDiscount, origFinal, refundCash } = resolveCancelBillSnapshot(
+        reg,
+        frozen,
+        alreadyRefunded,
+      );
+      const totalPaid = refundCash;
       const regDate = reg.created_at ? new Date(reg.created_at) : new Date();
       const regDateStr = (reg.invoice_number && /^\d{6}/.test(reg.invoice_number))
         ? `${reg.invoice_number.slice(4,6)}-${reg.invoice_number.slice(2,4)}-20${reg.invoice_number.slice(0,2)}`
@@ -824,7 +839,7 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
       const { error } = await supabase.from("patient_registrations").update({
         bill_cancelled: true,
         status: "cancelled",
-        refund_amount: totalPaid,
+        refund_amount: Number(reg.refund_amount || 0) + totalPaid,
         refund_mode: refundMode,
         refund_date: new Date().toISOString(),
         final_amount: 0,
@@ -851,7 +866,8 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
 
       // Log TWO entries dated today — both audit-correct and cash-drawer-correct.
       // 1) Refund row: actual cash outflow in chosen mode (Cash or NEFT only).
-      //    Use "old_bill_refund" type when original registration was on a previous day.
+      //    Skip if HVC/tests refund already covered the paid amount.
+      // 2) Bill cancellation marker: negative gross/final so Daily Report nets to 0.
       const todayStr = format(new Date(), "dd-MM-yyyy");
       const isCrossDay = regDateStr !== todayStr;
       if (totalPaid > 0) {
@@ -873,27 +889,30 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
         });
       }
 
-      // 2) Bill cancellation marker row: negative bill snapshot for audit visibility.
-      //    Mode amounts = 0 so it does NOT double-count cash impact.
-      //    Use "old_bill_cancellation" type when original registration was on a previous day.
-      logPaymentTransaction({
-        registration_id: reg.id,
-        invoice_number: reg.invoice_number,
-        patient_name: patientName,
-        transaction_type: isCrossDay ? "old_bill_cancellation" : "bill_cancellation",
-        direction: "out",
-        payments: [], // no mode amounts — refund row already captured the cash movement
-        total_amount: 0,
-        gross_amount: -origGross,
-        discount_amount: -origDiscount,
-        final_amount: -origFinal,
-        paid_amount: 0,
-        due_amount: 0,
-        refund_amount: 0,
-        remarks: `Bill cancelled — original invoice ${reg.invoice_number} dated ${regDateStr}, final ₹${origFinal}`,
-      });
+      if (origFinal > 0.009 || origGross > 0.009) {
+        logPaymentTransaction({
+          registration_id: reg.id,
+          invoice_number: reg.invoice_number,
+          patient_name: patientName,
+          transaction_type: isCrossDay ? "old_bill_cancellation" : "bill_cancellation",
+          direction: "out",
+          payments: [], // no mode amounts — refund row already captured the cash movement
+          total_amount: 0,
+          gross_amount: -origGross,
+          discount_amount: -origDiscount,
+          final_amount: -origFinal,
+          paid_amount: 0,
+          due_amount: 0,
+          refund_amount: 0,
+          remarks: `Bill cancelled — original invoice ${reg.invoice_number} dated ${regDateStr}, final ₹${origFinal}`,
+        });
+      }
 
-      toast.success(`Bill cancelled. Refund ₹${totalPaid} via ${refundMode} recorded in today's Daily Report.`);
+      toast.success(
+        totalPaid > 0
+          ? `Bill cancelled. Refund ₹${totalPaid} via ${refundMode} recorded in today's Daily Report.`
+          : `Bill cancelled. Gross/Final offset recorded in today's Daily Report.`,
+      );
       onOpenChange(false);
     } catch (e: any) {
       toast.error(e.message);
@@ -1372,8 +1391,8 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
               </div>
             )}
 
-            {/* Home Visit Charges Refund */}
-            {!isBillCancelled && !isRefundBlocked && Number(reg.home_visit_charges || 0) > 0 && (
+            {/* Home Visit Charges Refund — not for HV charge-only (use Cancel Entire Bill) */}
+            {!isBillCancelled && !isRefundBlocked && Number(reg.home_visit_charges || 0) > 0 && !isHvChargeOnlyRegistration(reg) && (
               <div className="p-3 rounded border bg-muted/50 space-y-2">
                 <div className="flex items-center gap-3">
                   <Checkbox
@@ -1390,6 +1409,11 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
               </div>
             )}
 
+            {isHvChargeOnlyRegistration(reg) && !isBillCancelled && !isRefundBlocked && (
+              <p className="text-xs text-muted-foreground">
+                Home visit charge only — use Cancel Entire Bill (do not refund HVC separately first). That writes Bill Cancel (−Gross/Final) + Refund (−Cash) so Daily Report nets to zero.
+              </p>
+            )}
             {!isBillCancelled && !isRefundBlocked && (newlyCancelled.length > 0 || homeVisitRefundRequested) && (
               <div className="p-3 rounded border bg-muted/50 space-y-2">
                 <div className="text-sm font-medium">

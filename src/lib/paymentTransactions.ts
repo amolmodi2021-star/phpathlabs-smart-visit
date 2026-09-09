@@ -220,6 +220,50 @@ export async function syncRegistrationPaymentRow(params: SyncRegistrationPayment
  */
 export const updateRegistrationPaymentSplit = syncRegistrationPaymentRow;
 
+export type { FrozenRegistrationBillSnapshot } from "@/lib/cancelBillSnapshot";
+export { resolveCancelBillSnapshot } from "@/lib/cancelBillSnapshot";
+
+/**
+ * Original bill figures from the registration_payment audit row.
+ * Gross here is tests-only; HVC is recovered as final + discount - gross.
+ */
+export async function fetchFrozenRegistrationBillSnapshot(
+  registrationId: string,
+): Promise<import("@/lib/cancelBillSnapshot").FrozenRegistrationBillSnapshot | null> {
+  if (!registrationId) return null;
+  const { data, error } = await supabase
+    .from("payment_transactions" as any)
+    .select("gross_amount, discount_amount, final_amount, paid_amount")
+    .eq("registration_id", registrationId)
+    .eq("transaction_type", "registration_payment")
+    .order("transaction_date", { ascending: false })
+    .limit(1);
+  if (error || !data?.length) return null;
+  const row: any = data[0];
+  return {
+    gross_amount: Number(row.gross_amount || 0),
+    discount_amount: Number(row.discount_amount || 0),
+    final_amount: Number(row.final_amount || 0),
+    paid_amount: Number(row.paid_amount || 0),
+  };
+}
+
+/** Sum of cash already logged as refund / old_bill_refund for this registration. */
+export async function sumLoggedRefunds(registrationId: string): Promise<number> {
+  if (!registrationId) return 0;
+  const { data, error } = await supabase
+    .from("payment_transactions" as any)
+    .select("refund_amount, total_amount")
+    .eq("registration_id", registrationId)
+    .in("transaction_type", ["refund", "old_bill_refund"]);
+  if (error || !data?.length) return 0;
+  return (data as any[]).reduce((sum, r) => {
+    const refundAmt = Number(r.refund_amount || 0);
+    if (refundAmt > 0) return sum + refundAmt;
+    return sum + Math.abs(Number(r.total_amount || 0));
+  }, 0);
+}
+
 /**
  * After correcting due-collection modes on patient_registrations.payments,
  * rewrite matching due_collection / old_due_recovered audit rows' mode columns.
