@@ -26,4 +26,11 @@ describe("dailyReportMetrics", () => {
   it("paid for refunds is signed outflow", () => {
     expect(paymentRowPaid({ transaction_type: "refund", total_amount: -300, refund_amount: 300 })).toBe(-300);
   });
+
+  it("test_cancellation gross is used as-is (negative offset)", () => {
+    expect(paymentRowGross(
+      { transaction_type: "test_cancellation", gross_amount: -42000, final_amount: -41960 },
+      {},
+    )).toBe(-42000);
+  });
 });

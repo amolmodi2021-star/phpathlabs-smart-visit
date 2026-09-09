@@ -392,16 +392,31 @@ async function cancelTestsWave(regId, testIds, refundMode = "Cash") {
     }
   }
 
-  await syncRegistrationPaymentBillSnapshot({
-    registrationId: regId,
-    invoiceNumber: reg.invoice_number,
-    patientName: reg.patient_name,
-    gross: newGross,
-    discount: newDiscount,
-    finalAmount: newFinal,
-    paidAmount: newPaid,
-    reason: `${newly.length} test(s) cancelled (CANCELAUDIT)`,
-  });
+  // Do not rewrite registration_payment bill snapshot — keep Paid=Final on Registration.
+  if (cancelledGross > 0.009 || cancelledDiscount > 0.009 || testBillReduction > 0.009) {
+    await insertTxn({
+      registration_id: regId,
+      invoice_number: reg.invoice_number,
+      patient_name: reg.patient_name,
+      transaction_type: "test_cancellation",
+      direction: "out",
+      transaction_date: new Date().toISOString(),
+      performed_by: "CANCEL_AUDIT",
+      cash_amount: 0,
+      gpay_amount: 0,
+      paytm_amount: 0,
+      credit_card_amount: 0,
+      neft_amount: 0,
+      total_amount: 0,
+      gross_amount: -cancelledGross,
+      discount_amount: -cancelledDiscount,
+      final_amount: -testBillReduction,
+      paid_amount: 0,
+      due_amount: 0,
+      refund_amount: 0,
+      remarks: `${newly.length} test(s) cancelled (CANCELAUDIT) — Gross/Final offset`,
+    });
+  }
 
   if (cashRefund > 0) {
     await insertTxn({

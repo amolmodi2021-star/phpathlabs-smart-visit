@@ -12,7 +12,7 @@ export function paymentRowGross(
 ): number {
   const base = Number(row.gross_amount || 0);
   const type = row.transaction_type || "";
-  if (type === "bill_cancellation" || type === "old_bill_cancellation") return base;
+  if (type === "bill_cancellation" || type === "old_bill_cancellation" || type === "test_cancellation") return base;
   if (type === "registration_payment" || type === "discount_applied") {
     let hvc = Number(homeVisitChargesByRegId[row.registration_id || ""] || 0);
     // Live HVC may be cleared after cancel; recover from frozen snapshot:

@@ -762,20 +762,26 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
       // 4. Recalculate registration status
       await recalculateRegistrationStatus(reg.id);
 
-      // Sync registration_payment bill snapshot only. Do NOT overwrite cash/paid
-      // modes — Daily Report nets Registration (+) with a separate Refund (−).
-      {
-        await syncRegistrationPaymentRow({
+      // Do NOT rewrite registration_payment Gross/Final/Paid — keep the original
+      // Registration row consistent (Paid matches Final). Bill reduction is logged as
+      // test_cancellation (−Gross/Final, no cash); cash leaves via Refund (−).
+      if (cancelledGross > 0.009 || cancelledDiscount > 0.009 || billReduction > 0.009) {
+        logPaymentTransaction({
           registration_id: reg.id,
           invoice_number: reg.invoice_number,
           patient_name: patientName,
-          payments: scaledPayments,
-          paid_amount: newPaid,
-          final_amount: newFinalAmount,
-          due_amount: Math.max(0, newFinalAmount - newPaid),
-          gross_amount: newGrossAmount,
-          discount_amount: newDiscountAmount,
-          change_reason: `${newlyCancelled.length} test(s) cancelled${homeVisitRefundRequested ? " + HV refunded" : ""}`,
+          transaction_type: "test_cancellation",
+          direction: "out",
+          payments: [],
+          total_amount: 0,
+          // gross_amount is tests-only; HVC-only removals offset via final_amount.
+          gross_amount: -cancelledGross,
+          discount_amount: -cancelledDiscount,
+          final_amount: -billReduction,
+          paid_amount: 0,
+          due_amount: 0,
+          refund_amount: 0,
+          remarks: `${newlyCancelled.length} test(s) cancelled${homeVisitRefundRequested ? " + HV charges removed" : ""} — Gross/Final offset (no cash)`,
         });
       }
 
@@ -794,8 +800,7 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
           ? `${parts.join(". ")}. Refund: ₹${cashRefund} via ${refundMode}`
           : `${parts.join(". ")}.`,
       );
-      // Log cancellation refund — money-out delta only.
-      // Registration snapshot fields zeroed; reduced totals already on the synced registration_payment row.
+      // Log cancellation refund — money-out delta only. Registration cash stays frozen.
       if (cashRefund > 0) {
         const cTodayStr = format(new Date(), "dd-MM-yyyy");
         const cInvDateStr = (reg.invoice_number && /^\d{6}/.test(reg.invoice_number))
