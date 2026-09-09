@@ -21,6 +21,13 @@ interface PhleboExportDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
+/** Earned = positive; deducted / hold = negative (so column sums = net). */
+function signedAmount(bucket: "earned" | "hold" | "deducted" | "none", amount: number): number {
+  const n = Number(amount) || 0;
+  if (bucket === "deducted" || bucket === "hold") return -Math.abs(n);
+  return Math.abs(n);
+}
+
 const PhleboExportDialog = ({ open, onOpenChange }: PhleboExportDialogProps) => {
   const [selectedMonth, setSelectedMonth] = useState("");
   const [loading, setLoading] = useState(false);
@@ -47,7 +54,6 @@ const PhleboExportDialog = ({ open, onOpenChange }: PhleboExportDialogProps) => 
       const end = format(endOfMonth(monthDate), "yyyy-MM-dd");
       const monthLabel = format(monthDate, "MMMM yyyy");
 
-      // Same scope as Phlebo Dashboard: Registered + Completed home visits
       const { data: visits } = await supabase
         .from("home_visits")
         .select("id, estimate_id, phlebotomist_id, visit_date, address, status")
@@ -131,7 +137,6 @@ const PhleboExportDialog = ({ open, onOpenChange }: PhleboExportDialogProps) => 
         },
       ]);
 
-      // Group registrations by visit phlebo (one row per registered patient)
       type RowReg = (typeof registrations)[0];
       const grouped: Record<string, RowReg[]> = {};
       for (const reg of registrations) {
@@ -143,11 +148,12 @@ const PhleboExportDialog = ({ open, onOpenChange }: PhleboExportDialogProps) => 
       }
 
       const rows: Record<string, unknown>[] = [];
-      let grandTotalIncentive = 0;
-      let grandTotalHomeVisit = 0;
-      let grandTotal = 0;
-      let grandDeducted = 0;
-      let grandHold = 0;
+      let grandSignedIncentive = 0;
+      let grandSignedHvc = 0;
+      let grandSignedTotal = 0;
+      let grandEarned = 0;
+      let grandDeductedAbs = 0;
+      let grandHoldAbs = 0;
 
       const sortedPhleboIds = Object.keys(grouped).sort((a, b) =>
         (phleboMap[a] || "Unassigned").localeCompare(phleboMap[b] || "Unassigned"),
@@ -161,9 +167,13 @@ const PhleboExportDialog = ({ open, onOpenChange }: PhleboExportDialogProps) => 
           return String(a.invoice_number || "").localeCompare(String(b.invoice_number || ""));
         });
         const phleboName = phleboMap[pid] || "Unassigned";
-        let phleboIncentiveTotal = 0;
-        let phleboHomeVisitTotal = 0;
-        let phleboPayable = 0;
+
+        let signedInc = 0;
+        let signedHvc = 0;
+        let signedTotal = 0;
+        let earnedAbs = 0;
+        let deductedAbs = 0;
+        let holdAbs = 0;
 
         rows.push({
           Phlebotomist: phleboName,
@@ -182,10 +192,15 @@ const PhleboExportDialog = ({ open, onOpenChange }: PhleboExportDialogProps) => 
           const visit = visitMap[reg.home_visit_id || ""];
           if (!visit) continue;
 
-          const hvc = registrationHvc(reg);
+          const hvcAbs = registrationHvc(reg);
           const inc = registrationIncentiveDetails(reg, catalog);
           const bucket = registrationPayoutBucket(reg);
-          const totalAmt = hvc + inc.total;
+          const lineAbs = hvcAbs + inc.total;
+
+          const hvcSigned = signedAmount(bucket, hvcAbs);
+          const incSigned = signedAmount(bucket, inc.total);
+          const totalSigned = signedAmount(bucket, lineAbs);
+
           const statusLabel =
             bucket === "deducted"
               ? "Deducted (bill cancelled)"
@@ -203,18 +218,22 @@ const PhleboExportDialog = ({ open, onOpenChange }: PhleboExportDialogProps) => 
             "Patient Name": patientDisplayName(reg),
             Address: visit.address || "",
             "Incentive Test Name": inc.names.join(", ") || "-",
-            "Incentive Amount": inc.total,
-            "Home Visit Charge": hvc,
+            "Incentive Amount": incSigned,
+            "Home Visit Charge": hvcSigned,
             Status: statusLabel,
-            "Total Amount": totalAmt,
+            "Total Amount": totalSigned,
           });
 
-          phleboIncentiveTotal += inc.total;
-          phleboHomeVisitTotal += hvc;
-          if (bucket === "earned") phleboPayable += totalAmt;
-          if (bucket === "deducted") grandDeducted += totalAmt;
-          if (bucket === "hold") grandHold += totalAmt;
+          signedInc += incSigned;
+          signedHvc += hvcSigned;
+          signedTotal += totalSigned;
+          if (bucket === "earned") earnedAbs += lineAbs;
+          if (bucket === "deducted") deductedAbs += lineAbs;
+          if (bucket === "hold") holdAbs += lineAbs;
         }
+
+        // Matches dashboard: Net Payable = earned - deducted (hold listed separately)
+        const netPayable = earnedAbs - deductedAbs;
 
         rows.push({
           Phlebotomist: "",
@@ -222,11 +241,11 @@ const PhleboExportDialog = ({ open, onOpenChange }: PhleboExportDialogProps) => 
           "Invoice #": "",
           "Patient Name": "",
           Address: "",
-          "Incentive Test Name": `${phleboName} Total (gross)`,
-          "Incentive Amount": phleboIncentiveTotal,
-          "Home Visit Charge": phleboHomeVisitTotal,
-          Status: `Payable earned: ${phleboPayable}`,
-          "Total Amount": phleboIncentiveTotal + phleboHomeVisitTotal,
+          "Incentive Test Name": `${phleboName} TOTAL`,
+          "Incentive Amount": signedInc,
+          "Home Visit Charge": signedHvc,
+          Status: `Net Payable ${netPayable} | Hold ${holdAbs} | Deducted ${deductedAbs}`,
+          "Total Amount": signedTotal,
         });
         rows.push({
           Phlebotomist: "",
@@ -241,10 +260,15 @@ const PhleboExportDialog = ({ open, onOpenChange }: PhleboExportDialogProps) => 
           "Total Amount": "",
         });
 
-        grandTotalIncentive += phleboIncentiveTotal;
-        grandTotalHomeVisit += phleboHomeVisitTotal;
-        grandTotal += phleboIncentiveTotal + phleboHomeVisitTotal;
+        grandSignedIncentive += signedInc;
+        grandSignedHvc += signedHvc;
+        grandSignedTotal += signedTotal;
+        grandEarned += earnedAbs;
+        grandDeductedAbs += deductedAbs;
+        grandHoldAbs += holdAbs;
       }
+
+      const grandNetPayable = grandEarned - grandDeductedAbs;
 
       rows.push({
         Phlebotomist: "",
@@ -252,11 +276,11 @@ const PhleboExportDialog = ({ open, onOpenChange }: PhleboExportDialogProps) => 
         "Invoice #": "",
         "Patient Name": "",
         Address: "",
-        "Incentive Test Name": "GRAND TOTAL (gross billed)",
-        "Incentive Amount": grandTotalIncentive,
-        "Home Visit Charge": grandTotalHomeVisit,
-        Status: `Hold ${grandHold} | Deducted ${grandDeducted}`,
-        "Total Amount": grandTotal,
+        "Incentive Test Name": "GRAND TOTAL",
+        "Incentive Amount": grandSignedIncentive,
+        "Home Visit Charge": grandSignedHvc,
+        Status: `Net Payable ${grandNetPayable} | Hold ${grandHoldAbs} | Deducted ${grandDeductedAbs}`,
+        "Total Amount": grandSignedTotal,
       });
 
       exportToExcel(rows, `Phlebo_Report_${monthLabel.replace(" ", "_")}`);
@@ -293,7 +317,7 @@ const PhleboExportDialog = ({ open, onOpenChange }: PhleboExportDialogProps) => 
             </Select>
           </div>
           <p className="text-xs text-muted-foreground">
-            One row per registered patient (family members separate). Incentive names/amounts come from each invoice&apos;s tests.
+            One row per registered patient. Deducted and On Hold amounts are negative so Total Amount matches net (earned - deducted - hold). Status shows Net Payable (same as dashboard: earned - deducted).
           </p>
           <Button className="w-full" onClick={handleExport} disabled={loading}>
             <Download className="h-4 w-4 mr-2" />
