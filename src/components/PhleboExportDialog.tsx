@@ -232,8 +232,8 @@ const PhleboExportDialog = ({ open, onOpenChange }: PhleboExportDialogProps) => 
           if (bucket === "hold") holdAbs += lineAbs;
         }
 
-        // Matches dashboard: Net Payable = earned - deducted (hold listed separately)
-        const netPayable = earnedAbs - deductedAbs;
+        // Matches dashboard: Net Payable = earned - deducted - hold
+        const netPayable = earnedAbs - deductedAbs - holdAbs;
 
         rows.push({
           Phlebotomist: "",
@@ -268,7 +268,7 @@ const PhleboExportDialog = ({ open, onOpenChange }: PhleboExportDialogProps) => 
         grandHoldAbs += holdAbs;
       }
 
-      const grandNetPayable = grandEarned - grandDeductedAbs;
+      const grandNetPayable = grandEarned - grandDeductedAbs - grandHoldAbs;
 
       rows.push({
         Phlebotomist: "",
@@ -317,7 +317,7 @@ const PhleboExportDialog = ({ open, onOpenChange }: PhleboExportDialogProps) => 
             </Select>
           </div>
           <p className="text-xs text-muted-foreground">
-            One row per registered patient. Deducted and On Hold amounts are negative so Total Amount matches net (earned - deducted - hold). Status shows Net Payable (same as dashboard: earned - deducted).
+            One row per registered patient. Deducted and On Hold are negative. Total Amount / Net Payable = earned - deducted - hold (same as dashboard).
           </p>
           <Button className="w-full" onClick={handleExport} disabled={loading}>
             <Download className="h-4 w-4 mr-2" />

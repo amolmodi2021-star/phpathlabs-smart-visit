@@ -181,14 +181,15 @@ const PhleboDashboard = () => {
       const incentive = registrationIncentiveAmount(reg, incentiveById);
       const bucket = registrationPayoutBucket(reg);
 
-      // Summary cards / leaderboard: net payable only (earned - deducted).
-      // On-hold stays out of these figures (shown only in payout section).
+      // Summary cards / leaderboard: net payable = earned - deducted - hold.
       if (bucket === "earned") {
         amounts[pid][period] += hvc;
         incentives[pid][period] += incentive;
         hvcPay[pid][period].earned += hvc;
         incPay[pid][period].earned += incentive;
       } else if (bucket === "hold") {
+        amounts[pid][period] -= hvc;
+        incentives[pid][period] -= incentive;
         hvcPay[pid][period].hold += hvc;
         incPay[pid][period].hold += incentive;
         if (hvc > 0 || incentive > 0) {
@@ -258,7 +259,7 @@ const PhleboDashboard = () => {
         const hvc = payoutHvc[id]?.current || emptyBucket();
         const inc = payoutInc[id]?.current || emptyBucket();
         const net =
-          hvc.earned - hvc.deducted + inc.earned - inc.deducted;
+          hvc.earned - hvc.deducted - hvc.hold + inc.earned - inc.deducted - inc.hold;
         return {
           id,
           name: phleboMap[id] || "Unknown",
@@ -354,7 +355,7 @@ const PhleboDashboard = () => {
     const earned = hvc.earned + inc.earned;
     const hold = hvc.hold + inc.hold;
     const deducted = hvc.deducted + inc.deducted;
-    const net = earned - deducted;
+    const net = earned - deducted - hold;
 
     return (
       <div className="border rounded-md p-3 space-y-2 bg-muted/20">
@@ -384,7 +385,7 @@ const PhleboDashboard = () => {
                   </>
                 )}
               </span>
-              <span className="font-medium text-amber-600 dark:text-amber-400">{money(hold)}</span>
+              <span className="font-medium text-amber-600 dark:text-amber-400">{money(-hold)}</span>
             </button>
           </div>
           {isHoldOpen && holdRows.length > 0 && (
@@ -480,7 +481,7 @@ const PhleboDashboard = () => {
                           <td className="px-4 py-2 font-medium">{row.name}</td>
                           <td className="px-4 py-2 text-right tabular-nums">{money(row.hvcGross)}</td>
                           <td className="px-4 py-2 text-right tabular-nums">{money(row.incentiveGross)}</td>
-                          <td className="px-4 py-2 text-right tabular-nums text-amber-600">{money(row.hold)}</td>
+                          <td className="px-4 py-2 text-right tabular-nums text-amber-600">{money(-row.hold)}</td>
                           <td className="px-4 py-2 text-right tabular-nums font-semibold text-primary">{money(row.net)}</td>
                         </tr>
                       ))}
@@ -498,7 +499,7 @@ const PhleboDashboard = () => {
               Home Visit Charges (net payable)
             </h2>
             <p className="text-xs text-muted-foreground -mt-1">
-              Cancelled bills already deducted. On-hold dues are not included here.
+              Cancelled bills and unpaid dues (hold) already deducted.
             </p>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {activePhleboIds.map((id) => (
@@ -528,7 +529,7 @@ const PhleboDashboard = () => {
               Incentive Earnings (net payable)
             </h2>
             <p className="text-xs text-muted-foreground -mt-1">
-              Tests / packages / combos. Cancelled bills already deducted. On-hold dues are not included here.
+              Tests / packages / combos. Cancelled bills and unpaid dues (hold) already deducted.
             </p>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {activePhleboIds.map((id) => (
