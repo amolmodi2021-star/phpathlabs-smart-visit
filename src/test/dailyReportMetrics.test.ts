@@ -41,4 +41,22 @@ describe("dailyReportMetrics", () => {
       refund_amount: 10,
     })).toBe(-10);
   });
+
+  it("paid for test_cancellation with cash is signed outflow", () => {
+    expect(paymentRowPaid({
+      transaction_type: "test_cancellation",
+      total_amount: -240,
+      refund_amount: 240,
+      paid_amount: 0,
+    })).toBe(-240);
+  });
+
+  it("paid for test_cancellation without cash stays zero", () => {
+    expect(paymentRowPaid({
+      transaction_type: "test_cancellation",
+      total_amount: 0,
+      refund_amount: 0,
+      paid_amount: 0,
+    })).toBe(0);
+  });
 });

@@ -44,11 +44,14 @@ export function paymentRowPaid(row: {
   if (type === "due_collection" || type === "old_due_recovered") {
     return Number(row.total_amount || 0);
   }
-  if (type === "refund" || type === "old_bill_refund" || type === "post_discount_refund") {
+  if (type === "refund" || type === "old_bill_refund" || type === "post_discount_refund" || type === "test_cancellation") {
     const signedTotal = Number(row.total_amount || 0);
     if (signedTotal !== 0) return signedTotal;
     const refundAmt = Number(row.refund_amount || 0);
-    return refundAmt ? -Math.abs(refundAmt) : 0;
+    if (refundAmt) return -Math.abs(refundAmt);
+    // test_cancellation with no cash still uses paid_amount (usually 0)
+    if (type === "test_cancellation") return Number(row.paid_amount || 0);
+    return 0;
   }
   return Number(row.paid_amount || 0);
 }

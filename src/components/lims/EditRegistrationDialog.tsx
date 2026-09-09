@@ -768,26 +768,32 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
       // 4. Recalculate registration status
       await recalculateRegistrationStatus(reg.id);
 
-      // Do NOT rewrite registration_payment Gross/Final/Paid — keep the original
-      // Registration row consistent (Paid matches Final). Bill reduction is logged as
-      // test_cancellation (−Gross/Final, no cash); cash leaves via Refund (−).
-      if (cancelledGross > 0.009 || cancelledDiscount > 0.009 || billReduction > 0.009) {
+      // Single audit row: Gross/Discount/Final offsets + cash refund (if any).
+      // Do NOT rewrite registration_payment — Registration stays frozen.
+      if (cancelledGross > 0.009 || cancelledDiscount > 0.009 || billReduction > 0.009 || cashRefund > 0.009) {
+        const cancelParts: string[] = [];
+        if (newlyCancelled.length > 0) cancelParts.push(`${newlyCancelled.length} test(s) cancelled`);
+        if (homeVisitRefundRequested) {
+          cancelParts.push(hvcCashRefund > 0 ? "HV charges refunded" : "HV charges removed");
+        }
         logPaymentTransaction({
           registration_id: reg.id,
           invoice_number: reg.invoice_number,
           patient_name: patientName,
           transaction_type: "test_cancellation",
           direction: "out",
-          payments: [],
-          total_amount: 0,
+          payments: cashRefund > 0 ? [{ mode: refundMode, amount: cashRefund }] : [],
+          total_amount: cashRefund,
           // gross_amount is tests-only; HVC-only removals offset via final_amount.
           gross_amount: -cancelledGross,
           discount_amount: -cancelledDiscount,
           final_amount: -billReduction,
           paid_amount: 0,
           due_amount: 0,
-          refund_amount: 0,
-          remarks: `${newlyCancelled.length} test(s) cancelled${homeVisitRefundRequested ? " + HV charges removed" : ""} — Gross/Final offset (no cash)`,
+          refund_amount: cashRefund,
+          remarks: cancelParts.length
+            ? `${cancelParts.join(" + ")}${cashRefund > 0 ? ` — refund ₹${cashRefund} via ${refundMode}` : ""}`
+            : `Test cancellation${cashRefund > 0 ? ` — refund ₹${cashRefund}` : ""}`,
         });
       }
 
@@ -806,30 +812,6 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
           ? `${parts.join(". ")}. Refund: ₹${cashRefund} via ${refundMode}`
           : `${parts.join(". ")}.`,
       );
-      // Log cancellation refund — money-out delta only. Registration cash stays frozen.
-      if (cashRefund > 0) {
-        const cTodayStr = format(new Date(), "dd-MM-yyyy");
-        const cInvDateStr = (reg.invoice_number && /^\d{6}/.test(reg.invoice_number))
-          ? `${reg.invoice_number.slice(4,6)}-${reg.invoice_number.slice(2,4)}-20${reg.invoice_number.slice(0,2)}`
-          : cTodayStr;
-        const cIsCrossDay = cInvDateStr !== cTodayStr;
-        logPaymentTransaction({
-          registration_id: reg.id,
-          invoice_number: reg.invoice_number,
-          patient_name: patientName,
-          transaction_type: cIsCrossDay ? "old_bill_refund" : "refund",
-          direction: "out",
-          payments: [{ mode: refundMode, amount: cashRefund }],
-          total_amount: cashRefund,
-          gross_amount: 0,
-          discount_amount: 0,
-          final_amount: 0,
-          paid_amount: 0,
-          due_amount: 0,
-          refund_amount: cashRefund,
-          remarks: `${newlyCancelled.length} test(s) cancelled${homeVisitRefundRequested ? " + HV charges refunded" : ""}`,
-        });
-      }
       onOpenChange(false);
     } catch (e: any) {
       toast.error(e.message);
