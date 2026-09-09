@@ -24,7 +24,17 @@ describe("resolveCancelBillSnapshot", () => {
     expect(s.refundCash).toBe(0);
   });
 
-  it("does not double-refund after partial refund already logged", () => {
+  it("after partial test refunds, refunds only remaining live paid (no double-subtract)", () => {
+    const s = resolveCancelBillSnapshot(
+      { gross_amount: 26500, home_visit_charges: 0, discount_amount: 0, final_amount: 26500, paid_amount: 26500 },
+      { gross_amount: 26500, discount_amount: 0, final_amount: 26500, paid_amount: 96960 },
+      70460,
+    );
+    expect(s.refundCash).toBe(26500);
+    expect(s.origFinal).toBe(26500);
+  });
+
+  it("when live paid is zero, recovers remaining from frozen minus logged refunds", () => {
     const s = resolveCancelBillSnapshot(
       { gross_amount: 0, home_visit_charges: 0, discount_amount: 0, final_amount: 0, paid_amount: 0 },
       { gross_amount: 100, discount_amount: 0, final_amount: 100, paid_amount: 100 },
