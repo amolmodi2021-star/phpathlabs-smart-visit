@@ -477,17 +477,18 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
           origModes.neft !== newModes.neft;
         if (splitChanged) {
           const syncedPaid = editedSplit.reduce((s, p) => s + (p.amount || 0), 0);
-          const frozenFinal = Number(reg.final_amount || 0);
+          // Mode-only correction: never rewrite frozen Gross/Discount/Final.
           await syncRegistrationPaymentRow({
             registration_id: reg.id,
             invoice_number: reg.invoice_number,
             patient_name: patientName,
             payments: editedSplit,
             paid_amount: syncedPaid,
-            final_amount: frozenFinal,
-            due_amount: Math.max(0, frozenFinal - syncedPaid),
+            final_amount: Number(reg.final_amount || 0), // unused when sync_bill_snapshot is false
+            due_amount: 0,
             change_reason: "Payment mode edited",
             sync_payment_split: true,
+            sync_bill_snapshot: false,
           });
         }
         if (discountChanged) {

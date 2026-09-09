@@ -115,6 +115,12 @@ export interface SyncRegistrationPaymentRowParams {
    * payment split frozen so later due-collection deltas don't get double-counted.
    */
   sync_payment_split?: boolean;
+  /**
+   * If true, overwrite gross/discount/final/due on the registration audit row.
+   * Default false — Registration bill figures stay frozen; later discount/cancel
+   * deltas belong on separate payment_transactions rows.
+   */
+  sync_bill_snapshot?: boolean;
 }
 
 /**
@@ -146,7 +152,7 @@ export async function syncRegistrationPaymentRow(params: SyncRegistrationPayment
 
     const { data: existing, error: findErr } = await supabase
       .from("payment_transactions" as any)
-      .select("id, remarks, paid_amount")
+      .select("id, remarks, paid_amount, final_amount")
       .eq("registration_id", params.registration_id)
       .eq("transaction_type", "registration_payment")
       .order("transaction_date", { ascending: false })
@@ -160,22 +166,23 @@ export async function syncRegistrationPaymentRow(params: SyncRegistrationPayment
     if (existing && existing.length > 0) {
       const row: any = existing[0];
       const newRemarks = row.remarks ? `${row.remarks}\n${editRemark}` : editRemark;
-      // Invariant on the registration audit row:
-      //   due_amount = final_amount - paid_amount (frozen at registration time)
-      // When NOT syncing the payment split, paid_amount stays frozen, so we must
-      // recompute due from the new final_amount and the existing frozen paid_amount —
-      // NOT use the live registration's due_amount (which already nets later collections).
-      const frozenPaid = Number(row.paid_amount) || 0;
-      const dueForRow = params.sync_payment_split
-        ? params.due_amount
-        : Math.max(0, params.final_amount - frozenPaid);
       const updateRow: any = {
-        due_amount: dueForRow,
-        final_amount: params.final_amount,
-        ...(params.gross_amount !== undefined ? { gross_amount: params.gross_amount } : {}),
-        ...(params.discount_amount !== undefined ? { discount_amount: params.discount_amount } : {}),
         remarks: newRemarks,
       };
+
+      // Bill snapshot (Gross/Discount/Final) stays frozen unless explicitly requested.
+      if (params.sync_bill_snapshot) {
+        const frozenPaid = params.sync_payment_split
+          ? params.paid_amount
+          : (Number(row.paid_amount) || 0);
+        updateRow.final_amount = params.final_amount;
+        updateRow.due_amount = params.sync_payment_split
+          ? params.due_amount
+          : Math.max(0, params.final_amount - frozenPaid);
+        if (params.gross_amount !== undefined) updateRow.gross_amount = params.gross_amount;
+        if (params.discount_amount !== undefined) updateRow.discount_amount = params.discount_amount;
+      }
+
       // Only overwrite the original registration-time payment split when explicitly
       // requested (e.g. user corrected a mode typo). Otherwise leave cash/gpay/... and
       // paid/total frozen so later due-collection rows don't get double-counted.
@@ -187,6 +194,11 @@ export async function syncRegistrationPaymentRow(params: SyncRegistrationPayment
         updateRow.neft_amount = modes.neft;
         updateRow.total_amount = params.paid_amount;
         updateRow.paid_amount = params.paid_amount;
+        // Keep due coherent with whatever Final is already on the row.
+        if (!params.sync_bill_snapshot) {
+          const frozenFinal = Number(row.final_amount || 0);
+          updateRow.due_amount = Math.max(0, frozenFinal - params.paid_amount);
+        }
       }
       const { error: updErr } = await supabase
         .from("payment_transactions" as any)
