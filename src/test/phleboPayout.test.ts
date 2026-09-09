@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildIncentiveCatalog,
   buildIncentiveMap,
   registrationHvc,
   registrationIncentiveAmount,
+  registrationIncentiveDetails,
   registrationPayoutBucket,
 } from "@/lib/phleboPayout";
 
@@ -11,6 +13,11 @@ describe("phleboPayout", () => {
     [{ id: "cbc", incentive_allowed: true, incentive_amount: 20 }],
     [{ id: "pkg", incentive_allowed: true, incentive_amount: 100 }],
     [{ id: "no", incentive_allowed: false, incentive_amount: 50 }],
+  ]);
+
+  const catalog = buildIncentiveCatalog([
+    { rows: [{ id: "cbc", name: "CBC", incentive_allowed: true, incentive_amount: 20 }] },
+    { rows: [{ id: "pkg", name: "Health Package (Package)", incentive_allowed: true, incentive_amount: 100 }] },
   ]);
 
   it("uses registration HVC only (never estimate)", () => {
@@ -64,5 +71,18 @@ describe("phleboPayout", () => {
       incentives,
     );
     expect(amt).toBe(120);
+  });
+
+  it("returns incentive test names for export", () => {
+    const d = registrationIncentiveDetails(
+      {
+        bill_cancelled: false,
+        tests: [{ test_id: "cbc" }, { test_id: "pkg" }],
+        cancelled_tests: [],
+      },
+      catalog,
+    );
+    expect(d.total).toBe(120);
+    expect(d.names).toEqual(["CBC", "Health Package (Package)"]);
   });
 });

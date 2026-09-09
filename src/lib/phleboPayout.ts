@@ -14,6 +14,34 @@ export function buildIncentiveMap(
   return m;
 }
 
+export type IncentiveCatalogEntry = { name: string; amount: number };
+
+/** id -> { name, amount } for export / detail lines */
+export function buildIncentiveCatalog(
+  sources: Array<{
+    rows: Array<{ id: string; name?: string | null; incentive_allowed?: boolean | null; incentive_amount?: number | null }>;
+  }>,
+): Record<string, IncentiveCatalogEntry> {
+  const m: Record<string, IncentiveCatalogEntry> = {};
+  for (const src of sources) {
+    for (const r of src.rows || []) {
+      if (!r?.id || !r.incentive_allowed) continue;
+      const amount = Number(r.incentive_amount) || 0;
+      if (amount <= 0) continue;
+      m[r.id] = { name: String(r.name || r.id), amount };
+    }
+  }
+  return m;
+}
+
+export function incentiveAmountMapFromCatalog(
+  catalog: Record<string, IncentiveCatalogEntry>,
+): Record<string, number> {
+  const m: Record<string, number> = {};
+  for (const [id, e] of Object.entries(catalog)) m[id] = e.amount;
+  return m;
+}
+
 /** Items booked on the invoice (active + previously cancelled lines). */
 export function registrationBillItems(reg: {
   tests?: any[] | null;
@@ -33,6 +61,20 @@ export function cancelledTestIdSet(reg: { cancelled_tests?: any[] | null }): Set
   return set;
 }
 
+function incentiveEligibleItems(reg: {
+  bill_cancelled?: boolean | null;
+  tests?: any[] | null;
+  cancelled_tests?: any[] | null;
+}): any[] {
+  if (reg.bill_cancelled) return registrationBillItems(reg);
+  const cancelled = cancelledTestIdSet(reg);
+  const active = Array.isArray(reg.tests) ? reg.tests : [];
+  return active.filter((t) => {
+    const id = String(t?.test_id || "");
+    return id && !cancelled.has(id);
+  });
+}
+
 /**
  * Incentive for a registration.
  * - Active bill: only tests still on the invoice (not in cancelled_tests).
@@ -46,19 +88,31 @@ export function registrationIncentiveAmount(
   },
   incentiveById: Record<string, number>,
 ): number {
-  if (reg.bill_cancelled) {
-    return registrationBillItems(reg).reduce((sum, t) => {
-      const id = String(t?.test_id || "");
-      return sum + (id ? Number(incentiveById[id] || 0) : 0);
-    }, 0);
-  }
-  const cancelled = cancelledTestIdSet(reg);
-  const active = Array.isArray(reg.tests) ? reg.tests : [];
-  return active.reduce((sum, t) => {
+  return incentiveEligibleItems(reg).reduce((sum, t) => {
     const id = String(t?.test_id || "");
-    if (!id || cancelled.has(id)) return sum;
-    return sum + Number(incentiveById[id] || 0);
+    return sum + (id ? Number(incentiveById[id] || 0) : 0);
   }, 0);
+}
+
+/** Incentive test names + total for one registered patient (export / UI detail). */
+export function registrationIncentiveDetails(
+  reg: {
+    bill_cancelled?: boolean | null;
+    tests?: any[] | null;
+    cancelled_tests?: any[] | null;
+  },
+  catalog: Record<string, IncentiveCatalogEntry>,
+): { names: string[]; total: number } {
+  const names: string[] = [];
+  let total = 0;
+  for (const t of incentiveEligibleItems(reg)) {
+    const id = String(t?.test_id || "");
+    const entry = id ? catalog[id] : undefined;
+    if (!entry) continue;
+    names.push(entry.name);
+    total += entry.amount;
+  }
+  return { names, total };
 }
 
 /** Home visit charge actually billed on this registration (not estimate). */
