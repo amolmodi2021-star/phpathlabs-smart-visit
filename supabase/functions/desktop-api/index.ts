@@ -660,7 +660,8 @@ function retryDelaySeconds(attempts: number): number {
 
 function isUnrecoverableOutboxError(errText: string | null): boolean {
   if (!errText) return false;
-  return /invalid_phone|empty_job|empty_text|cancelled|unsupported_kind|dead_media|localhost_media|127\.0\.0\.1|media download HTTP 400|media download HTTP 404|file missing/i.test(
+  // no_ack_feedback: message usually already landed in chat; retrying causes doubles.
+  return /invalid_phone|empty_job|empty_text|cancelled|unsupported_kind|dead_media|localhost_media|127\.0\.0\.1|media download HTTP 400|media download HTTP 404|file missing|no_ack_feedback/i.test(
     errText,
   );
 }
@@ -685,12 +686,15 @@ async function completeOutbox(
     .maybeSingle();
 
   const attempts = Number(existing?.attempts || 0);
-  const maxAttempts = DEFAULT_MAX_ATTEMPTS;
+  const maxAttempts = Math.min(
+    Math.max(Number(existing?.max_attempts) || DEFAULT_MAX_ATTEMPTS, 1),
+    8,
+  );
   const errText = lastError ?? null;
   const terminalError = isUnrecoverableOutboxError(errText);
 
-  // WhatsApp Console ack is the source of truth for sent vs failed.
-  // One automatic retry only — then fail (number may not be on WhatsApp).
+  // Honor per-row max_attempts (e.g. sample reminders use 1). One automatic
+  // retry only when attempts < max and the error is recoverable.
   let finalStatus = status;
   if (status === "failed" && !terminalError && attempts < maxAttempts) {
     finalStatus = "pending";
