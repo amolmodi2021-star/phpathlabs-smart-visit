@@ -112,6 +112,35 @@ const showFlagBadge = (flag?: string): boolean => {
   return flag === "H" || flag === "L" || flag === "High" || flag === "Low";
 };
 
+/** Keep rich-text interpretation inside the test box in preview and PDF capture. */
+const INTERPRETATION_HTML_CLASS =
+  "text-gray-700 prose prose-xs max-w-full min-w-0 " +
+  "[&_*]:max-w-full [&_*]:box-border " +
+  "[&_img]:max-w-full [&_img]:max-h-[60mm] [&_img]:h-auto [&_img]:inline-block " +
+  "[&_table]:w-full [&_table]:table-fixed [&_td]:break-words [&_th]:break-words " +
+  "[&_pre]:whitespace-pre-wrap [&_pre]:break-words " +
+  "[&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4";
+
+const interpretationBodyStyle = (fontSize: string): React.CSSProperties => ({
+  fontSize,
+  whiteSpace: "pre-wrap",
+  overflowWrap: "anywhere",
+  wordBreak: "break-word",
+  maxWidth: "100%",
+  minWidth: 0,
+});
+
+const InterpretationHtml = ({ html, fontSize }: { html: string; fontSize: string }) => (
+  <div data-report-interpretation className="min-w-0 max-w-full overflow-hidden">
+    <div className="font-semibold text-gray-600 mb-0.5" style={{ fontSize }}>Interpretation:</div>
+    <div
+      className={INTERPRETATION_HTML_CLASS}
+      style={interpretationBodyStyle(fontSize)}
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  </div>
+);
+
 // ── Sub-components ──
 
 interface ParamRowProps {
@@ -352,13 +381,8 @@ const ReportResultsSection = ({
                               )}
                               {hasParamInterpretation && (
                                 <tr>
-                                  <td colSpan={totalCols} className="px-3 py-1.5 border-t border-gray-100">
-                                    <div className="font-semibold text-gray-600 mb-0.5" style={{ fontSize: metaFontSize }}>Interpretation:</div>
-                                    <div
-                                      className="text-gray-700 prose prose-xs max-w-none [&_img]:max-h-[60mm] [&_img]:inline-block [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4"
-                                      style={{ fontSize: metaFontSize, whiteSpace: 'pre-wrap' }}
-                                      dangerouslySetInnerHTML={{ __html: paramMeta.interpretation! }}
-                                    />
+                                  <td colSpan={totalCols} className="px-3 py-1.5 border-t border-gray-100" style={{ maxWidth: 0 }}>
+                                    <InterpretationHtml html={paramMeta.interpretation!} fontSize={metaFontSize} />
                                   </td>
                                 </tr>
                               )}
@@ -467,13 +491,8 @@ const ReportResultsSection = ({
                     </div>
                   )}
                   {hasInterpretation && (
-                    <div className="px-3 py-1.5 border-t border-gray-100">
-                      <div className="font-semibold text-gray-600 mb-0.5" style={{ fontSize: metaFontSize }}>Interpretation:</div>
-                      <div
-                        className="text-gray-700 prose prose-xs max-w-none [&_img]:max-h-[60mm] [&_img]:inline-block [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4"
-                        style={{ fontSize: metaFontSize, whiteSpace: 'pre-wrap' }}
-                        dangerouslySetInnerHTML={{ __html: profMeta!.interpretation! }}
-                      />
+                    <div className="px-3 py-1.5 border-t border-gray-100 min-w-0 max-w-full overflow-hidden">
+                      <InterpretationHtml html={profMeta!.interpretation!} fontSize={metaFontSize} />
                     </div>
                   )}
                   {hasOutsourced && (

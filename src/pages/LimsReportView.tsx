@@ -2698,6 +2698,31 @@ const LimsReportView = () => {
 
       {/* Native print styles ? avoids multi-page JPEG capture */}
       <style>{`
+        /* Keep interpretation inside test box for on-screen + html-to-image PDF capture */
+        #print-container [data-report-interpretation] {
+          max-width: 100% !important;
+          min-width: 0 !important;
+          overflow: hidden !important;
+          overflow-wrap: anywhere !important;
+          word-break: break-word !important;
+        }
+        #print-container [data-report-interpretation] * {
+          max-width: 100% !important;
+          box-sizing: border-box !important;
+        }
+        #print-container [data-report-interpretation] img {
+          max-width: 100% !important;
+          height: auto !important;
+        }
+        #print-container [data-report-interpretation] table {
+          width: 100% !important;
+          table-layout: fixed !important;
+        }
+        #print-container [data-pdf-section="profile"] {
+          max-width: 100% !important;
+          min-width: 0 !important;
+          overflow: hidden !important;
+        }
         #print-container.print-no-letterhead [data-report-letterhead] {
           display: none !important;
         }
