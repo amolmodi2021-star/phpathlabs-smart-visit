@@ -1595,6 +1595,8 @@ export type Database = {
           remarks: string | null
           report_language: string | null
           repeat_tests: Json
+          sample_collection_reminder_last_sent_at: string | null
+          sample_collection_reminder_sent_count: number
           status: string
           tests: Json
           title: string | null
@@ -1640,6 +1642,8 @@ export type Database = {
           remarks?: string | null
           report_language?: string | null
           repeat_tests?: Json
+          sample_collection_reminder_last_sent_at?: string | null
+          sample_collection_reminder_sent_count?: number
           status?: string
           tests?: Json
           title?: string | null
@@ -1685,6 +1689,8 @@ export type Database = {
           remarks?: string | null
           report_language?: string | null
           repeat_tests?: Json
+          sample_collection_reminder_last_sent_at?: string | null
+          sample_collection_reminder_sent_count?: number
           status?: string
           tests?: Json
           title?: string | null

@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { Search, Printer, ChevronDown, ChevronUp, CheckCircle2, RotateCcw, Undo2, Clock, Loader2, X } from "lucide-react";
+import { Search, Printer, ChevronDown, ChevronUp, CheckCircle2, RotateCcw, Undo2, Clock, Loader2, X, MessageCircle } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -28,6 +28,7 @@ import { shortIdsKey } from "@/lib/queryKeys";
 
 import { buildSampleTubeGroups, TubeGroupingItem } from "@/lib/sampleTubeGrouping";
 import { prepareTubesForCollectionVisit } from "@/lib/sampleTubeSplit";
+import { enqueuePendingSampleCollectionReminder } from "@/lib/pendingSampleReminder";
 import { formatAgeGender } from "@/lib/ageGender";
 import { useNewArrivalsBadge } from "@/hooks/useNewArrivalsBadge";
 import NewBadge from "./NewBadge";
@@ -43,7 +44,7 @@ const TUBE_DETAIL_SELECT =
 
 /** List headers — no tests/payments JSON (egress). */
 const REG_LIST_SELECT =
-  "id, invoice_number, patient_name, title, mobile_number, umr_number, dob, age_text, gender, visit_type, pickup_point_id, home_visit_id, completing_phlebo_name, is_stat, status, created_at, bill_cancelled, cancelled_tests, repeat_tests";
+  "id, invoice_number, patient_name, title, mobile_number, umr_number, dob, age_text, gender, visit_type, pickup_point_id, home_visit_id, completing_phlebo_name, is_stat, status, created_at, bill_cancelled, cancelled_tests, repeat_tests, sample_collection_reminder_sent_count, sample_collection_reminder_last_sent_at";
 
 type VisitTypeFilter = "ALL" | "home_visit" | "lab_visit" | "pickup_point";
 
@@ -109,6 +110,7 @@ const SampleCollection = () => {
 
   // Cancel collection (revert to pending) dialog state
   const [cancelCollectDialog, setCancelCollectDialog] = useState<{ open: boolean; reg: any; tube: SampleTubeRow | null }>({ open: false, reg: null, tube: null });
+  const [reminderSendingId, setReminderSendingId] = useState<string | null>(null);
 
   // Print confirmation dialog state — shown before any print action
   const [printConfirmDialog, setPrintConfirmDialog] = useState<{ open: boolean; reg: any; tubes: SampleTubeRow[]; action: (() => void) | null }>({ open: false, reg: null, tubes: [], action: null });
@@ -830,6 +832,44 @@ const SampleCollection = () => {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const pendingReminderTestNames = (reg: any, tubes: SampleTubeRow[], mode: CollectionTab): string[] => {
+    const want = mode === "deferred" ? "deferred" : "pending";
+    const names: string[] = [];
+    for (const tube of tubes) {
+      if (tube.status !== want) continue;
+      if (isTubeFullyCancelled(tube, reg)) continue;
+      names.push(...getActiveTestNames(tube, reg));
+    }
+    return names;
+  };
+
+  const sendPendingReminderMutation = useMutation({
+    mutationFn: async ({
+      reg,
+      tubes,
+      mode,
+    }: {
+      reg: any;
+      tubes: SampleTubeRow[];
+      mode: CollectionTab;
+    }) => {
+      setReminderSendingId(reg.id);
+      const testNames = pendingReminderTestNames(reg, tubes, mode);
+      const res = await enqueuePendingSampleCollectionReminder({
+        registration: reg,
+        testNames,
+      });
+      if (!res.ok) throw new Error(res.error || "Failed to queue reminder");
+      return { regId: reg.id as string, sentCount: res.sentCount ?? 1 };
+    },
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ["sample_collection_regs"] });
+      toast.success("Pending sample reminder queued for WhatsApp");
+    },
+    onError: (e: Error) => toast.error(e.message),
+    onSettled: () => setReminderSendingId(null),
+  });
+
   const requestPrintConfirm = (reg: any, tubes: SampleTubeRow[], action: () => void) => {
     if (tubes.length === 0) { toast.error("No tubes to print"); return; }
     setPrintConfirmDialog({ open: true, reg, tubes, action });
@@ -1220,26 +1260,60 @@ const SampleCollection = () => {
                     {format(new Date(reg.created_at), "dd/MM/yy HH:mm")}
                   </TableCell>
                   <TableCell className="text-right">
-                    {mode === "pending" ? (
-                      <Button size="sm" variant="default" className="gap-1"
-                        onClick={(e) => { e.stopPropagation(); toggleAllPendingTubes(reg.id, tubes, true); setExpandedRow(reg.id); }}>
-                        <Printer className="h-3.5 w-3.5" /> Print All
-                      </Button>
-                    ) : mode === "deferred" ? (
-                      <Button size="sm" variant="default" className="gap-1"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedTubes(prev => ({ ...prev, [reg.id]: new Set(tubes.map(t => t.id)) }));
-                          setExpandedRow(reg.id);
-                        }}>
-                        <Printer className="h-3.5 w-3.5" /> Collect
-                      </Button>
-                    ) : (
-                      <Button size="sm" variant="outline" className="gap-1"
-                        onClick={(e) => { e.stopPropagation(); openReprintDialog({ registration: reg, tubes }); }}>
-                        <RotateCcw className="h-3.5 w-3.5" /> Reprint
-                      </Button>
-                    )}
+                    <div className="flex items-center justify-end gap-2 flex-wrap">
+                      {(mode === "pending" || mode === "deferred") && (
+                        <>
+                          <span className="text-xs text-muted-foreground whitespace-nowrap" title={reg.sample_collection_reminder_last_sent_at ? `Last sent ${format(new Date(reg.sample_collection_reminder_last_sent_at), "dd/MM/yy HH:mm")}` : undefined}>
+                            Sent {Number(reg.sample_collection_reminder_sent_count || 0)}×
+                          </span>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="gap-1"
+                            disabled={
+                              Number(reg.sample_collection_reminder_sent_count || 0) > 0
+                              || reminderSendingId === reg.id
+                              || sendPendingReminderMutation.isPending
+                              || pendingReminderTestNames(reg, tubes, mode).length === 0
+                            }
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              sendPendingReminderMutation.mutate({ reg, tubes, mode });
+                            }}
+                            title={
+                              Number(reg.sample_collection_reminder_sent_count || 0) > 0
+                                ? "Reminder already sent"
+                                : "Queue WhatsApp for pending sample collection"
+                            }
+                          >
+                            {reminderSendingId === reg.id
+                              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              : <MessageCircle className="h-3.5 w-3.5" />}
+                            WA
+                          </Button>
+                        </>
+                      )}
+                      {mode === "pending" ? (
+                        <Button size="sm" variant="default" className="gap-1"
+                          onClick={(e) => { e.stopPropagation(); toggleAllPendingTubes(reg.id, tubes, true); setExpandedRow(reg.id); }}>
+                          <Printer className="h-3.5 w-3.5" /> Print All
+                        </Button>
+                      ) : mode === "deferred" ? (
+                        <Button size="sm" variant="default" className="gap-1"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedTubes(prev => ({ ...prev, [reg.id]: new Set(tubes.map(t => t.id)) }));
+                            setExpandedRow(reg.id);
+                          }}>
+                          <Printer className="h-3.5 w-3.5" /> Collect
+                        </Button>
+                      ) : (
+                        <Button size="sm" variant="outline" className="gap-1"
+                          onClick={(e) => { e.stopPropagation(); openReprintDialog({ registration: reg, tubes }); }}>
+                          <RotateCcw className="h-3.5 w-3.5" /> Reprint
+                        </Button>
+                      )}
+                    </div>
                   </TableCell>
                 </TableRow>
                 {isExpanded && (
