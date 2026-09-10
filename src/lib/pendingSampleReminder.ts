@@ -273,7 +273,13 @@ export async function enqueuePendingSampleCollectionReminder(opts: {
 
   if (!res.ok) {
     await releaseReminderSlot(claim, reg.id);
-    return { ok: false, error: res.error || "Failed to queue WhatsApp" };
+    const err = String(res.error || "");
+    const dup = /duplicate key|unique constraint|idx_wa_outbox_one_open_sample_reminder/i.test(err);
+    return {
+      ok: false,
+      skippedStale: dup,
+      error: dup ? "Reminder already queued for this patient" : (res.error || "Failed to queue WhatsApp"),
+    };
   }
 
   return {
