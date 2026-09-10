@@ -377,6 +377,7 @@ const InvoicePreviewLegacy = ({
   const barcodeRef = useRef<HTMLCanvasElement>(null);
   const queuedInvoiceRef = useRef<string | null>(null);
   const autoQueuedRef = useRef<string | null>(null);
+  const enqueueLockRef = useRef<string | null>(null);
   const [brand, setBrand] = useState<Record<string, string>>(INVOICE_BRAND_DEFAULTS);
   const [logoSrc, setLogoSrc] = useState("");
   const [channelName, setChannelName] = useState("");
@@ -414,7 +415,11 @@ const InvoicePreviewLegacy = ({
     const maybeReady = () => {
       // Do not signal ready until logo/address brand settings are loaded and logo preloaded.
       if (cancelled || !fontsOk || !packagesOk || !brandOk || !invoiceNo) return;
-      onReadyRef.current?.(invoiceNo);
+      // Defer so React has committed fontsReady/brandReady before parent sets queueRequest.
+      requestAnimationFrame(() => {
+        if (cancelled) return;
+        onReadyRef.current?.(invoiceNo);
+      });
     };
     void ensureInvoiceFontsReady().then(() => {
       if (cancelled) return;
@@ -495,12 +500,23 @@ const InvoicePreviewLegacy = ({
     return false;
   }, []);
 
-  const queueInvoiceViaWaApi = useCallback(async () => {
+  const queueInvoiceViaWaApi = useCallback(async (opts?: { forceResend?: boolean }) => {
+    const forceResend = !!opts?.forceResend;
     const invoiceNo = String(data?.invoice_number || "");
     const patientLabel = patientDisplayName(data) || data?.patient_name || "patient";
     const settle = (ok: boolean, error?: string) => {
       onQueueSettled?.({ ok, error, invoiceNumber: invoiceNo });
     };
+    // Already queued this invoice in this preview session — settle success, do not upload again
+    // (unless staff explicitly clicks WhatsApp resend).
+    if (!forceResend && invoiceNo && queuedInvoiceRef.current === invoiceNo) {
+      settle(true);
+      return;
+    }
+    // Concurrent double-fire from React effect races.
+    if (invoiceNo && enqueueLockRef.current === invoiceNo) {
+      return;
+    }
     if (!open || !invoiceNo || !data?.mobile_number) {
       toast.error("Mobile number required to send on WhatsApp");
       settle(false, "mobile required");
@@ -521,6 +537,7 @@ const InvoicePreviewLegacy = ({
       settle(false, "brand not ready");
       return;
     }
+    enqueueLockRef.current = invoiceNo;
     setWaSending(true);
     const host = document.createElement("div");
     try {
@@ -628,6 +645,7 @@ const InvoicePreviewLegacy = ({
         invoice_number: invoiceNo,
         caption,
         blob,
+        forceResend,
       });
       if (!res.ok) {
         toast.error(res.error || "Failed to queue invoice for WA API");
@@ -637,14 +655,18 @@ const InvoicePreviewLegacy = ({
       queuedInvoiceRef.current = invoiceNo;
       setConsoleQueued(true);
       logMessageSend(data.mobile_number, data.patient_name, "Invoice", data.umr_number);
-      toast.success(`Sending invoice to ${patientLabel}`, {
-        description: `${invoiceNo} · ${String(data.mobile_number).replace(/\D/g, "").slice(-10)}`,
-      });
+      toast.success(
+        res.deduped ? `Invoice already queued for ${patientLabel}` : `Sending invoice to ${patientLabel}`,
+        {
+          description: `${invoiceNo} · ${String(data.mobile_number).replace(/\D/g, "").slice(-10)}`,
+        },
+      );
       settle(true);
     } catch (e: any) {
       toast.error(e?.message || "WhatsApp WA API queue failed");
       settle(false, e?.message || "exception");
     } finally {
+      if (enqueueLockRef.current === invoiceNo) enqueueLockRef.current = null;
       host.remove();
       setWaSending(false);
     }
@@ -1649,7 +1671,7 @@ const InvoicePreviewLegacy = ({
           {!isPickupInvoice(data) && (
             <Button
               className="flex-1"
-              onClick={() => void queueInvoiceViaWaApi()}
+              onClick={() => void queueInvoiceViaWaApi({ forceResend: true })}
               disabled={waSending || !data?.mobile_number || !fontsReady || !brandReady}
             >
               {waSending ? (

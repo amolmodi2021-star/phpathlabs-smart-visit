@@ -275,6 +275,7 @@ const InvoicePreviewV2 = ({
   const queuedInvoiceRef = useRef<string | null>(null);
   const autoQueuedRef = useRef<string | null>(null);
   const lastQueueNonce = useRef(0);
+  const enqueueLockRef = useRef<string | null>(null);
   const [brand, setBrand] = useState<Record<string, string>>(INVOICE_BRAND_DEFAULTS);
   const [logoSrc, setLogoSrc] = useState("");
   const [consoleQueued, setConsoleQueued] = useState(false);
@@ -314,7 +315,10 @@ const InvoicePreviewV2 = ({
     let brandOk = false;
     const maybeReady = () => {
       if (cancelled || !fontsOk || !packagesOk || !brandOk || !invoiceNo) return;
-      onReadyRef.current?.(invoiceNo);
+      requestAnimationFrame(() => {
+        if (cancelled) return;
+        onReadyRef.current?.(invoiceNo);
+      });
     };
     void ensureInvoiceFontsReady().then(() => {
       if (cancelled) return;
@@ -450,12 +454,20 @@ const InvoicePreviewV2 = ({
     return { source, clone };
   }, [renderBarcode]);
 
-  const queueInvoiceViaWaApi = useCallback(async () => {
+  const queueInvoiceViaWaApi = useCallback(async (opts?: { forceResend?: boolean }) => {
+    const forceResend = !!opts?.forceResend;
     const invoiceNo = String(data?.invoice_number || "");
     const patientLabel = patientDisplayName(data) || data?.patient_name || "patient";
     const settle = (ok: boolean, error?: string) => {
       onQueueSettled?.({ ok, error, invoiceNumber: invoiceNo });
     };
+    if (!forceResend && invoiceNo && queuedInvoiceRef.current === invoiceNo) {
+      settle(true);
+      return;
+    }
+    if (invoiceNo && enqueueLockRef.current === invoiceNo) {
+      return;
+    }
     if (!open || !invoiceNo || !data?.mobile_number) {
       toast.error("Mobile number required to send on WhatsApp");
       settle(false, "mobile required");
@@ -471,6 +483,7 @@ const InvoicePreviewV2 = ({
       settle(false, "brand not ready");
       return;
     }
+    enqueueLockRef.current = invoiceNo;
     setWaSending(true);
     const host = document.createElement("div");
     try {
@@ -551,6 +564,7 @@ const InvoicePreviewV2 = ({
         invoice_number: invoiceNo,
         caption,
         blob,
+        forceResend,
       });
       if (!res.ok) {
         toast.error(res.error || "Failed to queue invoice for WhatsApp");
@@ -559,12 +573,15 @@ const InvoicePreviewV2 = ({
       }
       queuedInvoiceRef.current = invoiceNo;
       setConsoleQueued(true);
-      toast.success("Invoice queued to WhatsApp Console");
+      toast.success(
+        res.deduped ? `Invoice already queued for ${patientLabel}` : "Invoice queued to WhatsApp Console",
+      );
       settle(true);
     } catch (e: any) {
       toast.error(e?.message || "WhatsApp send failed");
       settle(false, e?.message || "error");
     } finally {
+      if (enqueueLockRef.current === invoiceNo) enqueueLockRef.current = null;
       host.remove();
       setWaSending(false);
     }
@@ -1132,7 +1149,7 @@ const InvoicePreviewV2 = ({
           )}
           <Button
             className="flex-1"
-            onClick={() => void queueInvoiceViaWaApi()}
+            onClick={() => void queueInvoiceViaWaApi({ forceResend: true })}
             disabled={!ready || waSending || isPickupInvoice(data)}
           >
             {waSending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}

@@ -112,11 +112,33 @@ export async function enqueueInvoiceForWhatsAppConsole(opts: {
   invoice_number: string;
   caption: string;
   blob: Blob;
-}): Promise<{ ok: boolean; id?: string; error?: string }> {
+  /** When true (manual resend from Registered Patients), allow a new row after a prior `sent`. */
+  forceResend?: boolean;
+}): Promise<{ ok: boolean; id?: string; error?: string; deduped?: boolean }> {
   const phone = phone10(opts.phone);
   if (phone.length !== 10) return { ok: false, error: "Valid 10-digit mobile required" };
 
-  const safeInvoice = String(opts.invoice_number || "invoice").replace(/[^a-zA-Z0-9_-]+/g, "_");
+  const invoiceNumber = String(opts.invoice_number || "").trim();
+  if (!invoiceNumber) return { ok: false, error: "Invoice number required" };
+
+  // Avoid double-queue: always skip in-flight; skip already-sent unless explicit resend.
+  // Failed rows may be re-queued. Manual WhatsApp from Registered Patients passes forceResend.
+  const blockStatuses = opts.forceResend
+    ? (["pending", "claimed"] as const)
+    : (["pending", "claimed", "sent"] as const);
+  const { data: existing, error: existErr } = await supabase
+    .from("whatsapp_console_outbox" as any)
+    .select("id")
+    .eq("kind", "invoice")
+    .eq("invoice_number", invoiceNumber)
+    .in("status", [...blockStatuses])
+    .limit(1);
+  if (existErr) return { ok: false, error: existErr.message };
+  if (existing && (existing as any[]).length > 0) {
+    return { ok: true, id: (existing as any[])[0].id, deduped: true };
+  }
+
+  const safeInvoice = invoiceNumber.replace(/[^a-zA-Z0-9_-]+/g, "_");
   // Nested public_id under preset folder (loyalty-cards) → loyalty-cards/invoices/...
   const publicId = `invoices/${safeInvoice}-${Date.now()}`;
   let uploaded;
@@ -136,10 +158,11 @@ export async function enqueueInvoiceForWhatsAppConsole(opts: {
     phone,
     patient_name: opts.patient_name,
     registration_id: opts.registration_id,
-    invoice_number: opts.invoice_number,
+    invoice_number: invoiceNumber,
     caption: opts.caption,
     media_url: uploaded.secure_url,
     media_mime: "image/jpeg",
+    max_attempts: 1,
     payload: {
       media_host: "cloudinary",
       cloudinary_cloud_name: uploaded.cloud_name,
