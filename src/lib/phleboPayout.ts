@@ -122,6 +122,17 @@ export function registrationHvc(reg: { home_visit_charges?: number | null }): nu
 
 export type PhleboPayoutBucket = "earned" | "hold" | "deducted" | "none";
 
+export type PhleboPayoutBucketTotals = {
+  earned: number;
+  hold: number;
+  deducted: number;
+};
+
+/** Net payable once: earned − hold − deducted (never subtract hold/deducted twice). */
+export function payoutBucketNet(b: PhleboPayoutBucketTotals): number {
+  return (Number(b.earned) || 0) - (Number(b.hold) || 0) - (Number(b.deducted) || 0);
+}
+
 /**
  * Month-end payout bucket for one registration.
  * - Cancelled bill -> deducted (HVC + incentives must not be paid).

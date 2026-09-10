@@ -11,6 +11,7 @@ import { Download } from "lucide-react";
 import { patientDisplayName } from "@/lib/patientDisplayName";
 import {
   buildIncentiveCatalog,
+  payoutBucketNet,
   registrationHvc,
   registrationIncentiveDetails,
   registrationPayoutBucket,
@@ -171,9 +172,8 @@ const PhleboExportDialog = ({ open, onOpenChange }: PhleboExportDialogProps) => 
         let signedInc = 0;
         let signedHvc = 0;
         let signedTotal = 0;
-        let earnedAbs = 0;
-        let deductedAbs = 0;
-        let holdAbs = 0;
+        const hvcBuckets = { earned: 0, hold: 0, deducted: 0 };
+        const incBuckets = { earned: 0, hold: 0, deducted: 0 };
 
         rows.push({
           Phlebotomist: phleboName,
@@ -227,13 +227,27 @@ const PhleboExportDialog = ({ open, onOpenChange }: PhleboExportDialogProps) => 
           signedInc += incSigned;
           signedHvc += hvcSigned;
           signedTotal += totalSigned;
-          if (bucket === "earned") earnedAbs += lineAbs;
-          if (bucket === "deducted") deductedAbs += lineAbs;
-          if (bucket === "hold") holdAbs += lineAbs;
+          if (bucket === "earned") {
+            hvcBuckets.earned += hvcAbs;
+            incBuckets.earned += inc.total;
+          } else if (bucket === "deducted") {
+            hvcBuckets.deducted += hvcAbs;
+            incBuckets.deducted += inc.total;
+          } else if (bucket === "hold") {
+            hvcBuckets.hold += hvcAbs;
+            incBuckets.hold += inc.total;
+          }
         }
 
-        // Matches dashboard: Net Payable = earned - deducted - hold
-        const netPayable = earnedAbs - deductedAbs - holdAbs;
+        // Same as dashboard: Net Payable = earned − hold − deducted (once).
+        // signedTotal already equals that net (line signs); do not subtract hold again.
+        const holdAbs = hvcBuckets.hold + incBuckets.hold;
+        const deductedAbs = hvcBuckets.deducted + incBuckets.deducted;
+        const netPayable = payoutBucketNet({
+          earned: hvcBuckets.earned + incBuckets.earned,
+          hold: holdAbs,
+          deducted: deductedAbs,
+        });
 
         rows.push({
           Phlebotomist: "",
@@ -263,12 +277,16 @@ const PhleboExportDialog = ({ open, onOpenChange }: PhleboExportDialogProps) => 
         grandSignedIncentive += signedInc;
         grandSignedHvc += signedHvc;
         grandSignedTotal += signedTotal;
-        grandEarned += earnedAbs;
+        grandEarned += hvcBuckets.earned + incBuckets.earned;
         grandDeductedAbs += deductedAbs;
         grandHoldAbs += holdAbs;
       }
 
-      const grandNetPayable = grandEarned - grandDeductedAbs - grandHoldAbs;
+      const grandNetPayable = payoutBucketNet({
+        earned: grandEarned,
+        hold: grandHoldAbs,
+        deducted: grandDeductedAbs,
+      });
 
       rows.push({
         Phlebotomist: "",

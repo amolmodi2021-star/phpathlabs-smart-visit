@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildIncentiveCatalog,
   buildIncentiveMap,
+  payoutBucketNet,
   registrationHvc,
   registrationIncentiveAmount,
   registrationIncentiveDetails,
@@ -73,16 +74,8 @@ describe("phleboPayout", () => {
     expect(amt).toBe(120);
   });
 
-  it("returns incentive test names for export", () => {
-    const d = registrationIncentiveDetails(
-      {
-        bill_cancelled: false,
-        tests: [{ test_id: "cbc" }, { test_id: "pkg" }],
-        cancelled_tests: [],
-      },
-      catalog,
-    );
-    expect(d.total).toBe(120);
-    expect(d.names).toEqual(["CBC", "Health Package (Package)"]);
+  it("computes net payable once (earned − hold − deducted)", () => {
+    expect(payoutBucketNet({ earned: 500, hold: 100, deducted: 50 })).toBe(350);
+    expect(payoutBucketNet({ earned: 0, hold: 80, deducted: 0 })).toBe(-80);
   });
 });

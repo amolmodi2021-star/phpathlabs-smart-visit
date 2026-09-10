@@ -12,14 +12,16 @@ import { formatDateDDMMYYYY } from "@/lib/utils";
 import { patientDisplayName } from "@/lib/patientDisplayName";
 import {
   buildIncentiveMap,
+  payoutBucketNet,
   registrationHvc,
   registrationIncentiveAmount,
   registrationPayoutBucket,
+  type PhleboPayoutBucketTotals,
 } from "@/lib/phleboPayout";
 
 type PeriodKey = "current" | "previous";
 
-type BucketTotals = { earned: number; hold: number; deducted: number };
+type BucketTotals = PhleboPayoutBucketTotals;
 
 const emptyBucket = (): BucketTotals => ({ earned: 0, hold: 0, deducted: 0 });
 
@@ -139,23 +141,17 @@ const PhleboDashboard = () => {
   );
 
   const {
-    amountData,
-    incentiveData,
     payoutHvc,
     payoutInc,
     holdDetails,
     deductedDetails,
   } = useMemo(() => {
-    const amounts: Record<string, { current: number; previous: number }> = {};
-    const incentives: Record<string, { current: number; previous: number }> = {};
     const hvcPay: Record<string, { current: BucketTotals; previous: BucketTotals }> = {};
     const incPay: Record<string, { current: BucketTotals; previous: BucketTotals }> = {};
     const holdRows: Record<string, { current: any[]; previous: any[] }> = {};
     const deductedRows: Record<string, { current: any[]; previous: any[] }> = {};
 
     const ensure = (pid: string) => {
-      if (!amounts[pid]) amounts[pid] = { current: 0, previous: 0 };
-      if (!incentives[pid]) incentives[pid] = { current: 0, previous: 0 };
       if (!hvcPay[pid]) hvcPay[pid] = { current: emptyBucket(), previous: emptyBucket() };
       if (!incPay[pid]) incPay[pid] = { current: emptyBucket(), previous: emptyBucket() };
       if (!holdRows[pid]) holdRows[pid] = { current: [], previous: [] };
@@ -165,6 +161,7 @@ const PhleboDashboard = () => {
     phlebotomists.forEach((p: any) => ensure(p.id));
 
     // One row per registration (all family members on a visit), attributed to visit phlebo.
+    // Keep earned / hold / deducted in separate buckets — net = earned − hold − deducted once.
     registrations.forEach((reg: any) => {
       const visit = visitMap[reg.home_visit_id];
       if (!visit?.phlebotomist_id) return;
@@ -181,15 +178,10 @@ const PhleboDashboard = () => {
       const incentive = registrationIncentiveAmount(reg, incentiveById);
       const bucket = registrationPayoutBucket(reg);
 
-      // Summary cards / leaderboard: net payable = earned - deducted - hold.
       if (bucket === "earned") {
-        amounts[pid][period] += hvc;
-        incentives[pid][period] += incentive;
         hvcPay[pid][period].earned += hvc;
         incPay[pid][period].earned += incentive;
       } else if (bucket === "hold") {
-        amounts[pid][period] -= hvc;
-        incentives[pid][period] -= incentive;
         hvcPay[pid][period].hold += hvc;
         incPay[pid][period].hold += incentive;
         if (hvc > 0 || incentive > 0) {
@@ -202,8 +194,6 @@ const PhleboDashboard = () => {
           });
         }
       } else if (bucket === "deducted") {
-        amounts[pid][period] -= hvc;
-        incentives[pid][period] -= incentive;
         hvcPay[pid][period].deducted += hvc;
         incPay[pid][period].deducted += incentive;
         if (hvc > 0 || incentive > 0) {
@@ -219,8 +209,6 @@ const PhleboDashboard = () => {
     });
 
     return {
-      amountData: amounts,
-      incentiveData: incentives,
       payoutHvc: hvcPay,
       payoutInc: incPay,
       holdDetails: holdRows,
@@ -258,19 +246,23 @@ const PhleboDashboard = () => {
       .map((id) => {
         const hvc = payoutHvc[id]?.current || emptyBucket();
         const inc = payoutInc[id]?.current || emptyBucket();
-        const net =
-          hvc.earned - hvc.deducted - hvc.hold + inc.earned - inc.deducted - inc.hold;
+        // HVC / Incentive columns = earned only. Hold / Deducted shown separately.
+        // Net = earned − hold − deducted (once). Do not feed already-netted values into HVC/Incentive.
+        const earned = hvc.earned + inc.earned;
+        const hold = hvc.hold + inc.hold;
+        const deducted = hvc.deducted + inc.deducted;
         return {
           id,
           name: phleboMap[id] || "Unknown",
-          hvcGross: amountData[id]?.current || 0,
-          incentiveGross: incentiveData[id]?.current || 0,
-          net,
-          hold: hvc.hold + inc.hold,
+          hvcEarned: hvc.earned,
+          incentiveEarned: inc.earned,
+          hold,
+          deducted,
+          net: earned - hold - deducted,
         };
       })
       .sort((a, b) => b.net - a.net || a.name.localeCompare(b.name));
-  }, [activePhleboIds, payoutHvc, payoutInc, amountData, incentiveData, phleboMap]);
+  }, [activePhleboIds, payoutHvc, payoutInc, phleboMap]);
 
   const renderDetailRow = (row: any) => {
     const reg = row.registration || {};
@@ -468,9 +460,10 @@ const PhleboDashboard = () => {
                       <tr className="border-b bg-muted/40 text-left">
                         <th className="px-4 py-2 font-medium w-12">#</th>
                         <th className="px-4 py-2 font-medium">Phlebo</th>
-                        <th className="px-4 py-2 font-medium text-right">HVC</th>
-                        <th className="px-4 py-2 font-medium text-right">Incentive</th>
+                        <th className="px-4 py-2 font-medium text-right">HVC Earned</th>
+                        <th className="px-4 py-2 font-medium text-right">Incentive Earned</th>
                         <th className="px-4 py-2 font-medium text-right">On Hold</th>
+                        <th className="px-4 py-2 font-medium text-right">Deducted</th>
                         <th className="px-4 py-2 font-medium text-right">Net Payable</th>
                       </tr>
                     </thead>
@@ -479,9 +472,10 @@ const PhleboDashboard = () => {
                         <tr key={row.id} className="border-b last:border-0">
                           <td className="px-4 py-2 tabular-nums text-muted-foreground">{idx + 1}</td>
                           <td className="px-4 py-2 font-medium">{row.name}</td>
-                          <td className="px-4 py-2 text-right tabular-nums">{money(row.hvcGross)}</td>
-                          <td className="px-4 py-2 text-right tabular-nums">{money(row.incentiveGross)}</td>
+                          <td className="px-4 py-2 text-right tabular-nums">{money(row.hvcEarned)}</td>
+                          <td className="px-4 py-2 text-right tabular-nums">{money(row.incentiveEarned)}</td>
                           <td className="px-4 py-2 text-right tabular-nums text-amber-600">{money(-row.hold)}</td>
+                          <td className="px-4 py-2 text-right tabular-nums text-destructive">{money(-row.deducted)}</td>
                           <td className="px-4 py-2 text-right tabular-nums font-semibold text-primary">{money(row.net)}</td>
                         </tr>
                       ))}
@@ -510,11 +504,11 @@ const PhleboDashboard = () => {
                   <CardContent className="px-4 pb-4 space-y-1">
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">{currentMonthLabel}</span>
-                      <span className="font-medium">{money(amountData[id]?.current || 0)}</span>
+                      <span className="font-medium">{money(payoutBucketNet(payoutHvc[id]?.current || emptyBucket()))}</span>
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">{prevMonthLabel}</span>
-                      <span className="font-medium">{money(amountData[id]?.previous || 0)}</span>
+                      <span className="font-medium">{money(payoutBucketNet(payoutHvc[id]?.previous || emptyBucket()))}</span>
                     </div>
                   </CardContent>
                 </Card>
@@ -540,11 +534,11 @@ const PhleboDashboard = () => {
                   <CardContent className="px-4 pb-4 space-y-1">
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">{currentMonthLabel}</span>
-                      <span className="font-medium text-primary">{money(incentiveData[id]?.current || 0)}</span>
+                      <span className="font-medium text-primary">{money(payoutBucketNet(payoutInc[id]?.current || emptyBucket()))}</span>
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">{prevMonthLabel}</span>
-                      <span className="font-medium text-primary">{money(incentiveData[id]?.previous || 0)}</span>
+                      <span className="font-medium text-primary">{money(payoutBucketNet(payoutInc[id]?.previous || emptyBucket()))}</span>
                     </div>
                   </CardContent>
                 </Card>
