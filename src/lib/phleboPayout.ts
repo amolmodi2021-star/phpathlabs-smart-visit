@@ -128,9 +128,13 @@ export type PhleboPayoutBucketTotals = {
   deducted: number;
 };
 
-/** Net payable once: earned − hold − deducted (never subtract hold/deducted twice). */
+/**
+ * Net payable = earned only.
+ * Hold / deducted rows are never added to earned, so subtracting them again
+ * would wrongly reduce pay (e.g. cancelled ₹50 → total 2550−50=2500 instead of 2550).
+ */
 export function payoutBucketNet(b: PhleboPayoutBucketTotals): number {
-  return (Number(b.earned) || 0) - (Number(b.hold) || 0) - (Number(b.deducted) || 0);
+  return Number(b.earned) || 0;
 }
 
 /**

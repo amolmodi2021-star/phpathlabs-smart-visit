@@ -22,11 +22,19 @@ interface PhleboExportDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
-/** Earned = positive; deducted / hold = negative (so column sums = net). */
-function signedAmount(bucket: "earned" | "hold" | "deducted" | "none", amount: number): number {
-  const n = Number(amount) || 0;
-  if (bucket === "deducted" || bucket === "hold") return -Math.abs(n);
-  return Math.abs(n);
+/** Earned lines count toward totals. Hold/deducted show 0 in amount columns (audit text in Status). */
+function lineAmounts(
+  bucket: "earned" | "hold" | "deducted" | "none",
+  hvcAbs: number,
+  incAbs: number,
+): { hvc: number; inc: number; total: number; auditHvc: number; auditInc: number } {
+  const hvc = Math.abs(Number(hvcAbs) || 0);
+  const inc = Math.abs(Number(incAbs) || 0);
+  if (bucket === "earned") {
+    return { hvc, inc, total: hvc + inc, auditHvc: hvc, auditInc: inc };
+  }
+  // Do not put negatives (or positives) into sum columns — that would under/over-count payable.
+  return { hvc: 0, inc: 0, total: 0, auditHvc: hvc, auditInc: inc };
 }
 
 const PhleboExportDialog = ({ open, onOpenChange }: PhleboExportDialogProps) => {
@@ -149,9 +157,9 @@ const PhleboExportDialog = ({ open, onOpenChange }: PhleboExportDialogProps) => 
       }
 
       const rows: Record<string, unknown>[] = [];
-      let grandSignedIncentive = 0;
-      let grandSignedHvc = 0;
-      let grandSignedTotal = 0;
+      let grandEarnedIncentive = 0;
+      let grandEarnedHvc = 0;
+      let grandEarnedTotal = 0;
       let grandEarned = 0;
       let grandDeductedAbs = 0;
       let grandHoldAbs = 0;
@@ -169,9 +177,6 @@ const PhleboExportDialog = ({ open, onOpenChange }: PhleboExportDialogProps) => 
         });
         const phleboName = phleboMap[pid] || "Unassigned";
 
-        let signedInc = 0;
-        let signedHvc = 0;
-        let signedTotal = 0;
         const hvcBuckets = { earned: 0, hold: 0, deducted: 0 };
         const incBuckets = { earned: 0, hold: 0, deducted: 0 };
 
@@ -195,17 +200,13 @@ const PhleboExportDialog = ({ open, onOpenChange }: PhleboExportDialogProps) => 
           const hvcAbs = registrationHvc(reg);
           const inc = registrationIncentiveDetails(reg, catalog);
           const bucket = registrationPayoutBucket(reg);
-          const lineAbs = hvcAbs + inc.total;
-
-          const hvcSigned = signedAmount(bucket, hvcAbs);
-          const incSigned = signedAmount(bucket, inc.total);
-          const totalSigned = signedAmount(bucket, lineAbs);
+          const amounts = lineAmounts(bucket, hvcAbs, inc.total);
 
           const statusLabel =
             bucket === "deducted"
-              ? "Deducted (bill cancelled)"
+              ? `Deducted (bill cancelled) | HVC ${amounts.auditHvc} | Inc ${amounts.auditInc}`
               : bucket === "hold"
-                ? "On Hold (due)"
+                ? `On Hold (due) | HVC ${amounts.auditHvc} | Inc ${amounts.auditInc}`
                 : "Earned";
 
           const dd = String(visit.visit_date || "").split("-");
@@ -218,15 +219,12 @@ const PhleboExportDialog = ({ open, onOpenChange }: PhleboExportDialogProps) => 
             "Patient Name": patientDisplayName(reg),
             Address: visit.address || "",
             "Incentive Test Name": inc.names.join(", ") || "-",
-            "Incentive Amount": incSigned,
-            "Home Visit Charge": hvcSigned,
+            "Incentive Amount": amounts.inc,
+            "Home Visit Charge": amounts.hvc,
             Status: statusLabel,
-            "Total Amount": totalSigned,
+            "Total Amount": amounts.total,
           });
 
-          signedInc += incSigned;
-          signedHvc += hvcSigned;
-          signedTotal += totalSigned;
           if (bucket === "earned") {
             hvcBuckets.earned += hvcAbs;
             incBuckets.earned += inc.total;
@@ -239,12 +237,13 @@ const PhleboExportDialog = ({ open, onOpenChange }: PhleboExportDialogProps) => 
           }
         }
 
-        // Same as dashboard: Net Payable = earned − hold − deducted (once).
-        // signedTotal already equals that net (line signs); do not subtract hold again.
+        // Net payable = earned only. Hold/deducted are listed for audit, not subtracted again.
         const holdAbs = hvcBuckets.hold + incBuckets.hold;
         const deductedAbs = hvcBuckets.deducted + incBuckets.deducted;
+        const earnedHvc = hvcBuckets.earned;
+        const earnedInc = incBuckets.earned;
         const netPayable = payoutBucketNet({
-          earned: hvcBuckets.earned + incBuckets.earned,
+          earned: earnedHvc + earnedInc,
           hold: holdAbs,
           deducted: deductedAbs,
         });
@@ -256,10 +255,10 @@ const PhleboExportDialog = ({ open, onOpenChange }: PhleboExportDialogProps) => 
           "Patient Name": "",
           Address: "",
           "Incentive Test Name": `${phleboName} TOTAL`,
-          "Incentive Amount": signedInc,
-          "Home Visit Charge": signedHvc,
+          "Incentive Amount": earnedInc,
+          "Home Visit Charge": earnedHvc,
           Status: `Net Payable ${netPayable} | Hold ${holdAbs} | Deducted ${deductedAbs}`,
-          "Total Amount": signedTotal,
+          "Total Amount": netPayable,
         });
         rows.push({
           Phlebotomist: "",
@@ -274,10 +273,10 @@ const PhleboExportDialog = ({ open, onOpenChange }: PhleboExportDialogProps) => 
           "Total Amount": "",
         });
 
-        grandSignedIncentive += signedInc;
-        grandSignedHvc += signedHvc;
-        grandSignedTotal += signedTotal;
-        grandEarned += hvcBuckets.earned + incBuckets.earned;
+        grandEarnedIncentive += earnedInc;
+        grandEarnedHvc += earnedHvc;
+        grandEarnedTotal += netPayable;
+        grandEarned += earnedHvc + earnedInc;
         grandDeductedAbs += deductedAbs;
         grandHoldAbs += holdAbs;
       }
@@ -295,10 +294,10 @@ const PhleboExportDialog = ({ open, onOpenChange }: PhleboExportDialogProps) => 
         "Patient Name": "",
         Address: "",
         "Incentive Test Name": "GRAND TOTAL",
-        "Incentive Amount": grandSignedIncentive,
-        "Home Visit Charge": grandSignedHvc,
+        "Incentive Amount": grandEarnedIncentive,
+        "Home Visit Charge": grandEarnedHvc,
         Status: `Net Payable ${grandNetPayable} | Hold ${grandHoldAbs} | Deducted ${grandDeductedAbs}`,
-        "Total Amount": grandSignedTotal,
+        "Total Amount": grandEarnedTotal,
       });
 
       exportToExcel(rows, `Phlebo_Report_${monthLabel.replace(" ", "_")}`);
@@ -335,7 +334,7 @@ const PhleboExportDialog = ({ open, onOpenChange }: PhleboExportDialogProps) => 
             </Select>
           </div>
           <p className="text-xs text-muted-foreground">
-            One row per registered patient. Deducted and On Hold are negative. Total Amount / Net Payable = earned - deducted - hold (same as dashboard).
+            One row per registered patient. Net Payable / column totals = earned only. On Hold and Deducted rows show ₹0 in amount columns (details in Status) so they are not subtracted twice.
           </p>
           <Button className="w-full" onClick={handleExport} disabled={loading}>
             <Download className="h-4 w-4 mr-2" />

@@ -74,8 +74,8 @@ describe("phleboPayout", () => {
     expect(amt).toBe(120);
   });
 
-  it("computes net payable once (earned − hold − deducted)", () => {
-    expect(payoutBucketNet({ earned: 500, hold: 100, deducted: 50 })).toBe(350);
-    expect(payoutBucketNet({ earned: 0, hold: 80, deducted: 0 })).toBe(-80);
+  it("net payable is earned only (hold/deducted not subtracted again)", () => {
+    expect(payoutBucketNet({ earned: 2550, hold: 0, deducted: 50 })).toBe(2550);
+    expect(payoutBucketNet({ earned: 500, hold: 100, deducted: 50 })).toBe(500);
   });
 });

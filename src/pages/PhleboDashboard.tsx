@@ -246,8 +246,7 @@ const PhleboDashboard = () => {
       .map((id) => {
         const hvc = payoutHvc[id]?.current || emptyBucket();
         const inc = payoutInc[id]?.current || emptyBucket();
-        // HVC / Incentive columns = earned only. Hold / Deducted shown separately.
-        // Net = earned − hold − deducted (once). Do not feed already-netted values into HVC/Incentive.
+        // HVC / Incentive = earned only. Hold / Deducted are informational (not subtracted again).
         const earned = hvc.earned + inc.earned;
         const hold = hvc.hold + inc.hold;
         const deducted = hvc.deducted + inc.deducted;
@@ -258,7 +257,7 @@ const PhleboDashboard = () => {
           incentiveEarned: inc.earned,
           hold,
           deducted,
-          net: earned - hold - deducted,
+          net: earned,
         };
       })
       .sort((a, b) => b.net - a.net || a.name.localeCompare(b.name));
@@ -347,7 +346,8 @@ const PhleboDashboard = () => {
     const earned = hvc.earned + inc.earned;
     const hold = hvc.hold + inc.hold;
     const deducted = hvc.deducted + inc.deducted;
-    const net = earned - deducted - hold;
+    // Payable = earned only; hold/deducted listed below for audit (not subtracted again).
+    const net = earned;
 
     return (
       <div className="border rounded-md p-3 space-y-2 bg-muted/20">
@@ -486,14 +486,14 @@ const PhleboDashboard = () => {
             </Card>
           </div>
 
-          {/* HVC — net payable (cancelled already deducted) */}
+          {/* HVC — earned payable (hold/cancelled excluded, not subtracted again) */}
           <div className="space-y-3">
             <h2 className="text-lg font-semibold flex items-center gap-2">
               <IndianRupee className="h-5 w-5 text-primary" />
-              Home Visit Charges (net payable)
+              Home Visit Charges (payable)
             </h2>
             <p className="text-xs text-muted-foreground -mt-1">
-              Cancelled bills and unpaid dues (hold) already deducted.
+              Only earned visits. Cancelled and unpaid (hold) are listed separately — not subtracted from this total.
             </p>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {activePhleboIds.map((id) => (
@@ -516,14 +516,14 @@ const PhleboDashboard = () => {
             </div>
           </div>
 
-          {/* Incentives — net payable (cancelled already deducted) */}
+          {/* Incentives — earned payable */}
           <div className="space-y-3">
             <h2 className="text-lg font-semibold flex items-center gap-2">
               <TrendingUp className="h-5 w-5 text-primary" />
-              Incentive Earnings (net payable)
+              Incentive Earnings (payable)
             </h2>
             <p className="text-xs text-muted-foreground -mt-1">
-              Tests / packages / combos. Cancelled bills and unpaid dues (hold) already deducted.
+              Tests / packages / combos on earned visits only. Hold and cancelled listed separately.
             </p>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {activePhleboIds.map((id) => (
