@@ -582,12 +582,28 @@ const Dispatch = () => {
     (loadingDetailResults || loadingDetailTubes || loadingDetailSnips || loadingDetailHeld ||
       !detailResultsFetched || !detailTubesFetched || !detailSnipsFetched || !detailHeldFetched);
 
+  const selectedReg = useMemo(
+    () => registrations.find((r: any) => r.id === selectedPatientId) || null,
+    [registrations, selectedPatientId],
+  );
+
+  /** Full entry for detail panel — only when detail data is ready. */
+  const selectedEntry = useMemo(() => {
+    if (!selectedPatientId || !selectedReg) return null;
+    if (detailLoading) return null;
+    return buildFullDispatchEntry(selectedReg, detailResults, detailTubes, detailSnips, testsMap);
+  }, [selectedPatientId, selectedReg, detailLoading, detailResults, detailTubes, detailSnips, testsMap]);
+
   /** Lightweight list cards — registrations only (no results/tubes/snips). */
   const listEntries = useMemo(() => {
     const rows: DispatchEntry[] = registrations.map((reg: any) => {
-      const completionStatus: DispatchEntry["completionStatus"] = reg.bill_cancelled
-        ? "cancelled"
-        : dispatchDotFromRegStatus(reg.status);
+      // Keep selected row in sync with the detail panel (reg.status cache can lag after Dispatch All).
+      const completionStatus: DispatchEntry["completionStatus"] =
+        selectedEntry && selectedEntry.registration.id === reg.id
+          ? selectedEntry.completionStatus
+          : reg.bill_cancelled
+            ? "cancelled"
+            : dispatchDotFromRegStatus(reg.status);
       return {
         registration: reg,
         tests: [],
@@ -607,19 +623,7 @@ const Dispatch = () => {
       if (bActivestat !== aActivestat) return bActivestat - aActivestat;
       return String(b.registration.invoice_number || "").localeCompare(String(a.registration.invoice_number || ""));
     });
-  }, [registrations]);
-
-  const selectedReg = useMemo(
-    () => registrations.find((r: any) => r.id === selectedPatientId) || null,
-    [registrations, selectedPatientId],
-  );
-
-  /** Full entry for detail panel — only when detail data is ready. */
-  const selectedEntry = useMemo(() => {
-    if (!selectedPatientId || !selectedReg) return null;
-    if (detailLoading) return null;
-    return buildFullDispatchEntry(selectedReg, detailResults, detailTubes, detailSnips, testsMap);
-  }, [selectedPatientId, selectedReg, detailLoading, detailResults, detailTubes, detailSnips, testsMap]);
+  }, [registrations, selectedEntry]);
 
   // All Approved: only show approved + already-dispatched tests (hide anything not yet approved).
   const selectedDetailTests = useMemo(() => {
@@ -765,17 +769,16 @@ const Dispatch = () => {
             : row,
         );
       });
-      if (!stillPending) {
-        qc.setQueryData(
-          ["dispatch_regs", listMode, pageKey, effectivePageSize, safePage],
-          (old: any[] | undefined) => {
-            if (!Array.isArray(old)) return old;
-            return old.map((r) => (r.id === reg.id ? { ...r, status: "dispatched" } : r));
-          },
-        );
-      }
+      // Patch every cached list page (exact key can miss when pageSize / page change).
+      const nextRegStatus = stillPending ? "partially_dispatched" : "dispatched";
+      qc.setQueriesData({ queryKey: ["dispatch_regs"] }, (old: unknown) => {
+        if (!Array.isArray(old)) return old;
+        return old.map((r: any) => (r?.id === reg.id ? { ...r, status: nextRegStatus } : r));
+      });
 
       await propagateRegistrationChange(qc, reg.id, ["dispatch", "doctor_approval"]);
+      // Ensure list status refetch completes (invalidate alone was leaving stale orange dots).
+      await qc.refetchQueries({ queryKey: ["dispatch_regs"], type: "active" });
       const failed = failedWaByRegId.get(reg.id) || [];
       if (failed.length) {
         await dismissFailedWhatsAppConsoleJobs(failed.map((j: any) => j.id));
