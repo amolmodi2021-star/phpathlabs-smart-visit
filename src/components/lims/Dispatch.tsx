@@ -21,7 +21,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import { Calendar as DatePickerCalendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Search, Loader2, Send, Eye, Truck, Circle, Phone, Calendar as CalendarIcon, FileText, User, Clock, ChevronRight, ArrowLeft, MessageSquare, Download } from "lucide-react";
+import { Search, Loader2, Send, Eye, Truck, Circle, Phone, Calendar as CalendarIcon, FileText, User, Clock, ChevronRight, ArrowLeft, Download } from "lucide-react";
 import { toast } from "sonner";
 import { format, startOfDay, endOfDay, subDays, isSameDay } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -333,6 +333,8 @@ const Dispatch = () => {
   const [showAllForDay, setShowAllForDay] = useState(false);
   const [dueBlockEntry, setDueBlockEntry] = useState<DispatchEntry | null>(null);
   const [invoiceReg, setInvoiceReg] = useState<any | null>(null);
+  const [sendToEntry, setSendToEntry] = useState<DispatchEntry | null>(null);
+  const [sendToPhone, setSendToPhone] = useState("");
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 400);
@@ -756,16 +758,30 @@ const Dispatch = () => {
     }
   };
 
-  /** Re-queue report PDF for already dispatched (and any still-approved) tests — status unchanged. */
-  const sendReportsAgain = async (entry: DispatchEntry) => {
+  const openSendToDialog = (entry: DispatchEntry) => {
+    if (isPaymentBlocked(entry.registration)) {
+      setDueBlockEntry(entry);
+      return;
+    }
+    const reportable = entry.tests.filter((t) => t.status === "approved" || t.status === "dispatched");
+    if (reportable.length === 0) {
+      toast.error("No reports available to send");
+      return;
+    }
+    setSendToPhone(String(entry.registration.mobile_number || "").replace(/\D/g, "").slice(-10));
+    setSendToEntry(entry);
+  };
+
+  /** Queue report WhatsApp to a user-entered number — does not change dispatch status. */
+  const sendReportsToNumber = async (entry: DispatchEntry, rawPhone: string) => {
     const reg = entry.registration;
     if (isPaymentBlocked(reg)) {
       setDueBlockEntry(entry);
       return;
     }
-    const phone = String(reg.mobile_number || "").replace(/\D/g, "").slice(-10);
+    const phone = String(rawPhone || "").replace(/\D/g, "").slice(-10);
     if (phone.length !== 10) {
-      toast.error("No valid mobile number — cannot send report WhatsApp");
+      toast.error("Enter a valid 10-digit mobile number");
       return;
     }
 
@@ -776,10 +792,10 @@ const Dispatch = () => {
       return;
     }
 
-    setActionKey(`${reg.id}||send`);
+    setActionKey(`${reg.id}||sendTo`);
+    setSendToEntry(null);
     try {
       toast.message("Generating report PDF for WhatsApp…");
-      // approved_reports.test_results ← backfill from patient_results if needed
       await ensureApprovedReportSnapshotHealed(supabase, reg.id);
       const pendingNames = entry.tests
         .filter((t) => t.status !== "approved" && t.status !== "dispatched")
@@ -796,6 +812,7 @@ const Dispatch = () => {
         registrationId: reg.id,
         testIds,
         pendingReportNames: pendingNames,
+        phone,
       });
       if (!queued.ok) {
         throw new Error(queued.error || "Failed to queue report WhatsApp");
@@ -809,7 +826,7 @@ const Dispatch = () => {
         description: `Sending to ${phone} via WhatsApp Console`,
       });
     } catch (err: any) {
-      toast.error(err.message || "Send reports failed");
+      toast.error(err.message || "Send to number failed");
     } finally {
       setActionKey(null);
     }
@@ -1258,26 +1275,29 @@ const Dispatch = () => {
                           <Eye className="h-4 w-4" /> View Report
                         </Button>
                       )}
-                      {(selectedEntry.dispatchedCount > 0 || selectedEntry.tests.some((t) => t.status === "dispatched")) && (
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          className="gap-1"
-                          disabled={actionKey === `${selectedEntry.registration.id}||send`}
-                          onClick={() => sendReportsAgain(selectedEntry)}
-                        >
-                          {actionKey === `${selectedEntry.registration.id}||send` ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <MessageSquare className="h-4 w-4" />
-                          )}
-                          Send Reports
-                        </Button>
-                      )}
                       {(selectedEntry.approvedCount > 0 || selectedEntry.dispatchedCount > 0) && (
-                        <Button size="sm" className="gap-1" disabled={actionKey === `${selectedEntry.registration.id}||dispatch`} onClick={() => markAsDispatched(selectedEntry)}>
-                          {actionKey === `${selectedEntry.registration.id}||dispatch` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Dispatch All
-                        </Button>
+                        <>
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            className="gap-1"
+                            disabled={
+                              actionKey === `${selectedEntry.registration.id}||sendTo` ||
+                              isPaymentBlocked(selectedEntry.registration)
+                            }
+                            onClick={() => openSendToDialog(selectedEntry)}
+                          >
+                            {actionKey === `${selectedEntry.registration.id}||sendTo` ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Phone className="h-4 w-4" />
+                            )}
+                            Send to
+                          </Button>
+                          <Button size="sm" className="gap-1" disabled={actionKey === `${selectedEntry.registration.id}||dispatch`} onClick={() => markAsDispatched(selectedEntry)}>
+                            {actionKey === `${selectedEntry.registration.id}||dispatch` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Dispatch All
+                          </Button>
+                        </>
                       )}
                         </>
                       )}
@@ -1426,6 +1446,77 @@ const Dispatch = () => {
             <Button className="w-full" disabled={selectedTestIds.size === 0 || isPaymentBlocked(reportSelectEntry?.registration)} onClick={handleGenerateReport}>
               <Eye className="h-4 w-4 mr-1" /> Generate Report ({selectedTestIds.size} test{selectedTestIds.size !== 1 ? "s" : ""})
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Send to alternate WhatsApp number */}
+      <Dialog
+        open={!!sendToEntry}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSendToEntry(null);
+            setSendToPhone("");
+          }
+        }}
+      >
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Send report to number</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            {sendToEntry && (
+              <p className="text-sm text-muted-foreground">
+                {patientDisplayName(sendToEntry.registration)}
+                {sendToEntry.registration.invoice_number
+                  ? ` · ${sendToEntry.registration.invoice_number}`
+                  : ""}
+              </p>
+            )}
+            <div className="space-y-1.5">
+              <label htmlFor="dispatch-send-to-phone" className="text-sm font-medium">
+                WhatsApp number
+              </label>
+              <Input
+                id="dispatch-send-to-phone"
+                inputMode="numeric"
+                autoFocus
+                placeholder="10-digit mobile"
+                maxLength={15}
+                value={sendToPhone}
+                onChange={(e) => setSendToPhone(e.target.value.replace(/[^\d]/g, "").slice(0, 15))}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && sendToEntry) {
+                    e.preventDefault();
+                    void sendReportsToNumber(sendToEntry, sendToPhone);
+                  }
+                }}
+              />
+              <p className="text-xs text-muted-foreground">
+                Enter any number the patient requests. Does not change dispatch status.
+              </p>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setSendToEntry(null);
+                  setSendToPhone("");
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                className="gap-1"
+                disabled={!sendToEntry || sendToPhone.replace(/\D/g, "").slice(-10).length !== 10}
+                onClick={() => sendToEntry && void sendReportsToNumber(sendToEntry, sendToPhone)}
+              >
+                <Phone className="h-4 w-4" />
+                Send
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

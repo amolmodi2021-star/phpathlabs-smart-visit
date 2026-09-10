@@ -2028,7 +2028,13 @@ const LimsReportView = () => {
       toast.message(`Building report PDF… (${pageCount} page${pageCount === 1 ? "" : "s"})`);
       try {
         const report = approvedReports[0];
-        const phone = report?.mobile_number || registration?.mobile_number || "";
+        // Dispatch "Send to" can override destination via ?waPhone=; else registration mobile.
+        const waPhoneOverride = String(searchParams.get("waPhone") || "").replace(/\D/g, "").slice(-10);
+        const phone =
+          (waPhoneOverride.length === 10 ? waPhoneOverride : "") ||
+          report?.mobile_number ||
+          registration?.mobile_number ||
+          "";
         if (!String(phone).replace(/\D/g, "").slice(-10)) {
           throw new Error("No mobile number available");
         }

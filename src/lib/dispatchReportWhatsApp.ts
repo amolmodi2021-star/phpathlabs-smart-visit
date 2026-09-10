@@ -96,6 +96,8 @@ export function queueApprovedReportWhatsApp(opts: {
   testIds: string[];
   /** Test names still not approved/dispatched — shown in caption. */
   pendingReportNames?: string[];
+  /** Optional 10-digit override (Send to…). Default: registration mobile in report viewer. */
+  phone?: string;
   timeoutMs?: number;
 }): Promise<{ ok: boolean; error?: string }> {
   const tests = opts.testIds.filter(Boolean).join(",");
@@ -106,8 +108,10 @@ export function queueApprovedReportWhatsApp(opts: {
   return new Promise((resolve) => {
     const pending = (opts.pendingReportNames || []).map((n) => String(n || "").trim()).filter(Boolean);
     const pendingQ = `&pendingReports=${encodeURIComponent(pending.join(", "))}`;
+    const phoneRaw = String(opts.phone || "").replace(/\D/g, "").slice(-10);
+    const phoneQ = phoneRaw.length === 10 ? `&waPhone=${encodeURIComponent(phoneRaw)}` : "";
     const url =
-      `/lims/report/${opts.registrationId}?tests=${encodeURIComponent(tests)}&queueWa=1${pendingQ}`;
+      `/lims/report/${opts.registrationId}?tests=${encodeURIComponent(tests)}&queueWa=1${pendingQ}${phoneQ}`;
     // Unique name: reusing "lims-report-wa-queue" left a hung blank tab that never reloaded.
     // Do not focus — keep staff on Dispatch while the background popup builds the PDF.
     const win = window.open(
