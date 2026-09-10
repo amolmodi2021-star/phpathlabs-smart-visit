@@ -4,8 +4,61 @@ import { patientDisplayName } from "@/lib/patientDisplayName";
 
 export const PENDING_SAMPLE_REMINDER_TEMPLATE_KEY = "pending_sample_collection_reminder";
 
+export const PENDING_SAMPLE_REMINDER_MAX_SENDS = 2;
+export const PENDING_SAMPLE_REMINDER_INTERVAL_DAYS = 3;
+const INTERVAL_MS = PENDING_SAMPLE_REMINDER_INTERVAL_DAYS * 24 * 60 * 60 * 1000;
+
 export const DEFAULT_PENDING_SAMPLE_REMINDER_TEMPLATE =
   "Dear {patient_name},\n\nSample collection is still pending for the following test(s) (Invoice {invoice_number}):\n\n{test_list}\n\nPlease visit the lab / arrange collection at the earliest.\n\nPH PathLabs\nLabLine: 6356 55 66 99";
+
+export type PendingSampleReminderReg = {
+  id: string;
+  patient_name?: string | null;
+  title?: string | null;
+  mobile_number?: string | null;
+  invoice_number?: string | null;
+  sample_collection_reminder_sent_count?: number | null;
+  sample_collection_reminder_last_sent_at?: string | null;
+};
+
+export type PendingSampleReminderEligibility = {
+  eligible: boolean;
+  sentCount: number;
+  reason?: string;
+  nextEligibleAt?: Date | null;
+};
+
+/** True when count < 2 and last send was at least 3 days ago (or never sent). */
+export function getPendingSampleReminderEligibility(
+  reg: Pick<PendingSampleReminderReg, "sample_collection_reminder_sent_count" | "sample_collection_reminder_last_sent_at">,
+  now: Date = new Date(),
+): PendingSampleReminderEligibility {
+  const sentCount = Number(reg.sample_collection_reminder_sent_count || 0);
+  if (sentCount >= PENDING_SAMPLE_REMINDER_MAX_SENDS) {
+    return {
+      eligible: false,
+      sentCount,
+      reason: "Maximum 2 reminders already sent",
+      nextEligibleAt: null,
+    };
+  }
+  const lastRaw = reg.sample_collection_reminder_last_sent_at;
+  if (lastRaw) {
+    const lastAt = new Date(lastRaw);
+    if (!Number.isNaN(lastAt.getTime())) {
+      const nextEligibleAt = new Date(lastAt.getTime() + INTERVAL_MS);
+      if (now.getTime() < nextEligibleAt.getTime()) {
+        return {
+          eligible: false,
+          sentCount,
+          reason: "Wait 3 days from the last reminder",
+          nextEligibleAt,
+        };
+      }
+    }
+  }
+  return { eligible: true, sentCount, nextEligibleAt: null };
+}
 
 /** WhatsApp bullet lines: "- Test name" (dash + space). */
 export function formatPendingTestList(testNames: string[]): string {
@@ -19,7 +72,7 @@ export function formatPendingTestList(testNames: string[]): string {
     seen.add(key);
     unique.push(name);
   }
-  return unique.map((n) => `- ${n}`).join("\n");
+  return unique.map((n) => "- " + n).join("\n");
 }
 
 export function buildPendingSampleReminderMessage(opts: {
@@ -55,15 +108,9 @@ export async function loadPendingSampleReminderTemplate(): Promise<string> {
 
 /** Queue plain-text WhatsApp via Console outbox (same path as invoice/report, no media). */
 export async function enqueuePendingSampleCollectionReminder(opts: {
-  registration: {
-    id: string;
-    patient_name?: string | null;
-    title?: string | null;
-    mobile_number?: string | null;
-    invoice_number?: string | null;
-    sample_collection_reminder_sent_count?: number | null;
-  };
+  registration: PendingSampleReminderReg;
   testNames: string[];
+  template?: string;
 }): Promise<{ ok: boolean; outboxId?: string; sentCount?: number; error?: string }> {
   const reg = opts.registration;
   const phone = String(reg.mobile_number || "").replace(/\D/g, "").slice(-10);
@@ -74,12 +121,13 @@ export async function enqueuePendingSampleCollectionReminder(opts: {
     return { ok: false, error: "No pending tests to remind" };
   }
 
-  const prevCount = Number(reg.sample_collection_reminder_sent_count || 0);
-  if (prevCount > 0) {
-    return { ok: false, error: "Reminder already sent for this registration" };
+  const eligibility = getPendingSampleReminderEligibility(reg);
+  if (!eligibility.eligible) {
+    return { ok: false, error: eligibility.reason || "Reminder not eligible" };
   }
 
-  const template = await loadPendingSampleReminderTemplate();
+  const prevCount = eligibility.sentCount;
+  const template = opts.template || (await loadPendingSampleReminderTemplate());
   const caption = buildPendingSampleReminderMessage({
     template,
     patientName: patientDisplayName(reg as any),
@@ -116,7 +164,6 @@ export async function enqueuePendingSampleCollectionReminder(opts: {
     .maybeSingle();
 
   if (updErr) {
-    // Message is already queued — surface soft warning via sentCount fallback
     return { ok: true, outboxId: res.id, sentCount: prevCount + 1, error: updErr.message };
   }
 
@@ -126,3 +173,4 @@ export async function enqueuePendingSampleCollectionReminder(opts: {
     sentCount: Number((updated as any)?.sample_collection_reminder_sent_count ?? prevCount + 1),
   };
 }
+
