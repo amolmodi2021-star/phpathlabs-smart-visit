@@ -162,7 +162,7 @@ async function mapPool<T, R>(
 };
 
 // Capture a page with retries (handles intermittent blank captures from html-to-image).
-// Always capture at full A4 CSS size; sharpness comes from pixelRatio (default 2).
+// Always capture at full A4 CSS size; sharpness comes from pixelRatio (default 3 for text).
 // If a caller passes smaller width/height, scale the clone (do not crop overflow:hidden).
 const A4_WIDTH_CSS_PX = Math.round((210 / 25.4) * 96); // ~794
 const A4_HEIGHT_CSS_PX = Math.round((297 / 25.4) * 96); // ~1123
@@ -175,10 +175,12 @@ const captureWithRetry = async (
   captureOpts?: PageCaptureOptions,
 ): Promise<string> => {
   const isSnipPage = !!el.querySelector("img[data-snip-image]");
-  const pixelRatio = captureOpts?.pixelRatio ?? (isSnipPage ? 1.25 : 2);
+  // Structured text pages: PR3 (~288 dpi) keeps fonts sharp when zooming WhatsApp PDFs.
+  // Snip photo pages stay lower to avoid huge/slow captures.
+  const pixelRatio = captureOpts?.pixelRatio ?? (isSnipPage ? 1.5 : 3);
   const attempts = captureOpts?.attempts ?? 2;
-  const captureMs = isSnipPage ? 12_000 : 16_000;
-  const jpegQuality = captureOpts?.quality ?? 0.9;
+  const captureMs = isSnipPage ? 12_000 : 20_000;
+  const jpegQuality = captureOpts?.quality ?? 0.95;
   // offsetWidth ignores CSS transform (previewScale), so this is the true A4 layout size.
   const layoutW = el.offsetWidth || A4_WIDTH_CSS_PX;
   const layoutH = el.offsetHeight || A4_HEIGHT_CSS_PX;
@@ -1795,12 +1797,13 @@ const LimsReportView = () => {
       const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
       const NATIVE_W = Math.round((PAGE_WIDTH_MM / 25.4) * 96);
       const NATIVE_H = Math.round((PAGE_HEIGHT_MM / 25.4) * 96);
-      // Full A4 @ PR2 / JPEG 0.9 — same visual quality. Capture ONE page at a time
-      // (parallel pages OOM low-spec PCs on large reports e.g. 100+ tests + trends).
+      // Full A4 @ PR3 / JPEG 0.95 — sharper fonts when zooming WhatsApp PDFs.
+      // Capture ONE page at a time (parallel pages OOM low-spec PCs).
+      // jsPDF "NONE" embeds the capture JPEG as-is (MEDIUM/FAST re-encode and blur text).
       const captureOpts: PageCaptureOptions = {
-        pixelRatio: 2,
+        pixelRatio: 3,
         attempts: 1,
-        quality: 0.9,
+        quality: 0.95,
         cacheBust: false,
         fastBlankCheck: true,
       };
@@ -1831,7 +1834,7 @@ const LimsReportView = () => {
             captureOpts,
           );
           if (i > 0) pdf.addPage();
-          pdf.addImage(jpegUrl, "JPEG", 0, 0, PAGE_WIDTH_MM, PAGE_HEIGHT_MM, undefined, "MEDIUM");
+          pdf.addImage(jpegUrl, "JPEG", 0, 0, PAGE_WIDTH_MM, PAGE_HEIGHT_MM, undefined, "NONE");
           jpegUrl = "";
           if (
             queueWaRequested &&
