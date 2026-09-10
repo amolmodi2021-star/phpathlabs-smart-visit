@@ -16,6 +16,8 @@ export interface EnqueueWhatsAppConsolePayload {
   media_url?: string | null;
   media_mime?: string | null;
   payload?: Record<string, unknown>;
+  /** Default 2. Use 1 for plain-text reminders to avoid false-failure retries. */
+  max_attempts?: number;
 }
 
 function phone10(raw: string): string {
@@ -31,6 +33,7 @@ export async function enqueueWhatsAppConsoleMessage(
     return { ok: false, error: "Valid 10-digit mobile required" };
   }
 
+  const maxAttempts = Math.min(Math.max(Number(input.max_attempts) || 2, 1), 5);
   const row = {
     kind: input.kind || "text",
     phone,
@@ -41,7 +44,7 @@ export async function enqueueWhatsAppConsoleMessage(
     media_url: input.media_url || null,
     media_mime: input.media_mime || (input.media_url ? "image/jpeg" : null),
     status: "pending",
-    max_attempts: 2,
+    max_attempts: maxAttempts,
     payload: input.payload || {},
   };
 

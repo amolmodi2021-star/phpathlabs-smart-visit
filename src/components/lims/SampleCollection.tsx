@@ -111,6 +111,7 @@ const SampleCollection = () => {
   // Cancel collection (revert to pending) dialog state
   const [cancelCollectDialog, setCancelCollectDialog] = useState<{ open: boolean; reg: any; tube: SampleTubeRow | null }>({ open: false, reg: null, tube: null });
   const [bulkReminderSending, setBulkReminderSending] = useState(false);
+  const bulkReminderSendingRef = useRef(false);
 
   // Print confirmation dialog state — shown before any print action
   const [printConfirmDialog, setPrintConfirmDialog] = useState<{ open: boolean; reg: any; tubes: SampleTubeRow[]; action: (() => void) | null }>({ open: false, reg: null, tubes: [], action: null });
@@ -860,13 +861,22 @@ const SampleCollection = () => {
 
   const sendBulkEligibleReminders = async (mode: CollectionTab, groups: GroupedRegistration[]) => {
     if (mode === "collected") return;
-    const eligible = groups.filter(({ registration: reg, tubes }) => isReminderEligibleGroup(reg, tubes, mode));
-    if (eligible.length === 0) {
-      toast.error("No eligible patients (need < 2 sends and 3+ days since last message)");
-      return;
-    }
+    // Sync lock — React state alone is too late to stop a double-click.
+    if (bulkReminderSendingRef.current) return;
+    bulkReminderSendingRef.current = true;
     setBulkReminderSending(true);
     try {
+      const seen = new Set<string>();
+      const eligible = groups.filter(({ registration: reg, tubes }) => {
+        if (!reg?.id || seen.has(reg.id)) return false;
+        if (!isReminderEligibleGroup(reg, tubes, mode)) return false;
+        seen.add(reg.id);
+        return true;
+      });
+      if (eligible.length === 0) {
+        toast.error("No eligible patients (need < 2 sends and 3+ days since last message)");
+        return;
+      }
       const template = await loadPendingSampleReminderTemplate();
       let ok = 0;
       let fail = 0;
@@ -887,15 +897,16 @@ const SampleCollection = () => {
       await qc.invalidateQueries({ queryKey: ["sample_collection_regs"] });
       const parts: string[] = [];
       if (ok > 0) parts.push(`queued ${ok}`);
-      if (stale > 0) parts.push(`${stale} already sent elsewhere (refresh)`);
+      if (stale > 0) parts.push(`${stale} already sent/queued (skipped)`);
       if (fail > 0) parts.push(`${fail} failed`);
       if (ok > 0 && fail === 0 && stale === 0) toast.success(`Queued WhatsApp for ${ok} patient(s)`);
       else if (ok > 0) toast.success(parts.join(" · "));
-      else if (stale > 0 && fail === 0) toast.error("No new reminders — already sent from another station. Refresh the list.");
+      else if (stale > 0 && fail === 0) toast.error("No new reminders — already queued/sent. Refresh the list.");
       else toast.error(parts.join(" · ") || "No reminders queued");
     } catch (e: any) {
       toast.error(e?.message || "Bulk WhatsApp failed");
     } finally {
+      bulkReminderSendingRef.current = false;
       setBulkReminderSending(false);
     }
   };

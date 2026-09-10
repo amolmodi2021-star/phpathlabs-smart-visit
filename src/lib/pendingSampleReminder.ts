@@ -148,10 +148,30 @@ async function releaseReminderSlot(claim: ClaimRow, registrationId: string): Pro
   } as any);
 }
 
+/** True if a reminder was already queued/sent for this registration inside the 3-day window. */
+async function hasRecentReminderOutbox(registrationId: string): Promise<boolean> {
+  const since = new Date(Date.now() - INTERVAL_MS).toISOString();
+  const { data, error } = await supabase
+    .from("whatsapp_console_outbox" as any)
+    .select("id, payload, status, created_at")
+    .eq("registration_id", registrationId)
+    .eq("kind", "text")
+    .in("status", ["pending", "claimed", "sent"])
+    .gte("created_at", since)
+    .order("created_at", { ascending: false })
+    .limit(20);
+  if (error) throw error;
+  return (data || []).some((row: any) => {
+    const source = row?.payload?.source;
+    return source === "pending_sample_collection_reminder";
+  });
+}
+
 /**
  * Queue plain-text WhatsApp via Console outbox.
  * Claims the send slot in Postgres (FOR UPDATE) BEFORE enqueue so a stale list
  * on another PC cannot double-send the same patient.
+ * Also refuses a second outbox row within the 3-day window (idempotent).
  */
 export async function enqueuePendingSampleCollectionReminder(opts: {
   registration: PendingSampleReminderReg;
@@ -178,6 +198,21 @@ export async function enqueuePendingSampleCollectionReminder(opts: {
     return { ok: false, error: "Valid 10-digit mobile required" };
   }
 
+  // Idempotency: never queue a second reminder WhatsApp for the same registration
+  // while one already exists in the 3-day window (covers double-click / retry).
+  try {
+    if (await hasRecentReminderOutbox(reg.id)) {
+      return {
+        ok: false,
+        skippedStale: true,
+        sentCount: Number(reg.sample_collection_reminder_sent_count || 0),
+        error: "Reminder already queued/sent for this patient",
+      };
+    }
+  } catch (e: any) {
+    return { ok: false, error: e?.message || "Failed to check existing reminders" };
+  }
+
   let claim: ClaimRow;
   try {
     claim = await claimReminderSlot(reg.id);
@@ -191,6 +226,22 @@ export async function enqueuePendingSampleCollectionReminder(opts: {
       sentCount: claim.sent_count,
       error: claim.reason || "Already sent from another station — refresh the list",
     };
+  }
+
+  // Re-check after claim in case another insert raced in.
+  try {
+    if (await hasRecentReminderOutbox(reg.id)) {
+      await releaseReminderSlot(claim, reg.id);
+      return {
+        ok: false,
+        skippedStale: true,
+        sentCount: claim.sent_count,
+        error: "Reminder already queued/sent for this patient",
+      };
+    }
+  } catch (e: any) {
+    await releaseReminderSlot(claim, reg.id);
+    return { ok: false, error: e?.message || "Failed to re-check existing reminders" };
   }
 
   const template = opts.template || (await loadPendingSampleReminderTemplate());
@@ -213,6 +264,7 @@ export async function enqueuePendingSampleCollectionReminder(opts: {
     registration_id: reg.id,
     invoice_number: reg.invoice_number || null,
     caption,
+    max_attempts: 1,
     payload: {
       source: "pending_sample_collection_reminder",
       test_count: opts.testNames.filter((n) => String(n || "").trim()).length,
@@ -230,4 +282,3 @@ export async function enqueuePendingSampleCollectionReminder(opts: {
     sentCount: claim.sent_count,
   };
 }
-
