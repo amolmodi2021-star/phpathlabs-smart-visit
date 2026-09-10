@@ -110,7 +110,6 @@ const SampleCollection = () => {
 
   // Cancel collection (revert to pending) dialog state
   const [cancelCollectDialog, setCancelCollectDialog] = useState<{ open: boolean; reg: any; tube: SampleTubeRow | null }>({ open: false, reg: null, tube: null });
-  const [reminderSendingId, setReminderSendingId] = useState<string | null>(null);
   const [bulkReminderSending, setBulkReminderSending] = useState(false);
 
   // Print confirmation dialog state — shown before any print action
@@ -852,42 +851,12 @@ const SampleCollection = () => {
     return getPendingSampleReminderEligibility(reg).eligible;
   };
 
-  const reminderButtonTitle = (reg: any) => {
-    const el = getPendingSampleReminderEligibility(reg);
-    if (el.eligible) return "Queue WhatsApp for pending sample collection";
-    if (el.sentCount >= PENDING_SAMPLE_REMINDER_MAX_SENDS) return "Maximum 2 reminders already sent";
-    if (el.nextEligibleAt) {
-      return `Next reminder after ${format(el.nextEligibleAt, "dd/MM/yy HH:mm")} (3-day gap)`;
-    }
-    return el.reason || "Reminder not eligible";
-  };
-
-  const sendPendingReminderMutation = useMutation({
-    mutationFn: async ({
-      reg,
-      tubes,
-      mode,
-    }: {
-      reg: any;
-      tubes: SampleTubeRow[];
-      mode: CollectionTab;
-    }) => {
-      setReminderSendingId(reg.id);
-      const testNames = pendingReminderTestNames(reg, tubes, mode);
-      const res = await enqueuePendingSampleCollectionReminder({
-        registration: reg,
-        testNames,
-      });
-      if (!res.ok) throw new Error(res.error || "Failed to queue reminder");
-      return { regId: reg.id as string, sentCount: res.sentCount ?? 1 };
-    },
-    onSuccess: async () => {
-      await qc.invalidateQueries({ queryKey: ["sample_collection_regs"] });
-      toast.success("Pending sample reminder queued for WhatsApp");
-    },
-    onError: (e: Error) => toast.error(e.message),
-    onSettled: () => setReminderSendingId(null),
-  });
+  const eligibleReminderCount = useMemo(() => {
+    if (activeTab === "collected") return 0;
+    return activeGroups.filter(({ registration: reg, tubes }) =>
+      isReminderEligibleGroup(reg, tubes, activeTab),
+    ).length;
+  }, [activeTab, activeGroups]);
 
   const sendBulkEligibleReminders = async (mode: CollectionTab, groups: GroupedRegistration[]) => {
     if (mode === "collected") return;
@@ -1241,33 +1210,7 @@ const SampleCollection = () => {
       </p>
     );
 
-    const eligibleCount =
-      mode === "collected"
-        ? 0
-        : groups.filter(({ registration: reg, tubes }) => isReminderEligibleGroup(reg, tubes, mode)).length;
-
     return (
-      <div className="space-y-3">
-        {(mode === "pending" || mode === "deferred") && (
-          <div className="flex items-center justify-between gap-2 flex-wrap">
-            <p className="text-xs text-muted-foreground">
-              WhatsApp: max {PENDING_SAMPLE_REMINDER_MAX_SENDS} sends · 3-day gap between sends
-            </p>
-            <Button
-              size="sm"
-              variant="outline"
-              className="gap-1"
-              disabled={eligibleCount === 0 || bulkReminderSending || sendPendingReminderMutation.isPending}
-              onClick={() => void sendBulkEligibleReminders(mode, groups)}
-              title="Queue WhatsApp for all eligible patients on this list (sent < 2 and not sent in last 3 days)"
-            >
-              {bulkReminderSending
-                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                : <MessageCircle className="h-3.5 w-3.5" />}
-              Select eligible & Send WhatsApp ({eligibleCount})
-            </Button>
-          </div>
-        )}
       <Table>
         <TableHeader>
           <TableRow>
@@ -1340,45 +1283,18 @@ const SampleCollection = () => {
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-2 flex-wrap">
-                      {(mode === "pending" || mode === "deferred") && (() => {
-                        const el = getPendingSampleReminderEligibility(reg);
-                        const eligible = isReminderEligibleGroup(reg, tubes, mode);
-                        return (
-                          <>
-                            <span
-                              className="text-xs text-muted-foreground whitespace-nowrap"
-                              title={
-                                reg.sample_collection_reminder_last_sent_at
-                                  ? `Last sent ${format(new Date(reg.sample_collection_reminder_last_sent_at), "dd/MM/yy HH:mm")}`
-                                  : undefined
-                              }
-                            >
-                              Sent {el.sentCount}/{PENDING_SAMPLE_REMINDER_MAX_SENDS}
-                            </span>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="gap-1"
-                              disabled={
-                                !eligible
-                                || reminderSendingId === reg.id
-                                || sendPendingReminderMutation.isPending
-                                || bulkReminderSending
-                              }
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                sendPendingReminderMutation.mutate({ reg, tubes, mode });
-                              }}
-                              title={reminderButtonTitle(reg)}
-                            >
-                              {reminderSendingId === reg.id
-                                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                : <MessageCircle className="h-3.5 w-3.5" />}
-                              WA
-                            </Button>
-                          </>
-                        );
-                      })()}
+                      {(mode === "pending" || mode === "deferred") && (
+                        <span
+                          className="text-xs text-muted-foreground whitespace-nowrap"
+                          title={
+                            reg.sample_collection_reminder_last_sent_at
+                              ? `Last sent ${format(new Date(reg.sample_collection_reminder_last_sent_at), "dd/MM/yy HH:mm")}`
+                              : "No reminder sent yet"
+                          }
+                        >
+                          Sent {Number(reg.sample_collection_reminder_sent_count || 0)}/{PENDING_SAMPLE_REMINDER_MAX_SENDS}
+                        </span>
+                      )}
                       {mode === "pending" ? (
                         <Button size="sm" variant="default" className="gap-1"
                           onClick={(e) => { e.stopPropagation(); toggleAllPendingTubes(reg.id, tubes, true); setExpandedRow(reg.id); }}>
@@ -1414,7 +1330,6 @@ const SampleCollection = () => {
           })}
         </TableBody>
       </Table>
-      </div>
     );
   };
 
@@ -1442,6 +1357,21 @@ const SampleCollection = () => {
           {appliedSearch && (
             <Button variant="ghost" size="sm" onClick={clearSearch}>
               <X className="h-4 w-4 mr-1" />Clear
+            </Button>
+          )}
+          {(activeTab === "pending" || activeTab === "deferred") && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1 whitespace-nowrap"
+              disabled={eligibleReminderCount === 0 || bulkReminderSending}
+              onClick={() => void sendBulkEligibleReminders(activeTab, activeGroups)}
+              title="Queue WhatsApp for all eligible patients on this list (sent < 2 and not sent in last 3 days)"
+            >
+              {bulkReminderSending
+                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                : <MessageCircle className="h-3.5 w-3.5" />}
+              WhatsApp ({eligibleReminderCount})
             </Button>
           )}
         </div>
