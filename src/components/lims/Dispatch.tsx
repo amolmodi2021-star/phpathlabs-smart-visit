@@ -740,6 +740,41 @@ const Dispatch = () => {
       if (!stillPending) {
         await supabase.from("patient_registrations").update({ status: "dispatched" } as any).eq("id", reg.id);
       }
+
+      // Flip Approved → Dispatched in the open detail panel immediately (before refetch).
+      const dispatchedTestIds = new Set(testIds);
+      qc.setQueryData(["dispatch_detail_results", reg.id], (old: any[] | undefined) => {
+        if (!Array.isArray(old)) return old;
+        return old.map((row) =>
+          dispatchedTestIds.has(row.test_id) && (row.status === "approved" || row.status === "dispatched")
+            ? { ...row, status: "dispatched", dispatched_at: now, dispatched_by: dispatcher }
+            : row,
+        );
+      });
+      qc.setQueryData(["dispatch_detail_snips", reg.id], (old: any[] | undefined) => {
+        if (!Array.isArray(old)) return old;
+        return old.map((row) =>
+          dispatchedTestIds.has(row.test_id) &&
+          (row.outsource_status === "approved" || row.outsource_status === "dispatched")
+            ? {
+                ...row,
+                outsource_status: "dispatched",
+                dispatched_at: now,
+                dispatched_by: dispatcher,
+              }
+            : row,
+        );
+      });
+      if (!stillPending) {
+        qc.setQueryData(
+          ["dispatch_regs", listMode, pageKey, effectivePageSize, safePage],
+          (old: any[] | undefined) => {
+            if (!Array.isArray(old)) return old;
+            return old.map((r) => (r.id === reg.id ? { ...r, status: "dispatched" } : r));
+          },
+        );
+      }
+
       await propagateRegistrationChange(qc, reg.id, ["dispatch", "doctor_approval"]);
       const failed = failedWaByRegId.get(reg.id) || [];
       if (failed.length) {

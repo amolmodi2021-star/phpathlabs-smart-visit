@@ -82,6 +82,11 @@ export const MODULE_KEYS: Record<LimsModule, string[]> = {
     "dispatch_all_tubes",
     "dispatch_held_reports",
     "dispatch_failed_wa_outbox",
+    // Selected-patient detail panel (badges / audit) — must refresh after Dispatch All
+    "dispatch_detail_results",
+    "dispatch_detail_tubes",
+    "dispatch_detail_snips",
+    "dispatch_detail_held",
   ],
   sample_collection: [
     "sample_collection_regs",
