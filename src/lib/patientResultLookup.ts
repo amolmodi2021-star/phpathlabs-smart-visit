@@ -452,7 +452,7 @@ export async function healApprovedReportSnapshotFromLive(
 /**
  * Load approved_reports for a registration and merge any approved/dispatched
  * patient_results rows that are missing from the snapshot. Used by Dispatch
- * All / Send Reports before PDF generation.
+ * All / Send to before PDF generation.
  */
 export async function ensureApprovedReportSnapshotHealed(
   supabase: { from: (table: string) => any; rpc?: (fn: string, args: Record<string, any>) => any },
