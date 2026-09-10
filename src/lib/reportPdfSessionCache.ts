@@ -22,8 +22,8 @@ export function reportPdfCacheKey(registrationId: string, testIds: string[] | st
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean);
-  // v4: PR3 / JPEG 0.95 / jsPDF compression NONE (sharper text for WhatsApp zoom).
-  return `v4|${String(registrationId || "").trim()}|${[...ids].sort().join(",")}`;
+  // v5: View Report JPEG capture + invisible selectable text layer.
+  return `v5|${String(registrationId || "").trim()}|${[...ids].sort().join(",")}`;
 }
 
 function openDb(): Promise<IDBDatabase> {
