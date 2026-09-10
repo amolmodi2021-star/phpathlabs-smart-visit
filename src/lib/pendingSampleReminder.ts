@@ -106,27 +106,93 @@ export async function loadPendingSampleReminderTemplate(): Promise<string> {
   return v || DEFAULT_PENDING_SAMPLE_REMINDER_TEMPLATE;
 }
 
-/** Queue plain-text WhatsApp via Console outbox (same path as invoice/report, no media). */
+type ClaimRow = {
+  claimed: boolean;
+  sent_count: number;
+  last_sent_at: string | null;
+  previous_last_sent_at: string | null;
+  reason: string | null;
+};
+
+async function claimReminderSlot(registrationId: string): Promise<ClaimRow> {
+  const { data, error } = await supabase.rpc("claim_sample_collection_reminder" as any, {
+    p_registration_id: registrationId,
+  } as any);
+  if (error) throw error;
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) {
+    return {
+      claimed: false,
+      sent_count: 0,
+      last_sent_at: null,
+      previous_last_sent_at: null,
+      reason: "Could not claim reminder slot",
+    };
+  }
+  return {
+    claimed: !!(row as any).claimed,
+    sent_count: Number((row as any).sent_count || 0),
+    last_sent_at: (row as any).last_sent_at ?? null,
+    previous_last_sent_at: (row as any).previous_last_sent_at ?? null,
+    reason: (row as any).reason ?? null,
+  };
+}
+
+async function releaseReminderSlot(claim: ClaimRow, registrationId: string): Promise<void> {
+  if (!claim.claimed || !claim.last_sent_at) return;
+  await supabase.rpc("release_sample_collection_reminder_claim" as any, {
+    p_registration_id: registrationId,
+    p_expected_count: claim.sent_count,
+    p_claimed_last_sent_at: claim.last_sent_at,
+    p_previous_last_sent_at: claim.previous_last_sent_at,
+  } as any);
+}
+
+/**
+ * Queue plain-text WhatsApp via Console outbox.
+ * Claims the send slot in Postgres (FOR UPDATE) BEFORE enqueue so a stale list
+ * on another PC cannot double-send the same patient.
+ */
 export async function enqueuePendingSampleCollectionReminder(opts: {
   registration: PendingSampleReminderReg;
   testNames: string[];
   template?: string;
-}): Promise<{ ok: boolean; outboxId?: string; sentCount?: number; error?: string }> {
-  const reg = opts.registration;
-  const phone = String(reg.mobile_number || "").replace(/\D/g, "").slice(-10);
-  if (phone.length !== 10) {
-    return { ok: false, error: "Valid 10-digit mobile required" };
-  }
+}): Promise<{ ok: boolean; outboxId?: string; sentCount?: number; error?: string; skippedStale?: boolean }> {
+  const regIn = opts.registration;
   if (!opts.testNames.some((n) => String(n || "").trim())) {
     return { ok: false, error: "No pending tests to remind" };
   }
 
-  const eligibility = getPendingSampleReminderEligibility(reg);
-  if (!eligibility.eligible) {
-    return { ok: false, error: eligibility.reason || "Reminder not eligible" };
+  // Always re-read from DB — never trust a stale UI row from another PC.
+  const { data: freshRow, error: freshErr } = await supabase
+    .from("patient_registrations")
+    .select("id, patient_name, title, mobile_number, invoice_number, sample_collection_reminder_sent_count, sample_collection_reminder_last_sent_at")
+    .eq("id", regIn.id)
+    .maybeSingle();
+  if (freshErr) return { ok: false, error: freshErr.message };
+  if (!freshRow) return { ok: false, error: "Registration not found" };
+
+  const reg = { ...regIn, ...(freshRow as any) } as PendingSampleReminderReg;
+  const phone = String(reg.mobile_number || "").replace(/\D/g, "").slice(-10);
+  if (phone.length !== 10) {
+    return { ok: false, error: "Valid 10-digit mobile required" };
   }
 
-  const prevCount = eligibility.sentCount;
+  let claim: ClaimRow;
+  try {
+    claim = await claimReminderSlot(reg.id);
+  } catch (e: any) {
+    return { ok: false, error: e?.message || "Failed to claim reminder slot" };
+  }
+  if (!claim.claimed) {
+    return {
+      ok: false,
+      skippedStale: true,
+      sentCount: claim.sent_count,
+      error: claim.reason || "Already sent from another station — refresh the list",
+    };
+  }
+
   const template = opts.template || (await loadPendingSampleReminderTemplate());
   const caption = buildPendingSampleReminderMessage({
     template,
@@ -135,7 +201,10 @@ export async function enqueuePendingSampleCollectionReminder(opts: {
     mobile: phone,
     testNames: opts.testNames,
   });
-  if (!caption) return { ok: false, error: "Message body is empty" };
+  if (!caption) {
+    await releaseReminderSlot(claim, reg.id);
+    return { ok: false, error: "Message body is empty" };
+  }
 
   const res = await enqueueWhatsAppConsoleMessage({
     kind: "text",
@@ -149,28 +218,16 @@ export async function enqueuePendingSampleCollectionReminder(opts: {
       test_count: opts.testNames.filter((n) => String(n || "").trim()).length,
     },
   });
-  if (!res.ok) return { ok: false, error: res.error || "Failed to queue WhatsApp" };
 
-  const now = new Date().toISOString();
-  const { data: updated, error: updErr } = await supabase
-    .from("patient_registrations")
-    .update({
-      sample_collection_reminder_sent_count: prevCount + 1,
-      sample_collection_reminder_last_sent_at: now,
-    } as any)
-    .eq("id", reg.id)
-    .eq("sample_collection_reminder_sent_count", prevCount)
-    .select("sample_collection_reminder_sent_count")
-    .maybeSingle();
-
-  if (updErr) {
-    return { ok: true, outboxId: res.id, sentCount: prevCount + 1, error: updErr.message };
+  if (!res.ok) {
+    await releaseReminderSlot(claim, reg.id);
+    return { ok: false, error: res.error || "Failed to queue WhatsApp" };
   }
 
   return {
     ok: true,
     outboxId: res.id,
-    sentCount: Number((updated as any)?.sample_collection_reminder_sent_count ?? prevCount + 1),
+    sentCount: claim.sent_count,
   };
 }
 

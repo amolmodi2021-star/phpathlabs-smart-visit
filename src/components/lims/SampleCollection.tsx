@@ -870,7 +870,9 @@ const SampleCollection = () => {
       const template = await loadPendingSampleReminderTemplate();
       let ok = 0;
       let fail = 0;
+      let stale = 0;
       // Sequential enqueue keeps outbox FIFO / per-phone order stable.
+      // Each send re-reads DB + atomic claim so another PC cannot double-send.
       for (const { registration: reg, tubes } of eligible) {
         const testNames = pendingReminderTestNames(reg, tubes, mode);
         const res = await enqueuePendingSampleCollectionReminder({
@@ -879,12 +881,18 @@ const SampleCollection = () => {
           template,
         });
         if (res.ok) ok += 1;
+        else if (res.skippedStale) stale += 1;
         else fail += 1;
       }
       await qc.invalidateQueries({ queryKey: ["sample_collection_regs"] });
-      if (ok > 0 && fail === 0) toast.success(`Queued WhatsApp for ${ok} patient(s)`);
-      else if (ok > 0) toast.success(`Queued ${ok}; ${fail} skipped/failed`);
-      else toast.error("No reminders queued");
+      const parts: string[] = [];
+      if (ok > 0) parts.push(`queued ${ok}`);
+      if (stale > 0) parts.push(`${stale} already sent elsewhere (refresh)`);
+      if (fail > 0) parts.push(`${fail} failed`);
+      if (ok > 0 && fail === 0 && stale === 0) toast.success(`Queued WhatsApp for ${ok} patient(s)`);
+      else if (ok > 0) toast.success(parts.join(" · "));
+      else if (stale > 0 && fail === 0) toast.error("No new reminders — already sent from another station. Refresh the list.");
+      else toast.error(parts.join(" · ") || "No reminders queued");
     } catch (e: any) {
       toast.error(e?.message || "Bulk WhatsApp failed");
     } finally {
