@@ -1,5 +1,5 @@
 import RefreshButton from "@/components/lims/RefreshButton";
-import { useState, useRef, useCallback, useMemo } from "react";
+import { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLimsTabActive } from "@/lib/limsTabActive";
 import { supabase } from "@/integrations/supabase/client";
@@ -10,6 +10,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Search, Printer, ChevronDown, ChevronUp, CheckCircle2, RotateCcw, Undo2, Clock, Loader2, X } from "lucide-react";
@@ -41,7 +43,17 @@ const TUBE_DETAIL_SELECT =
 
 /** List headers — no tests/payments JSON (egress). */
 const REG_LIST_SELECT =
-  "id, invoice_number, patient_name, title, mobile_number, umr_number, dob, age_text, gender, visit_type, pickup_point_id, is_stat, status, created_at, bill_cancelled, cancelled_tests, repeat_tests";
+  "id, invoice_number, patient_name, title, mobile_number, umr_number, dob, age_text, gender, visit_type, pickup_point_id, home_visit_id, completing_phlebo_name, is_stat, status, created_at, bill_cancelled, cancelled_tests, repeat_tests";
+
+type VisitTypeFilter = "ALL" | "home_visit" | "lab_visit" | "pickup_point";
+
+type OpenRegMeta = {
+  id: string;
+  visit_type: string | null;
+  completing_phlebo_name: string | null;
+  home_visit_id: string | null;
+  phlebo_name: string;
+};
 
 const TUBE_COLOR_MAP: Record<string, string> = {
   red: "#e53e3e", lavender: "#b794f4", purple: "#9f7aea", yellow: "#ecc94b",
@@ -82,6 +94,8 @@ const SampleCollection = () => {
   const [visibleLimit, setVisibleLimit] = useState(LIST_BATCH);
   /** Off by default (14-day window). On = all pending/collected tubes still in pipeline. */
   const [showOlderPending, setShowOlderPending] = useState(false);
+  const [visitTypeFilter, setVisitTypeFilter] = useState<VisitTypeFilter>("ALL");
+  const [phleboFilter, setPhleboFilter] = useState<string>("ALL");
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [selectedTubes, setSelectedTubes] = useState<Record<string, Set<string>>>({});
   /** Per-tube: which leaf tests to collect on this visit (missing = all tests on that tube) */
@@ -155,27 +169,95 @@ const SampleCollection = () => {
     [tubeIndex]
   );
 
-  const { data: openRegIds, isLoading: loadingOpenRegs } = useQuery({
+  const { data: openRegMetaList = [], isLoading: loadingOpenRegs } = useQuery({
     queryKey: ["sample_collection_open_regs", shortIdsKey(indexRegIds, "sc-open")],
     enabled: tabActive && indexRegIds.length > 0,
-    queryFn: async () => {
-      const open = new Set<string>();
+    queryFn: async (): Promise<OpenRegMeta[]> => {
+      const rows: Array<{
+        id: string;
+        visit_type: string | null;
+        completing_phlebo_name: string | null;
+        home_visit_id: string | null;
+      }> = [];
       const chunkSize = 100;
       for (let i = 0; i < indexRegIds.length; i += chunkSize) {
         const chunk = indexRegIds.slice(i, i + chunkSize);
         const { data, error } = await supabase
           .from("patient_registrations")
-          .select("id")
+          .select("id, visit_type, completing_phlebo_name, home_visit_id")
           .in("id", chunk)
           .eq("bill_cancelled", false)
           .neq("status", "cancelled");
         if (error) throw error;
-        (data || []).forEach((r: { id: string }) => open.add(r.id));
+        (data || []).forEach((r: any) => rows.push(r));
       }
-      return open;
+
+      const visitIds = [...new Set(rows.map((r) => r.home_visit_id).filter(Boolean))] as string[];
+      const phleboByVisitId: Record<string, string> = {};
+      if (visitIds.length > 0) {
+        for (let i = 0; i < visitIds.length; i += chunkSize) {
+          const chunk = visitIds.slice(i, i + chunkSize);
+          const { data: visits, error: vErr } = await supabase
+            .from("home_visits")
+            .select("id, phlebotomist_id")
+            .in("id", chunk);
+          if (vErr) throw vErr;
+          const phleboIds = [...new Set((visits || []).map((v: any) => v.phlebotomist_id).filter(Boolean))];
+          const nameById: Record<string, string> = {};
+          if (phleboIds.length > 0) {
+            const { data: phlebos, error: pErr } = await supabase
+              .from("phlebotomists")
+              .select("id, name")
+              .in("id", phleboIds);
+            if (pErr) throw pErr;
+            (phlebos || []).forEach((p: any) => {
+              nameById[p.id] = p.name;
+            });
+          }
+          (visits || []).forEach((v: any) => {
+            const name = nameById[v.phlebotomist_id] || "";
+            if (name) phleboByVisitId[v.id] = name;
+          });
+        }
+      }
+
+      return rows.map((r) => {
+        const fromReg = String(r.completing_phlebo_name || "").trim();
+        const fromVisit = r.home_visit_id ? String(phleboByVisitId[r.home_visit_id] || "").trim() : "";
+        return {
+          id: r.id,
+          visit_type: r.visit_type,
+          completing_phlebo_name: r.completing_phlebo_name,
+          home_visit_id: r.home_visit_id,
+          phlebo_name: fromReg || fromVisit || "",
+        };
+      });
     },
     staleTime: 120_000,
   });
+
+  const openRegIds = useMemo(() => new Set(openRegMetaList.map((r) => r.id)), [openRegMetaList]);
+  const openRegMetaById = useMemo(() => {
+    const m = new Map<string, OpenRegMeta>();
+    openRegMetaList.forEach((r) => m.set(r.id, r));
+    return m;
+  }, [openRegMetaList]);
+
+  const matchesVisitFilters = useCallback(
+    (regId: string) => {
+      const meta = openRegMetaById.get(regId);
+      if (!meta) return false;
+      const vt = String(meta.visit_type || "");
+      if (visitTypeFilter === "home_visit" && vt !== "home_visit") return false;
+      if (visitTypeFilter === "lab_visit" && vt !== "lab_visit") return false;
+      if (visitTypeFilter === "pickup_point" && vt !== "pickup_point") return false;
+      if (visitTypeFilter === "home_visit" && phleboFilter !== "ALL") {
+        if (meta.phlebo_name !== phleboFilter) return false;
+      }
+      return true;
+    },
+    [openRegMetaById, visitTypeFilter, phleboFilter],
+  );
 
   const idsByStatus = useMemo(() => {
     const pending: string[] = [];
@@ -185,13 +267,16 @@ const SampleCollection = () => {
     const seenD = new Set<string>();
     const seenC = new Set<string>();
     // Wait for cancelled-bill filter before counting — avoids Pending N with fewer rows.
-    if (indexRegIds.length > 0 && !openRegIds) {
+    if (indexRegIds.length > 0 && loadingOpenRegs) {
       return { pending, deferred, collected };
     }
     const allow = openRegIds;
     // tubeIndex is newest-first — preserve first-seen order
     for (const t of tubeIndex) {
-      if (allow && !allow.has(t.registration_id)) continue;
+      if (indexRegIds.length > 0) {
+        if (!allow.has(t.registration_id)) continue;
+        if (!matchesVisitFilters(t.registration_id)) continue;
+      }
       if (t.status === "pending" && !seenP.has(t.registration_id)) {
         seenP.add(t.registration_id);
         pending.push(t.registration_id);
@@ -204,7 +289,39 @@ const SampleCollection = () => {
       }
     }
     return { pending, deferred, collected };
-  }, [tubeIndex, openRegIds, indexRegIds.length]);
+  }, [tubeIndex, openRegIds, indexRegIds.length, loadingOpenRegs, matchesVisitFilters]);
+
+  /** Phlebo names with home-visit samples in the current tab (ignores selected phlebo so dropdown stays complete). */
+  const pendingHomePhleboNames = useMemo(() => {
+    if (visitTypeFilter !== "home_visit") return [] as string[];
+    const names = new Set<string>();
+    const statusWanted =
+      activeTab === "pending" ? "pending"
+      : activeTab === "deferred" ? "deferred"
+      : "collected";
+    const seen = new Set<string>();
+    for (const t of tubeIndex) {
+      if (t.status !== statusWanted) continue;
+      if (indexRegIds.length > 0 && !openRegIds.has(t.registration_id)) continue;
+      if (seen.has(t.registration_id)) continue;
+      seen.add(t.registration_id);
+      const meta = openRegMetaById.get(t.registration_id);
+      if (!meta || meta.visit_type !== "home_visit") continue;
+      if (meta.phlebo_name) names.add(meta.phlebo_name);
+    }
+    return [...names].sort((a, b) => a.localeCompare(b));
+  }, [tubeIndex, openRegIds, openRegMetaById, activeTab, visitTypeFilter, indexRegIds.length]);
+
+  useEffect(() => {
+    if (
+      phleboFilter !== "ALL"
+      && visitTypeFilter === "home_visit"
+      && pendingHomePhleboNames.length > 0
+      && !pendingHomePhleboNames.includes(phleboFilter)
+    ) {
+      setPhleboFilter("ALL");
+    }
+  }, [phleboFilter, visitTypeFilter, pendingHomePhleboNames]);
 
   const activeCandidateIds = idsByStatus[activeTab];
 
@@ -446,7 +563,7 @@ const SampleCollection = () => {
 
   const isLoading =
     loadingIndex
-    || (indexRegIds.length > 0 && (loadingOpenRegs || openRegIds === undefined))
+    || (indexRegIds.length > 0 && loadingOpenRegs)
     || (!!appliedSearch && searchingIds && searchMatchedIds === undefined)
     || (pageIds.length > 0 && (loadingRegs || loadingTubes));
   const isFetching = searchingIds || fetchingRegs || fetchingTubes;
@@ -1167,6 +1284,53 @@ const SampleCollection = () => {
             </Button>
           )}
         </div>
+        <div className="flex items-end gap-2 flex-wrap">
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground">Visit type</Label>
+            <Select
+              value={visitTypeFilter}
+              onValueChange={(v) => {
+                setVisitTypeFilter(v as VisitTypeFilter);
+                setPhleboFilter("ALL");
+                setVisibleLimit(LIST_BATCH);
+                setExpandedRow(null);
+              }}
+            >
+              <SelectTrigger className="w-[150px] h-9">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">All visits</SelectItem>
+                <SelectItem value="home_visit">Home Visit</SelectItem>
+                <SelectItem value="lab_visit">Lab Visit</SelectItem>
+                <SelectItem value="pickup_point">Pickup Point</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {visitTypeFilter === "home_visit" && (
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Phlebo</Label>
+              <Select
+                value={phleboFilter}
+                onValueChange={(v) => {
+                  setPhleboFilter(v);
+                  setVisibleLimit(LIST_BATCH);
+                  setExpandedRow(null);
+                }}
+              >
+                <SelectTrigger className="w-[180px] h-9">
+                  <SelectValue placeholder="All phlebos" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">All phlebos</SelectItem>
+                  {pendingHomePhleboNames.map((name) => (
+                    <SelectItem key={name} value={name}>{name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+        </div>
         <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none whitespace-nowrap">
           <Checkbox
             checked={showOlderPending}
@@ -1185,6 +1349,7 @@ const SampleCollection = () => {
             "sample_collection_regs",
             "sample_collection_page_tubes",
             "sample_collection_search",
+            "sample_collection_open_regs",
           ]}
           className="ml-auto"
         />
