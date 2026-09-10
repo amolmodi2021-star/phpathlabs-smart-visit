@@ -22,8 +22,8 @@ export function reportPdfCacheKey(registrationId: string, testIds: string[] | st
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean);
-  // v5: View Report JPEG capture + invisible selectable text layer.
-  return `v5|${String(registrationId || "").trim()}|${[...ids].sort().join(",")}`;
+  // v6: View Report JPEG capture only (no selectable text layer).
+  return `v6|${String(registrationId || "").trim()}|${[...ids].sort().join(",")}`;
 }
 
 function openDb(): Promise<IDBDatabase> {

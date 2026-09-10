@@ -9,11 +9,6 @@ import { Loader2, Printer, ArrowLeft, Download, Share2 } from "lucide-react";
 import { toPng, toJpeg } from "html-to-image";
 import { getCachedReportFontEmbedCSS, reportCaptureStyle, REPORT_CAPTURE_FONT } from "@/lib/htmlCaptureFonts";
 import jsPDF from "jspdf";
-import {
-  assembleReportPdfWithSelectableText,
-  collectPageTextRuns,
-  type ReportPdfTextRun,
-} from "@/lib/reportPdfSelectable";
 import * as pdfjsLib from "pdfjs-dist";
 import LimsReportHeader from "@/components/report/LimsReportHeader";
 import ReportSignatureBlock from "@/components/report/ReportSignatureBlock";
@@ -1801,8 +1796,9 @@ const LimsReportView = () => {
 
       const NATIVE_W = Math.round((PAGE_WIDTH_MM / 25.4) * 96);
       const NATIVE_H = Math.round((PAGE_HEIGHT_MM / 25.4) * 96);
-      // Capture the on-screen View Report page (letterhead + results) at high resolution.
-      // PDF assembles JPEG pages + invisible selectable text (fallback: image-only).
+      // Capture the on-screen View Report page (letterhead + results) at fixed PR3.
+      // pixelRatio is hardcoded (not devicePixelRatio), so old low-res monitors do not
+      // lower capture resolution — canvas is always ~A4 CSS × 3.
       const captureOpts: PageCaptureOptions = {
         pixelRatio: 3,
         attempts: 1,
@@ -1811,7 +1807,7 @@ const LimsReportView = () => {
         fastBlankCheck: true,
       };
 
-      const pdfPages: Array<{ jpegDataUrl: string; textRuns: ReportPdfTextRun[] }> = [];
+      const jpegPages: string[] = [];
       const wrappers = pageElements.map((el) => el.parentElement as HTMLElement | null);
       const prevVisibility = wrappers.map((w) => (w ? w.style.visibility : ""));
       const prevContentVis = wrappers.map((w) => (w ? (w.style as any).contentVisibility || "" : ""));
@@ -1837,15 +1833,7 @@ const LimsReportView = () => {
             "jpeg",
             captureOpts,
           );
-          // Collect selectable text from the same visible DOM as View Report (before hide).
-          let textRuns: ReportPdfTextRun[] = [];
-          try {
-            textRuns = collectPageTextRuns(pageElements[i]);
-          } catch (e) {
-            console.warn("report PDF text layer collect failed", e);
-            textRuns = [];
-          }
-          pdfPages.push({ jpegDataUrl: jpegUrl, textRuns });
+          jpegPages.push(jpegUrl);
           jpegUrl = "";
           if (
             queueWaRequested &&
@@ -1868,20 +1856,12 @@ const LimsReportView = () => {
       const invoiceNum = approvedReports[0]?.invoice_number || "";
       const filename = [patientName, invoiceNum].filter(Boolean).join(" ").replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim() + ".pdf";
 
-      // Prefer hybrid: exact View Report JPEG pages + invisible selectable text.
-      // Fall back to legacy jsPDF image-only if text assembly fails (never block WhatsApp/download).
-      let blob: Blob;
-      try {
-        blob = await assembleReportPdfWithSelectableText(pdfPages);
-      } catch (e) {
-        console.warn("selectable report PDF assemble failed; using image-only PDF", e);
-        const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-        for (let i = 0; i < pdfPages.length; i++) {
-          if (i > 0) pdf.addPage();
-          pdf.addImage(pdfPages[i].jpegDataUrl, "JPEG", 0, 0, PAGE_WIDTH_MM, PAGE_HEIGHT_MM, undefined, "NONE");
-        }
-        blob = pdf.output("blob") as Blob;
+      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      for (let i = 0; i < jpegPages.length; i++) {
+        if (i > 0) pdf.addPage();
+        pdf.addImage(jpegPages[i], "JPEG", 0, 0, PAGE_WIDTH_MM, PAGE_HEIGHT_MM, undefined, "NONE");
       }
+      const blob = pdf.output("blob") as Blob;
 
       cachedPdfRef.current = { blob, filename };
       if (cacheKey) await setCachedReportPdf(cacheKey, blob, filename);
