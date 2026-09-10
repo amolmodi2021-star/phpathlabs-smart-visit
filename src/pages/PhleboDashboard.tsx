@@ -160,8 +160,8 @@ const PhleboDashboard = () => {
 
     phlebotomists.forEach((p: any) => ensure(p.id));
 
-    // One row per registration (all family members on a visit), attributed to visit phlebo.
-    // Keep earned / hold / deducted in separate buckets — net = earned − hold − deducted once.
+    // Keep earned / hold / deducted in separate buckets.
+    // Payable = earned only. Hold/deducted are audit lists (never subtracted from earned).
     registrations.forEach((reg: any) => {
       const visit = visitMap[reg.home_visit_id];
       if (!visit?.phlebotomist_id) return;
@@ -190,7 +190,7 @@ const PhleboDashboard = () => {
             registration: reg,
             hvc,
             incentive,
-            reason: "Payment due - held until collected",
+            reason: "Payment due — excluded from pay until collected",
           });
         }
       } else if (bucket === "deducted") {
@@ -202,7 +202,7 @@ const PhleboDashboard = () => {
             registration: reg,
             hvc,
             incentive,
-            reason: "Bill cancelled - not payable",
+            reason: "Bill cancelled — excluded from pay (not subtracted from earned)",
           });
         }
       }
@@ -367,7 +367,7 @@ const PhleboDashboard = () => {
               className={`w-full flex justify-between items-center text-left ${holdRows.length > 0 ? "cursor-pointer hover:bg-muted/40 rounded px-1 -mx-1" : ""}`}
             >
               <span className="text-muted-foreground flex items-center gap-1">
-                On Hold
+                On Hold (excluded)
                 {holdRows.length > 0 && (
                   <>
                     <Badge variant="outline" className="h-4 text-[10px] px-1">
@@ -377,7 +377,7 @@ const PhleboDashboard = () => {
                   </>
                 )}
               </span>
-              <span className="font-medium text-amber-600 dark:text-amber-400">{money(-hold)}</span>
+              <span className="font-medium text-amber-600 dark:text-amber-400">{money(hold)}</span>
             </button>
           </div>
           {isHoldOpen && holdRows.length > 0 && (
@@ -394,7 +394,7 @@ const PhleboDashboard = () => {
               className={`w-full flex justify-between items-center text-left ${dedRows.length > 0 ? "cursor-pointer hover:bg-muted/40 rounded px-1 -mx-1" : ""}`}
             >
               <span className="text-muted-foreground flex items-center gap-1">
-                Deducted (cancelled bills)
+                Cancelled (excluded)
                 {dedRows.length > 0 && (
                   <>
                     <Badge variant="outline" className="h-4 text-[10px] px-1">
@@ -404,7 +404,7 @@ const PhleboDashboard = () => {
                   </>
                 )}
               </span>
-              <span className="font-medium text-destructive">{money(-deducted)}</span>
+              <span className="font-medium text-muted-foreground">{money(deducted)}</span>
             </button>
           </div>
           {isDedOpen && dedRows.length > 0 && (
@@ -415,7 +415,10 @@ const PhleboDashboard = () => {
             </div>
           )}
           <div className="flex justify-between col-span-2 border-t pt-2 mt-1">
-            <span className="font-semibold">Net Payable</span>
+            <div>
+              <span className="font-semibold">Payable</span>
+              <p className="text-[10px] text-muted-foreground font-normal">Same as earned — hold/cancelled not subtracted</p>
+            </div>
             <span className="font-bold text-primary">{money(net)}</span>
           </div>
         </div>
@@ -429,7 +432,7 @@ const PhleboDashboard = () => {
         <div>
           <h1 className="text-xl font-bold">Phlebo Dashboard</h1>
           <p className="text-sm text-muted-foreground">
-            Month-end home visit charges + test incentives by phlebo. Cancelled bills are deducted.
+            Month-end home visit charges + test incentives by phlebo. Payable = earned visits only; hold and cancelled are listed separately (not subtracted).
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={() => setShowPasswordDialog(true)}>
@@ -462,9 +465,9 @@ const PhleboDashboard = () => {
                         <th className="px-4 py-2 font-medium">Phlebo</th>
                         <th className="px-4 py-2 font-medium text-right">HVC Earned</th>
                         <th className="px-4 py-2 font-medium text-right">Incentive Earned</th>
-                        <th className="px-4 py-2 font-medium text-right">On Hold</th>
-                        <th className="px-4 py-2 font-medium text-right">Deducted</th>
-                        <th className="px-4 py-2 font-medium text-right">Net Payable</th>
+                        <th className="px-4 py-2 font-medium text-right">On Hold (excluded)</th>
+                        <th className="px-4 py-2 font-medium text-right">Cancelled (excluded)</th>
+                        <th className="px-4 py-2 font-medium text-right">Payable</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -474,8 +477,8 @@ const PhleboDashboard = () => {
                           <td className="px-4 py-2 font-medium">{row.name}</td>
                           <td className="px-4 py-2 text-right tabular-nums">{money(row.hvcEarned)}</td>
                           <td className="px-4 py-2 text-right tabular-nums">{money(row.incentiveEarned)}</td>
-                          <td className="px-4 py-2 text-right tabular-nums text-amber-600">{money(-row.hold)}</td>
-                          <td className="px-4 py-2 text-right tabular-nums text-destructive">{money(-row.deducted)}</td>
+                          <td className="px-4 py-2 text-right tabular-nums text-amber-600">{money(row.hold)}</td>
+                          <td className="px-4 py-2 text-right tabular-nums text-muted-foreground">{money(row.deducted)}</td>
                           <td className="px-4 py-2 text-right tabular-nums font-semibold text-primary">{money(row.net)}</td>
                         </tr>
                       ))}
