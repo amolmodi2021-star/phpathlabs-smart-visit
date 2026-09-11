@@ -22,8 +22,8 @@ export function reportPdfCacheKey(registrationId: string, testIds: string[] | st
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean);
-  // v7: shared letterhead + content layers (smaller multi-page PDFs, same PR3 sharpness).
-  return `v7|${String(registrationId || "").trim()}|${[...ids].sort().join(",")}`;
+  // v8: full-page View Report JPEG capture (revert layered letterhead/PNG quality regressions).
+  return `v8|${String(registrationId || "").trim()}|${[...ids].sort().join(",")}`;
 }
 
 function openDb(): Promise<IDBDatabase> {
