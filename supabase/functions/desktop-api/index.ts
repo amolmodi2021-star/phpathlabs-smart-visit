@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { deleteR2Object, loadR2Config } from "../_shared/r2.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -239,7 +240,35 @@ async function destroyCloudinaryResource(
   return status === "deleted" || status === "not_found" || !status;
 }
 
+function r2KeyFromRow(row: any): string | null {
+  const p = row?.payload && typeof row.payload === "object" ? row.payload : null;
+  const key = typeof p?.r2_key === "string" ? p.r2_key.trim() : "";
+  if (key.startsWith("wa-reports/")) return key;
+  if (String(p?.media_host || "").toLowerCase() === "r2") {
+    // Fallback: parse public R2 URL path after host
+    const url = String(row?.media_url || "");
+    const m = url.match(/\/(wa-reports\/[^?#]+)/);
+    if (m?.[1]) return decodeURIComponent(m[1]);
+  }
+  return null;
+}
+
 async function deleteInvoiceMedia(supabase: ReturnType<typeof sb>, row: any): Promise<void> {
+  const r2Key = r2KeyFromRow(row);
+  if (r2Key) {
+    try {
+      const cfg = loadR2Config();
+      if (cfg) {
+        const ok = await deleteR2Object(cfg, r2Key);
+        if (ok) return;
+      } else {
+        console.warn("R2 credentials missing for outbox media delete", r2Key);
+      }
+    } catch (e) {
+      console.warn("R2 media delete failed", r2Key, e);
+    }
+  }
+
   const cref = cloudinaryRefFromRow(row);
   if (cref) {
     try {

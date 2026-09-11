@@ -17,6 +17,82 @@ import { format } from "date-fns";
 import PasswordGate from "@/components/PasswordGate";
 import { Dialog as UIDialog, DialogContent as UIDialogContent, DialogFooter as UIDialogFooter, DialogHeader as UIDialogHeader, DialogTitle as UIDialogTitle } from "@/components/ui/dialog";
 import { invalidateCloudinaryAccountCache } from "@/lib/cardStorageCloudinary";
+import { getR2ReportStatus } from "@/lib/reportStorageR2";
+
+/* ─── Cloudflare R2 (report PDFs only) ─── */
+const R2ReportsStatusCard = () => {
+  const [loading, setLoading] = useState(true);
+  const [configured, setConfigured] = useState(false);
+  const [bucket, setBucket] = useState<string | null>(null);
+  const [publicBase, setPublicBase] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const s = await getR2ReportStatus();
+      setConfigured(s.configured);
+      setBucket(s.bucket);
+      setPublicBase(s.publicBaseUrl);
+      if (s.error) setError(s.error);
+    } catch (e) {
+      setConfigured(false);
+      setError((e as Error)?.message || "Failed to check R2");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void refresh();
+  }, []);
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Cloud className="h-4 w-4" />
+          Cloudflare R2 — WhatsApp report PDFs
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3 text-sm">
+        <p className="text-muted-foreground">
+          Report PDFs upload to R2 (no Cloudinary 10&nbsp;MB limit). Invoices and other WhatsApp media stay on
+          Cloudinary.
+        </p>
+        {loading ? (
+          <p className="text-muted-foreground">Checking…</p>
+        ) : configured ? (
+          <div className="space-y-1">
+            <p className="flex items-center gap-2 text-green-700 dark:text-green-400">
+              <CheckCircle2 className="h-4 w-4" /> R2 configured
+            </p>
+            <p>
+              <span className="text-muted-foreground">Bucket:</span> {bucket}
+            </p>
+            <p className="break-all">
+              <span className="text-muted-foreground">Public base:</span> {publicBase}
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            <Badge variant="destructive">Not configured</Badge>
+            {error ? <p className="text-destructive text-xs">{error}</p> : null}
+            <p className="text-muted-foreground text-xs">
+              Set edge secrets <code>R2_ACCOUNT_ID</code>, <code>R2_ACCESS_KEY_ID</code>,{" "}
+              <code>R2_SECRET_ACCESS_KEY</code>, <code>R2_BUCKET_NAME</code>, <code>R2_PUBLIC_BASE_URL</code>, then
+              enable public access + CORS on the bucket for lims.phpathlabs.com.
+            </p>
+          </div>
+        )}
+        <Button type="button" variant="outline" size="sm" onClick={() => void refresh()} disabled={loading}>
+          Refresh status
+        </Button>
+      </CardContent>
+    </Card>
+  );
+};
 
 /* ─── Cloudinary Accounts ─── */
 interface CloudinaryAccount {
@@ -571,6 +647,7 @@ const WhatsAppSettingsPage = () => {
           <TabsList>
             <TabsTrigger value="api">API Settings</TabsTrigger>
             <TabsTrigger value="cloudinary">Cloudinary</TabsTrigger>
+            <TabsTrigger value="r2">Report R2</TabsTrigger>
             <TabsTrigger value="templates">Templates</TabsTrigger>
           </TabsList>
           <TabsContent value="api">
@@ -578,6 +655,9 @@ const WhatsAppSettingsPage = () => {
           </TabsContent>
           <TabsContent value="cloudinary">
             <CloudinaryAccountsManager />
+          </TabsContent>
+          <TabsContent value="r2">
+            <R2ReportsStatusCard />
           </TabsContent>
           <TabsContent value="templates">
             <TemplatesManager />
