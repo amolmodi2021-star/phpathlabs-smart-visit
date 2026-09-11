@@ -17,6 +17,7 @@ export type PendingSampleReminderReg = {
   title?: string | null;
   mobile_number?: string | null;
   invoice_number?: string | null;
+  created_at?: string | null;
   sample_collection_reminder_sent_count?: number | null;
   sample_collection_reminder_last_sent_at?: string | null;
 };
@@ -28,12 +29,41 @@ export type PendingSampleReminderEligibility = {
   nextEligibleAt?: Date | null;
 };
 
-/** True when count < 2 and last send was at least 3 days ago (or never sent). */
+/** Same local calendar day as `now` (lab PCs use IST). */
+export function isRegisteredToday(
+  createdAt: string | Date | null | undefined,
+  now: Date = new Date(),
+): boolean {
+  if (!createdAt) return false;
+  const d = createdAt instanceof Date ? createdAt : new Date(createdAt);
+  if (Number.isNaN(d.getTime())) return false;
+  return (
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate()
+  );
+}
+
+/**
+ * True when count < 2, last send was at least 3 days ago (or never sent),
+ * and the patient was not registered on the current local calendar day.
+ */
 export function getPendingSampleReminderEligibility(
-  reg: Pick<PendingSampleReminderReg, "sample_collection_reminder_sent_count" | "sample_collection_reminder_last_sent_at">,
+  reg: Pick<
+    PendingSampleReminderReg,
+    "sample_collection_reminder_sent_count" | "sample_collection_reminder_last_sent_at" | "created_at"
+  >,
   now: Date = new Date(),
 ): PendingSampleReminderEligibility {
   const sentCount = Number(reg.sample_collection_reminder_sent_count || 0);
+  if (isRegisteredToday(reg.created_at, now)) {
+    return {
+      eligible: false,
+      sentCount,
+      reason: "Registered today — reminders start from the next day",
+      nextEligibleAt: null,
+    };
+  }
   if (sentCount >= PENDING_SAMPLE_REMINDER_MAX_SENDS) {
     return {
       eligible: false,
@@ -186,7 +216,7 @@ export async function enqueuePendingSampleCollectionReminder(opts: {
   // Always re-read from DB — never trust a stale UI row from another PC.
   const { data: freshRow, error: freshErr } = await supabase
     .from("patient_registrations")
-    .select("id, patient_name, title, mobile_number, invoice_number, sample_collection_reminder_sent_count, sample_collection_reminder_last_sent_at")
+    .select("id, patient_name, title, mobile_number, invoice_number, created_at, sample_collection_reminder_sent_count, sample_collection_reminder_last_sent_at")
     .eq("id", regIn.id)
     .maybeSingle();
   if (freshErr) return { ok: false, error: freshErr.message };
@@ -196,6 +226,16 @@ export async function enqueuePendingSampleCollectionReminder(opts: {
   const phone = String(reg.mobile_number || "").replace(/\D/g, "").slice(-10);
   if (phone.length !== 10) {
     return { ok: false, error: "Valid 10-digit mobile required" };
+  }
+
+  const eligibility = getPendingSampleReminderEligibility(reg);
+  if (!eligibility.eligible) {
+    return {
+      ok: false,
+      skippedStale: true,
+      sentCount: eligibility.sentCount,
+      error: eligibility.reason || "Not eligible for reminder",
+    };
   }
 
   // Idempotency: never queue a second reminder WhatsApp for the same registration

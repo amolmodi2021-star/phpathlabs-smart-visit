@@ -77,7 +77,7 @@ const SampleCollectionReminderSettings = () => {
       <CardHeader>
         <CardTitle>Pending Sample Collection WhatsApp</CardTitle>
         <CardDescription>
-          Plain-text message queued to WhatsApp Console (same outbox as invoices/reports, no media). Max 2 sends per patient with a 3-day gap between sends.
+          Plain-text message queued to WhatsApp Console (same outbox as invoices/reports, no media). Max 2 sends per patient with a 3-day gap between sends. Patients registered today are never included.
           Use placeholders: {"{patient_name}"}, {"{invoice_number}"}, {"{mobile}"}, {"{test_list}"}, {"{test_count}"}.
           {"{test_list}"} is replaced with line-separated tests formatted as{" "}
           <code className="text-xs">- Test name</code> so WhatsApp shows bullets.

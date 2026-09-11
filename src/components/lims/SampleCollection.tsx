@@ -874,7 +874,7 @@ const SampleCollection = () => {
         return true;
       });
       if (eligible.length === 0) {
-        toast.error("No eligible patients (need < 2 sends and 3+ days since last message)");
+        toast.error("No eligible patients (exclude today; need < 2 sends and 3+ days since last message)");
         return;
       }
       const template = await loadPendingSampleReminderTemplate();
@@ -1385,7 +1385,7 @@ const SampleCollection = () => {
               className="gap-1 whitespace-nowrap"
               disabled={eligibleReminderCount === 0 || bulkReminderSending}
               onClick={() => void sendBulkEligibleReminders(activeTab, activeGroups)}
-              title="Queue WhatsApp for all eligible patients on this list (sent < 2 and not sent in last 3 days)"
+              title="Queue WhatsApp for eligible patients (not registered today; sent < 2; not sent in last 3 days)"
             >
               {bulkReminderSending
                 ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
