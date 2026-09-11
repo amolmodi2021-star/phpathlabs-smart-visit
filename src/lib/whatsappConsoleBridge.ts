@@ -4,6 +4,12 @@ import { uploadBlobToCloudinary } from "@/lib/cardStorageCloudinary";
 /** Cloudinary Free max image/raw upload is 10 MB — stay under with headroom. */
 const CLOUDINARY_SAFE_UPLOAD_BYTES = 9 * 1024 * 1024;
 
+/** Same token as WhatsApp Console / PHPL Reception local data API. */
+const LOCAL_LIMS_MEDIA_TOKEN = "phpathlabs-local-media";
+
+/** Localhost ports used by Console / Reception local data API (only one binds). */
+const LOCAL_DESKTOP_MEDIA_PORTS = [37821];
+
 export type WhatsAppConsoleOutboxKind = "invoice" | "report" | "text" | "image";
 
 /** Cloudinary folder root shared with loyalty cards (unsigned preset). */
@@ -176,9 +182,93 @@ export async function enqueueInvoiceForWhatsAppConsole(opts: {
   });
 }
 
+type LocalStashResult = {
+  local_media_id: string;
+  filename: string;
+  bytes: number;
+  port: number;
+};
+
+/**
+ * Hand oversized report PDF bytes to WhatsApp Console / PHPL Reception on this PC
+ * (localhost). No Cloudinary / Supabase Storage — Console then sends from disk.
+ */
+async function stashReportPdfOnLocalDesktop(opts: {
+  blob: Blob;
+  filename: string;
+  invoice_number: string;
+  phone: string;
+}): Promise<{ ok: true; data: LocalStashResult } | { ok: false; error: string }> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/pdf",
+    "X-Lims-Local-Token": LOCAL_LIMS_MEDIA_TOKEN,
+    "X-Filename": opts.filename,
+    "X-Invoice": opts.invoice_number || "",
+    "X-Phone": opts.phone,
+  };
+
+  let lastErr = "WhatsApp Console / PHPL Reception is not reachable on this PC";
+  for (const port of LOCAL_DESKTOP_MEDIA_PORTS) {
+    const base = `http://127.0.0.1:${port}`;
+    try {
+      const healthCtrl = new AbortController();
+      const healthTimer = window.setTimeout(() => healthCtrl.abort(), 900);
+      const health = await fetch(`${base}/health`, {
+        method: "GET",
+        signal: healthCtrl.signal,
+      });
+      window.clearTimeout(healthTimer);
+      if (!health.ok) {
+        lastErr = `Local desktop API health HTTP ${health.status}`;
+        continue;
+      }
+      const healthJson = (await health.json().catch(() => null)) as { limsMedia?: boolean } | null;
+      if (healthJson && healthJson.limsMedia === false) {
+        lastErr = "Local desktop API is running but lims-media is not enabled — update Console/Reception";
+        continue;
+      }
+
+      const postCtrl = new AbortController();
+      const postTimer = window.setTimeout(() => postCtrl.abort(), 120_000);
+      const res = await fetch(`${base}/api/lims-media`, {
+        method: "POST",
+        headers,
+        body: opts.blob,
+        signal: postCtrl.signal,
+      });
+      window.clearTimeout(postTimer);
+      const json = (await res.json().catch(() => null)) as
+        | { ok?: boolean; local_media_id?: string; filename?: string; bytes?: number; error?: string }
+        | null;
+      if (!res.ok || !json?.ok || !json.local_media_id) {
+        lastErr = json?.error || `Local media stash HTTP ${res.status}`;
+        continue;
+      }
+      return {
+        ok: true,
+        data: {
+          local_media_id: String(json.local_media_id),
+          filename: String(json.filename || opts.filename),
+          bytes: Number(json.bytes) || opts.blob.size,
+          port,
+        },
+      };
+    } catch (e) {
+      const msg = (e as Error)?.name === "AbortError" ? "local_desktop_timeout" : (e as Error)?.message || String(e);
+      lastErr = msg;
+    }
+  }
+
+  return {
+    ok: false,
+    error:
+      `Large report PDF (${(opts.blob.size / (1024 * 1024)).toFixed(1)} MB) needs WhatsApp Console or PHPL Reception open on this same PC. ${lastErr}`,
+  };
+}
+
 /** Upload report PDF and enqueue for Console delivery (single file — never split).
- * Prefer Cloudinary; if the PDF exceeds Free-plan 10 MB (or Cloudinary rejects size),
- * fall back to Supabase chat-attachments with the same PDF bytes (no quality change).
+ * Prefer Cloudinary when under Free-plan ~10 MB. Oversized PDFs hand off to
+ * WhatsApp Console / PHPL Reception on this PC (localhost) — same quality, no cloud host.
  */
 export async function enqueueReportForWhatsAppConsole(opts: {
   phone: string;
@@ -205,8 +295,8 @@ export async function enqueueReportForWhatsAppConsole(opts: {
   const isFileTooLarge = (msg: string) =>
     /file size too large|maximum.*size|entity too large|413/i.test(msg);
 
-  let mediaUrl: string;
-  let payload: Record<string, unknown>;
+  let mediaUrl: string | null = null;
+  let payload: Record<string, unknown> = {};
 
   const tryCloudinary = opts.blob.size <= CLOUDINARY_SAFE_UPLOAD_BYTES;
   if (tryCloudinary) {
@@ -235,36 +325,24 @@ export async function enqueueReportForWhatsAppConsole(opts: {
       if (!isFileTooLarge(msg)) {
         return { ok: false, error: msg };
       }
-      // fall through to Supabase
-      mediaUrl = "";
-      payload = {};
+      // fall through to same-PC local stash
     }
-  } else {
-    mediaUrl = "";
-    payload = {};
   }
 
   if (!mediaUrl) {
-    const path = `wa-reports/${safeInvoice}-${Date.now()}.pdf`;
-    const { error: upErr } = await supabase.storage.from("chat-attachments").upload(path, opts.blob, {
-      contentType: "application/pdf",
-      upsert: false,
-    });
-    if (upErr) {
-      return {
-        ok: false,
-        error: upErr.message || "Report PDF upload failed (Cloudinary size limit / storage)",
-      };
-    }
-    const { data: pub } = supabase.storage.from("chat-attachments").getPublicUrl(path);
-    mediaUrl = pub?.publicUrl || "";
-    if (!mediaUrl) return { ok: false, error: "Report PDF public URL missing" };
-    payload = {
-      media_host: "supabase",
-      storage_bucket: "chat-attachments",
-      storage_path: path,
+    const stashed = await stashReportPdfOnLocalDesktop({
+      blob: opts.blob,
       filename,
-      bytes: opts.blob.size,
+      invoice_number: opts.invoice_number,
+      phone,
+    });
+    if (!stashed.ok) return { ok: false, error: stashed.error };
+    payload = {
+      media_host: "local_desktop",
+      local_media_id: stashed.data.local_media_id,
+      filename: stashed.data.filename,
+      bytes: stashed.data.bytes,
+      local_port: stashed.data.port,
     };
   }
 
