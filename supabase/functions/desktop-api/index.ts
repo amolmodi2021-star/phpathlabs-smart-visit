@@ -388,7 +388,7 @@ async function pruneInvoiceOutbox24h(
   }
 
   const orphanCutoff = Date.now() - ORPHAN_MEDIA_GRACE_MS;
-  for (const folder of ["invoices", "reports"] as const) {
+  for (const folder of ["invoices", "reports", "wa-reports"] as const) {
     const listed = await listStorageFolderObjects(supabase, folder);
     const stale = listed
       .filter((obj) => !keepStorage.has(obj.path) && obj.createdAtMs > 0 && obj.createdAtMs < orphanCutoff)
