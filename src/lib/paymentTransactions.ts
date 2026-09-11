@@ -34,6 +34,13 @@ export function splitPaymentModes(
   return result;
 }
 
+export {
+  buildCancelRefundPayments,
+  refundModesLabel,
+  paymentsFromModeAmounts,
+} from "@/lib/cancelRefundModes";
+export type { PaymentModeAmounts as CancelRefundModeAmounts } from "@/lib/cancelRefundModes";
+
 export interface LogTransactionParams {
   registration_id: string;
   invoice_number: string;
@@ -244,7 +251,7 @@ export async function fetchFrozenRegistrationBillSnapshot(
   if (!registrationId) return null;
   const { data, error } = await supabase
     .from("payment_transactions" as any)
-    .select("gross_amount, discount_amount, final_amount, paid_amount")
+    .select("gross_amount, discount_amount, final_amount, paid_amount, cash_amount, gpay_amount, paytm_amount, credit_card_amount, neft_amount")
     .eq("registration_id", registrationId)
     .eq("transaction_type", "registration_payment")
     .order("transaction_date", { ascending: false })
@@ -256,6 +263,13 @@ export async function fetchFrozenRegistrationBillSnapshot(
     discount_amount: Number(row.discount_amount || 0),
     final_amount: Number(row.final_amount || 0),
     paid_amount: Number(row.paid_amount || 0),
+    modes: {
+      cash: Number(row.cash_amount || 0),
+      gpay: Number(row.gpay_amount || 0),
+      paytm: Number(row.paytm_amount || 0),
+      credit_card: Number(row.credit_card_amount || 0),
+      neft: Number(row.neft_amount || 0),
+    },
   };
 }
 

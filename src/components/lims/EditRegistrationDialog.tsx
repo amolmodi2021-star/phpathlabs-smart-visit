@@ -31,6 +31,8 @@ import {
   sumLoggedRefunds,
   resolveCancelBillSnapshot,
   logPaymentTransaction,
+  buildCancelRefundPayments,
+  refundModesLabel,
 } from "@/lib/paymentTransactions";
 import {
   applyDueCollectionGroupEdits,
@@ -77,7 +79,6 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
   const [dueGroupEdits, setDueGroupEdits] = useState<Array<DueCollectionGroupEdit & { selectedModes: string[] }>>([]);
 
   // Cancel entire bill
-  const [refundMode, setRefundMode] = useState<string>("Cash");
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [showCancelBillPwd, setShowCancelBillPwd] = useState(false);
   const [showCancelUnlockPwd, setShowCancelUnlockPwd] = useState(false);
@@ -104,7 +105,6 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
       setMobileNumber(reg.mobile_number || "");
       setRemarks(reg.remarks || "");
       setIsStat(reg.is_stat || false);
-      setRefundMode("Cash");
 
       const existingPayments: any[] = Array.isArray(reg.payments) ? reg.payments : [];
       const { registration: originalSplit, dueCollections } = splitRegistrationAndDuePayments(existingPayments);
@@ -166,6 +166,14 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
     return d < startOfToday;
   }, [reg?.created_at]);
   const isPaymentLocked = isInvoiceOlderThanToday && !paymentUnlocked;
+
+  /** Preview of cancel refund — same payment modes as originally collected. */
+  const cancelRefundPreview = useMemo(() => {
+    const paid = Number(reg?.paid_amount || 0);
+    const payments = Array.isArray(reg?.payments) ? reg.payments : [];
+    return buildCancelRefundPayments(payments, paid);
+  }, [reg?.paid_amount, reg?.payments]);
+  const cancelRefundModesLabel = refundModesLabel(cancelRefundPreview);
 
   const originalRegPaid = useMemo(() => {
     const existingPayments: any[] = Array.isArray(reg?.payments) ? reg.payments : [];
@@ -410,10 +418,16 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
       const regDateStr = (reg.invoice_number && /^\d{6}/.test(reg.invoice_number))
         ? `${reg.invoice_number.slice(4, 6)}-${reg.invoice_number.slice(2, 4)}-20${reg.invoice_number.slice(0, 2)}`
         : format(regDate, "dd-MM-yyyy");
-      const origPayments: Array<{ mode: string; amount: number }> = Array.isArray(reg.payments) ? reg.payments : [];
-      const origModesLabel = origPayments.length
-        ? Array.from(new Set(origPayments.map((p: any) => p.mode))).join("/")
-        : "—";
+      const origPayments: Array<{ mode?: string; amount?: number }> = Array.isArray(reg.payments)
+        ? reg.payments
+        : [];
+      // Reverse through the same mode columns as registration (+ due collections).
+      const refundPayments = buildCancelRefundPayments(
+        origPayments,
+        totalPaid,
+        frozen?.modes || null,
+      );
+      const refundModeLabel = refundModesLabel(refundPayments);
 
       // Freeze pattern: do NOT mutate the original registration_payment audit row.
       // Clear payments[] in the same write — otherwise enforce_bill_payment_cap rejects.
@@ -421,7 +435,7 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
         bill_cancelled: true,
         status: "cancelled",
         refund_amount: Number(reg.refund_amount || 0) + totalPaid,
-        refund_mode: refundMode,
+        refund_mode: refundModeLabel !== "—" ? refundModeLabel : null,
         refund_date: new Date().toISOString(),
         final_amount: 0,
         paid_amount: 0,
@@ -443,10 +457,11 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
       qc.invalidateQueries({ queryKey: ["sample_collection_regs"] });
       qc.invalidateQueries({ queryKey: ["sample_tubes_acceptance_pending"] });
       qc.invalidateQueries({ queryKey: ["sample_acceptance_regs"] });
+      qc.invalidateQueries({ queryKey: ["lims-daily-report"] });
 
       const todayStr = format(new Date(), "dd-MM-yyyy");
       const isCrossDay = regDateStr !== todayStr;
-      // One row: Gross/Discount/Final offsets + cash refund (no separate Refund line).
+      // One row: Gross/Discount/Final offsets + mode refund (no separate Refund line).
       if (origFinal > 0.009 || origGross > 0.009 || totalPaid > 0.009) {
         logPaymentTransaction({
           registration_id: reg.id,
@@ -454,7 +469,7 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
           patient_name: patientName,
           transaction_type: isCrossDay ? "old_bill_cancellation" : "bill_cancellation",
           direction: "out",
-          payments: totalPaid > 0 ? [{ mode: refundMode, amount: totalPaid }] : [],
+          payments: totalPaid > 0 ? refundPayments : [],
           total_amount: totalPaid,
           gross_amount: -origGross,
           discount_amount: -origDiscount,
@@ -463,7 +478,7 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
           due_amount: outstandingDue > 0.009 ? -outstandingDue : 0,
           refund_amount: totalPaid,
           remarks: totalPaid > 0
-            ? `Bill cancelled — invoice ${reg.invoice_number} dated ${regDateStr}, final ₹${origFinal}, refund ₹${totalPaid} via ${refundMode} (originally paid via ${origModesLabel})`
+            ? `Bill cancelled — invoice ${reg.invoice_number} dated ${regDateStr}, final ₹${origFinal}, refund ₹${totalPaid} via ${refundModeLabel}`
             : outstandingDue > 0.009
               ? `Bill cancelled — invoice ${reg.invoice_number} dated ${regDateStr}, final ₹${origFinal}, due ₹${outstandingDue} cleared`
               : `Bill cancelled — invoice ${reg.invoice_number} dated ${regDateStr}, final ₹${origFinal}`,
@@ -472,7 +487,7 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
 
       toast.success(
         totalPaid > 0
-          ? `Bill cancelled. Refund ₹${totalPaid} via ${refundMode} recorded in today's Daily Report.`
+          ? `Bill cancelled. Refund ₹${totalPaid} via ${refundModeLabel} recorded in today's Daily Report.`
           : `Bill cancelled. Gross/Final offset recorded in today's Daily Report.`,
       );
       onOpenChange(false);
@@ -888,16 +903,19 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
                 </div>
               ) : (
                 <div className="space-y-2">
-                  <div className="flex items-center gap-3">
-                    <Label className="text-sm">Refund Mode for Full Cancellation:</Label>
-                    <Select value={refundMode} onValueChange={setRefundMode}>
-                      <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Cash">Cash</SelectItem>
-                        <SelectItem value="NEFT">NEFT</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    Full cancellation refunds via original payment mode
+                    {cancelRefundModesLabel !== "—" ? (
+                      <>
+                        :{" "}
+                        <span className="font-medium text-foreground">{cancelRefundModesLabel}</span>
+                      </>
+                    ) : null}
+                    {Number(reg.paid_amount || 0) > 0 ? (
+                      <> (₹{Number(reg.paid_amount || 0)})</>
+                    ) : null}
+                    .
+                  </p>
                   <Button
                     variant="destructive"
                     className="w-full"
@@ -924,8 +942,10 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
                   This action cannot be undone.
                 </p>
                 <p>
-                  Paid amount ₹{Number(reg.paid_amount || 0)} will be refunded via <span className="font-medium text-foreground">{refundMode}</span>
-                  {" "}and recorded in today&apos;s Daily Report. The original Registration row stays frozen as evidence.
+                  Paid amount ₹{Number(reg.paid_amount || 0)} will be refunded via{" "}
+                  <span className="font-medium text-foreground">{cancelRefundModesLabel}</span>
+                  {" "}(same as original payment) and recorded in today&apos;s Daily Report. The original
+                  Registration row stays frozen as evidence.
                 </p>
               </div>
             </AlertDialogDescription>
@@ -958,7 +978,7 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
         open={showCancelBillPwd}
         onOpenChange={setShowCancelBillPwd}
         onSuccess={processCancelBill}
-        description={`This will cancel invoice ${reg.invoice_number}. Refund ₹${reg.paid_amount} via ${refundMode} will be recorded in TODAY's Daily Report. The original registration entry will remain unchanged.`}
+        description={`This will cancel invoice ${reg.invoice_number}. Refund ₹${reg.paid_amount} via ${cancelRefundModesLabel} (original payment mode) will be recorded in TODAY's Daily Report. The original registration entry will remain unchanged.`}
       />
       <DeletePasswordDialog
         open={showCancelUnlockPwd}

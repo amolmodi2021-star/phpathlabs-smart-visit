@@ -5,6 +5,14 @@ export type FrozenRegistrationBillSnapshot = {
   discount_amount: number;
   final_amount: number;
   paid_amount: number;
+  /** Optional original registration payment split (for cancel refund mode columns). */
+  modes?: {
+    cash: number;
+    gpay: number;
+    paytm: number;
+    credit_card: number;
+    neft: number;
+  };
 };
 
 /**
