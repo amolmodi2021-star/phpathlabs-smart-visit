@@ -83,8 +83,12 @@ export function buildVisitMessage(data: VisitMessageData): string {
     } else if (data.tests.length > 0) {
       msg += `\n\n${data.noFastingMessage}`;
     }
-  } else if (data.homeVisitCharges > 0) {
-    msg += `\nHome Visit Charges: ₹${data.homeVisitCharges}`;
+  } else {
+    // No tests selected at booking — confirmation still goes out with visit details.
+    msg += `\nTests will be confirmed during visit`;
+    if (data.homeVisitCharges > 0) {
+      msg += `\n\nHome Visit Charges: ₹${data.homeVisitCharges}`;
+    }
   }
 
   msg += `\n\nThank you for choosing us.\n${data.footer}`;
