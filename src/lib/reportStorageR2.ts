@@ -65,7 +65,8 @@ export async function uploadReportPdfToR2(opts: {
     ok: true,
     publicUrl: body.publicUrl,
     key: body.key,
-    filename: body.filename || opts.filename,
+    // Prefer the client display name (spaces preserved); edge may return the same.
+    filename: opts.filename || body.filename,
     bytes: opts.blob.size,
   };
 }

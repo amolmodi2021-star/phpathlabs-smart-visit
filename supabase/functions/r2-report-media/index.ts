@@ -3,6 +3,7 @@ import {
   deleteR2Object,
   loadR2Config,
   presignR2Put,
+  sanitizeReportDisplayFilename,
   sanitizeReportKeyPart,
 } from "../_shared/r2.ts";
 
@@ -51,13 +52,17 @@ Deno.serve(async (req) => {
   if (action === "presign") {
     const invoice = sanitizeReportKeyPart(body?.invoice_number || body?.invoice || "report");
     const filenameRaw = String(body?.filename || `${invoice} report.pdf`);
-    const safeName =
-      sanitizeReportKeyPart(filenameRaw.replace(/\.pdf$/i, ""), invoice) + ".pdf";
-    const key = `wa-reports/${invoice}/${Date.now()}_${safeName}`;
+    // Display name keeps spaces for WhatsApp; object key uses a slug only.
+    const displayName = sanitizeReportDisplayFilename(
+      filenameRaw,
+      `${invoice} report.pdf`,
+    );
+    const keySlug = sanitizeReportKeyPart(filenameRaw.replace(/\.pdf$/i, ""), invoice);
+    const key = `wa-reports/${invoice}/${Date.now()}_${keySlug}.pdf`;
     const contentType = String(body?.content_type || "application/pdf");
     try {
       const signed = await presignR2Put(cfg, key, contentType, 900);
-      return json({ ok: true, ...signed, filename: safeName });
+      return json({ ok: true, ...signed, filename: displayName });
     } catch (e) {
       return json({ error: e instanceof Error ? e.message : String(e) }, 500);
     }

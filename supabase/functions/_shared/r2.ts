@@ -85,10 +85,22 @@ export async function deleteR2Object(cfg: R2Config, key: string): Promise<boolea
   return res.ok || res.status === 404;
 }
 
+/** Safe object-key segment (no spaces). Used only for R2 paths, not WhatsApp display names. */
 export function sanitizeReportKeyPart(raw: string, fallback = "report"): string {
   const s = String(raw || "")
     .replace(/[^a-zA-Z0-9_-]+/g, "_")
     .replace(/^_+|_+$/g, "")
     .slice(0, 80);
   return s || fallback;
+}
+
+/** WhatsApp / download filename — keep spaces (e.g. "TITLE NAME 2609110001.pdf"). */
+export function sanitizeReportDisplayFilename(raw: string, fallback = "report.pdf"): string {
+  let base = String(raw || "")
+    .replace(/[\\/:*?"<>|\u0000-\u001f]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!base) base = fallback;
+  base = base.replace(/\.pdf$/i, "").trim() || fallback.replace(/\.pdf$/i, "");
+  return `${base.slice(0, 120)}.pdf`;
 }
