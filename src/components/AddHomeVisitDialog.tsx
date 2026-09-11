@@ -276,9 +276,7 @@ const AddHomeVisitDialog = ({ open, onClose }: AddHomeVisitDialogProps) => {
     mutationFn: async () => {
       const cleanNumber = formatWhatsApp(whatsappNumber);
       if (!cleanNumber || cleanNumber.length < 10) throw new Error("Valid WhatsApp number required");
-      if (selectedTests.length === 0 && !(homeVisitCharges > 0)) {
-        throw new Error("Select at least one test, or enter Home Visit Charges only");
-      }
+      // Tests optional — patient may confirm tests during the visit.
       if (selectedTests.length === 0 && homeVisitCharges > 0 && globalDiscountValue > 0) {
         throw new Error("Discount is not allowed on home visit charge only");
       }
@@ -543,9 +541,9 @@ const AddHomeVisitDialog = ({ open, onClose }: AddHomeVisitDialogProps) => {
             )}
           </div>
 
-          {/* Test Search & Add */}
+          {/* Test Search & Add — optional (tests can be added later / during visit) */}
           <div>
-            <Label>Tests *</Label>
+            <Label>Tests <span className="text-muted-foreground font-normal">(optional)</span></Label>
             <div className="relative">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
@@ -672,21 +670,14 @@ const AddHomeVisitDialog = ({ open, onClose }: AddHomeVisitDialogProps) => {
           <Button
             className="w-full"
             onClick={() => {
-              if (selectedTests.length === 0) {
-                if (!(homeVisitCharges > 0)) {
-                  toast.error("Select at least one test, or enter Home Visit Charges only");
-                  return;
-                }
-                saveMutation.mutate();
-                return;
-              }
-              if (!homeVisitCharges || homeVisitCharges === 0) {
+              // With tests but ₹0 HVC → confirm; otherwise save (tests may be empty).
+              if (selectedTests.length > 0 && (!homeVisitCharges || homeVisitCharges === 0)) {
                 setShowHvcConfirm(true);
                 return;
               }
               saveMutation.mutate();
             }}
-            disabled={saveMutation.isPending || (selectedTests.length === 0 && !(homeVisitCharges > 0))}
+            disabled={saveMutation.isPending}
           >
             <Send className="h-4 w-4 mr-2" />Save & Send Visit Confirmation
           </Button>
