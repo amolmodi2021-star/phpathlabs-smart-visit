@@ -139,6 +139,11 @@ type PageCaptureOptions = {
   fastBlankCheck?: boolean;
   /** Skip webfont embed. Only for snip photo pages (no live text). Structured PDF must embed IBM Plex. */
   skipFonts?: boolean;
+  /**
+   * html-to-image background. Use `null` for transparent PNG (letterhead layered under content).
+   * Default `#ffffff`.
+   */
+  backgroundColor?: string | null;
 };
 
 /** Run async work over items with a fixed concurrency pool (preserves result order). */
@@ -198,7 +203,7 @@ const captureWithRetry = async (
   }
   const opts = {
     pixelRatio,
-    backgroundColor: "#ffffff",
+    backgroundColor: captureOpts?.backgroundColor === undefined ? "#ffffff" : captureOpts.backgroundColor,
     width,
     height,
     // Never default-bust: html-to-image appends ?t=… which breaks data: signature/letterhead URLs
@@ -236,6 +241,40 @@ const captureWithRetry = async (
     throw (lastErr instanceof Error ? lastErr : new Error("Page capture failed"));
   }
   return lastUrl;
+};
+
+/** Rasterize a letterhead URL once to a full-page JPEG (shared across PDF pages). */
+const letterheadUrlToJpegDataUrl = async (
+  url: string,
+  cssW: number,
+  cssH: number,
+  pixelRatio: number,
+): Promise<string> => {
+  const img = new Image();
+  img.decoding = "async";
+  img.crossOrigin = "anonymous";
+  await new Promise<void>((resolve, reject) => {
+    img.onload = () => resolve();
+    img.onerror = () => reject(new Error("Letterhead image failed to load"));
+    img.src = url;
+  });
+  const w = Math.max(1, Math.round(cssW * pixelRatio));
+  const h = Math.max(1, Math.round(cssH * pixelRatio));
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Canvas unavailable for letterhead");
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, w, h);
+  // object-cover equivalent
+  const scale = Math.max(w / img.naturalWidth, h / img.naturalHeight);
+  const dw = img.naturalWidth * scale;
+  const dh = img.naturalHeight * scale;
+  const dx = (w - dw) / 2;
+  const dy = (h - dh) / 2;
+  ctx.drawImage(img, dx, dy, dw, dh);
+  return canvas.toDataURL("image/jpeg", 0.92);
 };
 
 // ── Height constants (mm) ──
@@ -1796,21 +1835,43 @@ const LimsReportView = () => {
 
       const NATIVE_W = Math.round((PAGE_WIDTH_MM / 25.4) * 96);
       const NATIVE_H = Math.round((PAGE_HEIGHT_MM / 25.4) * 96);
-      // Capture the on-screen View Report page (letterhead + results) at fixed PR3.
-      // pixelRatio is hardcoded (not devicePixelRatio), so old low-res monitors do not
-      // lower capture resolution — canvas is always ~A4 CSS × 3.
-      const captureOpts: PageCaptureOptions = {
-        pixelRatio: 3,
-        attempts: 1,
-        quality: 0.95,
-        cacheBust: false,
-        fastBlankCheck: true,
-      };
+      // Capture at fixed PR3. When letterhead is on, embed it once and capture each
+      // page without it (transparent PNG) so multi-page PDFs stay sharp but much smaller.
+      const capturePixelRatio = 3;
+      const useSharedLetterhead = !!(letterheadImageUrl && showLetterhead);
 
-      const jpegPages: string[] = [];
       const wrappers = pageElements.map((el) => el.parentElement as HTMLElement | null);
       const prevVisibility = wrappers.map((w) => (w ? w.style.visibility : ""));
       const prevContentVis = wrappers.map((w) => (w ? (w.style as any).contentVisibility || "" : ""));
+      const prevPageBg = pageElements.map((el) => el.style.backgroundColor);
+
+      const pdf = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: "a4",
+        compress: true,
+      });
+
+      let sharedLetterheadJpeg: string | null = null;
+      if (useSharedLetterhead && letterheadImageUrl) {
+        try {
+          sharedLetterheadJpeg = await letterheadUrlToJpegDataUrl(
+            letterheadImageUrl,
+            NATIVE_W,
+            NATIVE_H,
+            capturePixelRatio,
+          );
+        } catch (e) {
+          console.warn("shared letterhead raster failed; using full-page capture", e);
+          sharedLetterheadJpeg = null;
+        }
+      }
+
+      const root = printRef.current;
+      const hadNoLetterheadClass = root.classList.contains("print-no-letterhead");
+      if (sharedLetterheadJpeg && !hadNoLetterheadClass) {
+        root.classList.add("print-no-letterhead");
+      }
 
       try {
         for (let i = 0; i < pageElements.length; i++) {
@@ -1826,15 +1887,57 @@ const LimsReportView = () => {
           });
           await yieldToMain();
 
-          let jpegUrl = await captureWithRetry(
-            pageElements[i],
+          const pageEl = pageElements[i];
+          const isSnipFullBleed = pageEl.getAttribute("data-page-type") === "snip"
+            || !!pageEl.querySelector("img[data-snip-image]");
+          const layerLetterhead = !!(sharedLetterheadJpeg && !isSnipFullBleed);
+
+          if (layerLetterhead) {
+            pageEl.style.backgroundColor = "transparent";
+          }
+
+          const captureOpts: PageCaptureOptions = layerLetterhead
+            ? {
+                pixelRatio: capturePixelRatio,
+                attempts: 1,
+                cacheBust: false,
+                fastBlankCheck: true,
+                backgroundColor: null,
+              }
+            : {
+                pixelRatio: capturePixelRatio,
+                attempts: 1,
+                quality: 0.95,
+                cacheBust: false,
+                fastBlankCheck: true,
+              };
+
+          const dataUrl = await captureWithRetry(
+            pageEl,
             NATIVE_W,
             NATIVE_H,
-            "jpeg",
+            layerLetterhead ? "png" : "jpeg",
             captureOpts,
           );
-          jpegPages.push(jpegUrl);
-          jpegUrl = "";
+
+          if (i > 0) pdf.addPage();
+          if (layerLetterhead && sharedLetterheadJpeg) {
+            // Same alias → letterhead bytes stored once, reused on every page.
+            pdf.addImage(
+              sharedLetterheadJpeg,
+              "JPEG",
+              0,
+              0,
+              PAGE_WIDTH_MM,
+              PAGE_HEIGHT_MM,
+              "report-letterhead",
+              "NONE",
+            );
+            pdf.addImage(dataUrl, "PNG", 0, 0, PAGE_WIDTH_MM, PAGE_HEIGHT_MM, undefined, "FAST");
+          } else {
+            pdf.addImage(dataUrl, "JPEG", 0, 0, PAGE_WIDTH_MM, PAGE_HEIGHT_MM, undefined, "NONE");
+          }
+
           if (
             queueWaRequested &&
             (i === 0 || i === pageElements.length - 1 || (i + 1) % 4 === 0)
@@ -1844,6 +1947,12 @@ const LimsReportView = () => {
           await yieldToMain();
         }
       } finally {
+        if (sharedLetterheadJpeg && !hadNoLetterheadClass) {
+          root.classList.remove("print-no-letterhead");
+        }
+        pageElements.forEach((el, j) => {
+          el.style.backgroundColor = prevPageBg[j];
+        });
         wrappers.forEach((w, j) => {
           if (!w) return;
           w.style.visibility = prevVisibility[j];
@@ -1856,11 +1965,6 @@ const LimsReportView = () => {
       const invoiceNum = approvedReports[0]?.invoice_number || "";
       const filename = [patientName, invoiceNum].filter(Boolean).join(" ").replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim() + ".pdf";
 
-      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-      for (let i = 0; i < jpegPages.length; i++) {
-        if (i > 0) pdf.addPage();
-        pdf.addImage(jpegPages[i], "JPEG", 0, 0, PAGE_WIDTH_MM, PAGE_HEIGHT_MM, undefined, "NONE");
-      }
       const blob = pdf.output("blob") as Blob;
 
       cachedPdfRef.current = { blob, filename };

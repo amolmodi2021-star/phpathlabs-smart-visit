@@ -22,8 +22,8 @@ export function reportPdfCacheKey(registrationId: string, testIds: string[] | st
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean);
-  // v6: View Report JPEG capture only (no selectable text layer).
-  return `v6|${String(registrationId || "").trim()}|${[...ids].sort().join(",")}`;
+  // v7: shared letterhead + content layers (smaller multi-page PDFs, same PR3 sharpness).
+  return `v7|${String(registrationId || "").trim()}|${[...ids].sort().join(",")}`;
 }
 
 function openDb(): Promise<IDBDatabase> {

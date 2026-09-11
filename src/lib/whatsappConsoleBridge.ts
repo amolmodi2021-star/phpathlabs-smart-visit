@@ -1,9 +1,8 @@
 import { supabase } from "@/integrations/supabase/client";
 import { uploadBlobToCloudinary } from "@/lib/cardStorageCloudinary";
-import {
-  CLOUDINARY_SAFE_UPLOAD_BYTES,
-  splitPdfBlobUnderMaxBytes,
-} from "@/lib/splitPdfByMaxBytes";
+
+/** Cloudinary Free max image/raw upload is 10 MB — stay under with headroom. */
+const CLOUDINARY_SAFE_UPLOAD_BYTES = 9 * 1024 * 1024;
 
 export type WhatsAppConsoleOutboxKind = "invoice" | "report" | "text" | "image";
 
@@ -177,13 +176,9 @@ export async function enqueueInvoiceForWhatsAppConsole(opts: {
   });
 }
 
-/** Upload report PDF to Cloudinary (bytes unchanged) and enqueue for Console delivery.
- * Requires Cloudinary Security → “Allow delivery of PDF and ZIP files” (Free accounts
- * upload PDFs fine but block public delivery with 401 until that is enabled).
- *
- * Cloudinary Free caps uploads at 10 MB. Large multi-page reports (e.g. PH6) are
- * split into multiple PDF parts under that limit — page quality is unchanged
- * (pdf-lib copyPages only; no JPEG re-encode).
+/** Upload report PDF and enqueue for Console delivery (single file — never split).
+ * Prefer Cloudinary; if the PDF exceeds Free-plan 10 MB (or Cloudinary rejects size),
+ * fall back to Supabase chat-attachments with the same PDF bytes (no quality change).
  */
 export async function enqueueReportForWhatsAppConsole(opts: {
   phone: string;
@@ -193,107 +188,95 @@ export async function enqueueReportForWhatsAppConsole(opts: {
   caption: string;
   blob: Blob;
   filename?: string;
-}): Promise<{ ok: boolean; id?: string; error?: string; partCount?: number }> {
+}): Promise<{ ok: boolean; id?: string; error?: string }> {
   const phone = phone10(opts.phone);
   if (phone.length !== 10) return { ok: false, error: "Valid 10-digit mobile required" };
 
   const safeInvoice = String(opts.invoice_number || "report").replace(/[^a-zA-Z0-9_-]+/g, "_");
   const rawName = opts.filename || `${opts.invoice_number || "report"} report.pdf`;
-  const baseName = String(rawName)
-    .replace(/[\\/:*?"<>|\u0000-\u001f]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .replace(/\.pdf$/i, "");
+  const filename =
+    String(rawName)
+      .replace(/[\\/:*?"<>|\u0000-\u001f]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .replace(/\.pdf$/i, "") + ".pdf";
   const folderHint = `${WA_MEDIA_FOLDER_ROOT}/reports`;
-  const stamp = Date.now();
-
-  let parts: Blob[];
-  try {
-    parts = await splitPdfBlobUnderMaxBytes(opts.blob, CLOUDINARY_SAFE_UPLOAD_BYTES);
-  } catch (e) {
-    return { ok: false, error: (e as Error)?.message || "Failed to prepare report PDF for upload" };
-  }
-  if (!parts.length) return { ok: false, error: "Empty report PDF" };
-
+  const publicId = `reports/${safeInvoice}-${Date.now()}`;
   const isFileTooLarge = (msg: string) =>
     /file size too large|maximum.*size|entity too large|413/i.test(msg);
 
-  let firstId: string | undefined;
-  for (let i = 0; i < parts.length; i++) {
-    const partNo = i + 1;
-    const multi = parts.length > 1;
-    const filename = multi
-      ? `${baseName} part ${partNo} of ${parts.length}.pdf`
-      : `${baseName}.pdf`;
-    const caption = multi
-      ? `${opts.caption}\n\n_Report PDF — Part ${partNo} of ${parts.length}_`
-      : opts.caption;
-    const publicId = multi
-      ? `reports/${safeInvoice}-${stamp}-p${partNo}`
-      : `reports/${safeInvoice}-${stamp}`;
+  let mediaUrl: string;
+  let payload: Record<string, unknown>;
 
-    let uploaded;
+  const tryCloudinary = opts.blob.size <= CLOUDINARY_SAFE_UPLOAD_BYTES;
+  if (tryCloudinary) {
     try {
-      // auto keeps original PDF bytes; no re-encode / quality change.
-      uploaded = await uploadBlobToCloudinary(parts[i], {
+      const uploaded = await uploadBlobToCloudinary(opts.blob, {
         resourceType: "auto",
         publicId,
         filename,
       });
-    } catch (e) {
-      const msg = (e as Error)?.message || "Cloudinary upload failed";
-      // If Cloudinary still rejects (limit / plan), surface a clear message.
-      if (isFileTooLarge(msg)) {
-        return {
-          ok: false,
-          error:
-            multi
-              ? `Report part ${partNo}/${parts.length} still exceeds Cloudinary upload limit (${msg})`
-              : `Report PDF too large for Cloudinary upload (${msg}). Try again after refresh.`,
-          partCount: parts.length,
-        };
+      mediaUrl = uploaded.secure_url;
+      if (!/\.pdf(\?|$)/i.test(mediaUrl)) {
+        mediaUrl = mediaUrl.includes("?")
+          ? mediaUrl.replace(/(\?)/, ".pdf$1")
+          : `${mediaUrl}.pdf`;
       }
-      return { ok: false, error: msg, partCount: parts.length };
-    }
-
-    // Prefer a .pdf delivery URL so WhatsApp Console sniffs the document correctly.
-    let mediaUrl = uploaded.secure_url;
-    if (!/\.pdf(\?|$)/i.test(mediaUrl)) {
-      mediaUrl = mediaUrl.includes("?")
-        ? mediaUrl.replace(/(\?)/, ".pdf$1")
-        : `${mediaUrl}.pdf`;
-    }
-
-    const queued = await enqueueWhatsAppConsoleMessage({
-      kind: "report",
-      phone,
-      patient_name: opts.patient_name,
-      registration_id: opts.registration_id,
-      invoice_number: opts.invoice_number,
-      caption,
-      media_url: mediaUrl,
-      media_mime: "application/pdf",
-      payload: {
+      payload = {
         media_host: "cloudinary",
         cloudinary_cloud_name: uploaded.cloud_name,
         cloudinary_public_id: uploaded.public_id,
         cloudinary_resource_type: uploaded.resource_type,
         cloudinary_folder: folderHint,
         filename,
-        report_part: multi ? partNo : 1,
-        report_parts_total: parts.length,
-      },
-    });
-    if (!queued.ok) {
-      return {
-        ok: false,
-        error: queued.error || `Failed to queue report part ${partNo}`,
-        partCount: parts.length,
-        id: firstId,
       };
+    } catch (e) {
+      const msg = (e as Error)?.message || "Cloudinary upload failed";
+      if (!isFileTooLarge(msg)) {
+        return { ok: false, error: msg };
+      }
+      // fall through to Supabase
+      mediaUrl = "";
+      payload = {};
     }
-    if (!firstId) firstId = queued.id;
+  } else {
+    mediaUrl = "";
+    payload = {};
   }
 
-  return { ok: true, id: firstId, partCount: parts.length };
+  if (!mediaUrl) {
+    const path = `wa-reports/${safeInvoice}-${Date.now()}.pdf`;
+    const { error: upErr } = await supabase.storage.from("chat-attachments").upload(path, opts.blob, {
+      contentType: "application/pdf",
+      upsert: false,
+    });
+    if (upErr) {
+      return {
+        ok: false,
+        error: upErr.message || "Report PDF upload failed (Cloudinary size limit / storage)",
+      };
+    }
+    const { data: pub } = supabase.storage.from("chat-attachments").getPublicUrl(path);
+    mediaUrl = pub?.publicUrl || "";
+    if (!mediaUrl) return { ok: false, error: "Report PDF public URL missing" };
+    payload = {
+      media_host: "supabase",
+      storage_bucket: "chat-attachments",
+      storage_path: path,
+      filename,
+      bytes: opts.blob.size,
+    };
+  }
+
+  return enqueueWhatsAppConsoleMessage({
+    kind: "report",
+    phone,
+    patient_name: opts.patient_name,
+    registration_id: opts.registration_id,
+    invoice_number: opts.invoice_number,
+    caption: opts.caption,
+    media_url: mediaUrl,
+    media_mime: "application/pdf",
+    payload,
+  });
 }
