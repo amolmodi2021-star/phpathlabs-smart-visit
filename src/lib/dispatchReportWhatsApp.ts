@@ -1,6 +1,7 @@
 import { createShareLink } from "@/lib/reportShareLinks";
 import { enqueueReportForWhatsAppConsole } from "@/lib/whatsappConsoleBridge";
 import { getCachedReportPdf, reportPdfCacheKey } from "@/lib/reportPdfSessionCache";
+import { getReportPdfEngine } from "@/lib/reportPdfEngine";
 
 /** Open report viewer and download the PDF (no WhatsApp). */
 export function openReportForManualWhatsApp(opts: {
@@ -66,7 +67,8 @@ export async function tryQueueCachedReportWhatsApp(opts: {
   invoiceNumber?: string | null;
   pendingReportNames?: string[];
 }): Promise<{ ok: boolean; error?: string; fromCache: true } | null> {
-  const key = reportPdfCacheKey(opts.registrationId, opts.testIds);
+  const engine = await getReportPdfEngine();
+  const key = reportPdfCacheKey(opts.registrationId, opts.testIds, engine);
   const cached = await getCachedReportPdf(key);
   if (!cached) return null;
 

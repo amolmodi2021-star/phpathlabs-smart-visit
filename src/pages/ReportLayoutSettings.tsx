@@ -5,9 +5,21 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ArrowLeft, Upload, Trash2, Save } from "lucide-react";
 import { toast } from "sonner";
 import { invalidateCachedAsset, invalidateBucket } from "@/lib/reportAssetCache";
+import {
+  REPORT_PDF_ENGINE_CHROMIUM,
+  REPORT_PDF_ENGINE_JPEG,
+  clearReportPdfEngineCache,
+  getReportPdfEngine,
+  normalizeReportPdfEngine,
+  reportPdfEngineLabel,
+  setReportPdfEngine,
+  type ReportPdfEngine,
+} from "@/lib/reportPdfEngine";
+import { getChromiumPdfStatus } from "@/lib/reportPdfChromium";
 
 const ReportLayoutSettings = () => {
   const navigate = useNavigate();
@@ -18,6 +30,9 @@ const ReportLayoutSettings = () => {
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [settingsId, setSettingsId] = useState<string | null>(null);
+  const [pdfEngine, setPdfEngine] = useState<ReportPdfEngine>(REPORT_PDF_ENGINE_JPEG);
+  const [chromiumReady, setChromiumReady] = useState(false);
+  const [chromiumStatusNote, setChromiumStatusNote] = useState("");
   const previewUrlRef = useRef<string | null>(null);
 
   const revokePreview = () => {
@@ -63,6 +78,15 @@ const ReportLayoutSettings = () => {
         await loadPreview(data.letterhead_pdf_path);
       }
     }
+    const engine = await getReportPdfEngine();
+    setPdfEngine(engine);
+    const st = await getChromiumPdfStatus();
+    setChromiumReady(st.configured);
+    setChromiumStatusNote(
+      st.configured
+        ? "Chromium PDF service is configured."
+        : st.error || "Chromium service not configured yet (REPORT_PDF_SERVICE_URL / KEY). Screen JPEG still works.",
+    );
   };
 
   const handleUploadLetterhead = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -90,7 +114,6 @@ const ReportLayoutSettings = () => {
       setUploading(false);
       return;
     }
-    // New path → new cache key; also clear whole letterheads bucket variants to be safe.
     await invalidateBucket("letterheads");
     setLetterheadPath(fileName);
     await loadPreview(fileName);
@@ -123,6 +146,22 @@ const ReportLayoutSettings = () => {
     } else {
       await supabase.from("report_layout_settings").insert(updateData);
     }
+
+    try {
+      if (pdfEngine === REPORT_PDF_ENGINE_CHROMIUM && !chromiumReady) {
+        toast.error("Chromium PDF service is not configured. Keeping Screen JPEG until the service is up.");
+        await setReportPdfEngine(REPORT_PDF_ENGINE_JPEG);
+        setPdfEngine(REPORT_PDF_ENGINE_JPEG);
+      } else {
+        await setReportPdfEngine(pdfEngine);
+      }
+      clearReportPdfEngineCache();
+    } catch (e: any) {
+      toast.error(e?.message || "Could not save PDF engine setting");
+      setSaving(false);
+      return;
+    }
+
     toast.success("Layout settings saved");
     setSaving(false);
   };
@@ -137,7 +176,35 @@ const ReportLayoutSettings = () => {
       </div>
 
       <div className="grid gap-6 max-w-xl">
-        {/* Margins */}
+        <div className="bg-card border rounded-lg p-6 space-y-4">
+          <h2 className="text-lg font-semibold">Report PDF engine</h2>
+          <p className="text-sm text-muted-foreground">
+            Chromium print keeps on-screen grids, margins, and colors with sharp vector text and smaller files.
+            Switch back to <span className="font-medium text-foreground">Screen JPEG (current)</span> anytime to
+            revert immediately to today&apos;s PDF method.
+          </p>
+          <div className="space-y-2">
+            <Label>Active engine</Label>
+            <Select
+              value={pdfEngine}
+              onValueChange={(v) => setPdfEngine(normalizeReportPdfEngine(v))}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={REPORT_PDF_ENGINE_JPEG}>
+                  {reportPdfEngineLabel(REPORT_PDF_ENGINE_JPEG)}
+                </SelectItem>
+                <SelectItem value={REPORT_PDF_ENGINE_CHROMIUM}>
+                  {reportPdfEngineLabel(REPORT_PDF_ENGINE_CHROMIUM)}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">{chromiumStatusNote}</p>
+          </div>
+        </div>
+
         <div className="bg-card border rounded-lg p-6 space-y-6">
           <h2 className="text-lg font-semibold">Page Margins</h2>
 
@@ -178,7 +245,7 @@ const ReportLayoutSettings = () => {
                 min="0"
                 max="10"
                 value={topMargin}
-                onChange={(e) => setTopMargin(Number(e.target.value))}
+                onChange={(e) => setTopMargin(Number(e.target.value) || 0)}
               />
             </div>
             <div>
@@ -189,13 +256,12 @@ const ReportLayoutSettings = () => {
                 min="0"
                 max="10"
                 value={bottomMargin}
-                onChange={(e) => setBottomMargin(Number(e.target.value))}
+                onChange={(e) => setBottomMargin(Number(e.target.value) || 0)}
               />
             </div>
           </div>
         </div>
 
-        {/* Letterhead Upload */}
         <div className="bg-card border rounded-lg p-6 space-y-4">
           <h2 className="text-lg font-semibold">Letterhead Background (PDF)</h2>
           <p className="text-sm text-muted-foreground">

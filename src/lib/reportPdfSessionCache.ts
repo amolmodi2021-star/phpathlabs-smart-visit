@@ -15,15 +15,19 @@ const TTL_MS = 45 * 60_000;
 const DB_NAME = "phpl-report-pdf-cache";
 const STORE = "pdfs";
 
-export function reportPdfCacheKey(registrationId: string, testIds: string[] | string | null | undefined): string {
+export function reportPdfCacheKey(
+  registrationId: string,
+  testIds: string[] | string | null | undefined,
+  engine: string = "screen_jpeg",
+): string {
   const ids = Array.isArray(testIds)
     ? testIds
     : String(testIds || "")
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean);
-  // v8: full-page View Report JPEG capture (revert layered letterhead/PNG quality regressions).
-  return `v8|${String(registrationId || "").trim()}|${[...ids].sort().join(",")}`;
+  // v9: engine-aware (screen_jpeg vs chromium_print).
+  return `v9|${String(engine || "screen_jpeg")}|${String(registrationId || "").trim()}|${[...ids].sort().join(",")}`;
 }
 
 function openDb(): Promise<IDBDatabase> {

@@ -23,6 +23,12 @@ import { logEvent, createShareLink } from "@/lib/reportShareLinks";
 import { patientDisplayName } from "@/lib/patientDisplayName";
 import { enqueueReportForWhatsAppConsole } from "@/lib/whatsappConsoleBridge";
 import { reportPdfCacheKey, setCachedReportPdf, getCachedReportPdf } from "@/lib/reportPdfSessionCache";
+import {
+  getReportPdfEngine,
+  REPORT_PDF_ENGINE_CHROMIUM,
+} from "@/lib/reportPdfEngine";
+import { buildReportPrintHtmlDocument } from "@/lib/reportHtmlDocument";
+import { renderReportPdfViaChromium } from "@/lib/reportPdfChromium";
 import { resolveNormalRangeDisplay } from "@/lib/parameterNormalRange";
 import { resolveReportAgeText } from "@/lib/patientAge";
 import { renderCode128Png, replaceCanvasesWithPngImages } from "@/lib/code128Png";
@@ -626,7 +632,7 @@ const LimsReportView = () => {
   const autoQueueWaStartedRef = useRef(false);
   const autoManualWaStartedRef = useRef(false);
   const eagerPdfStartedRef = useRef(false);
-  const cachedPdfRef = useRef<{ blob: Blob; filename: string } | null>(null);
+  const cachedPdfRef = useRef<{ blob: Blob; filename: string; engine: string } | null>(null);
   const pdfBuildInFlightRef = useRef<Promise<{ blob: Blob; filename: string } | null> | null>(null);
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState(false);
@@ -1767,17 +1773,20 @@ const LimsReportView = () => {
   }): Promise<{ blob: Blob; filename: string } | null> => {
     if (!printRef.current && !cachedPdfRef.current) return null;
 
+    const pdfEngine = await getReportPdfEngine();
     const cacheKey = registrationId
-      ? reportPdfCacheKey(registrationId, selectedTestIdsParam)
+      ? reportPdfCacheKey(registrationId, selectedTestIdsParam, pdfEngine)
       : "";
     if (cacheKey) {
       const hit = await getCachedReportPdf(cacheKey);
       if (hit) {
-        cachedPdfRef.current = { blob: hit.blob, filename: hit.filename };
+        cachedPdfRef.current = { blob: hit.blob, filename: hit.filename, engine: pdfEngine };
         return { blob: hit.blob, filename: hit.filename };
       }
     }
-    if (cachedPdfRef.current) return cachedPdfRef.current;
+    if (cachedPdfRef.current?.engine === pdfEngine) {
+      return { blob: cachedPdfRef.current.blob, filename: cachedPdfRef.current.filename };
+    }
     if (pdfBuildInFlightRef.current) return pdfBuildInFlightRef.current;
 
     const run = (async (): Promise<{ blob: Blob; filename: string } | null> => {
@@ -1793,6 +1802,23 @@ const LimsReportView = () => {
       if (pageElements.length === 0) return null;
 
       await waitForCaptureReady(printRef.current);
+
+      const patientNameRaw = patientDisplayName(approvedReports[0]);
+      const patientName = !approvedReports[0] || patientNameRaw === "—" ? "Report" : patientNameRaw;
+      const invoiceNum = approvedReports[0]?.invoice_number || "";
+      const filename = [patientName, invoiceNum].filter(Boolean).join(" ").replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim() + ".pdf";
+
+      // Chromium print: vector text + exact on-screen CSS (grids/margins/colors/snips).
+      // Instant revert: Report Layout Settings → Screen JPEG (current).
+      if (pdfEngine === REPORT_PDF_ENGINE_CHROMIUM) {
+        const queueWaRequested = Boolean(_opts?.queueMode);
+        if (queueWaRequested) toast.message("Building report PDF (Chromium)…");
+        const html = await buildReportPrintHtmlDocument(printRef.current);
+        const blob = await renderReportPdfViaChromium(html);
+        cachedPdfRef.current = { blob, filename, engine: pdfEngine };
+        if (cacheKey) await setCachedReportPdf(cacheKey, blob, filename);
+        return { blob, filename };
+      }
 
       const NATIVE_W = Math.round((PAGE_WIDTH_MM / 25.4) * 96);
       const NATIVE_H = Math.round((PAGE_HEIGHT_MM / 25.4) * 96);
@@ -1810,6 +1836,7 @@ const LimsReportView = () => {
       const wrappers = pageElements.map((el) => el.parentElement as HTMLElement | null);
       const prevVisibility = wrappers.map((w) => (w ? w.style.visibility : ""));
       const prevContentVis = wrappers.map((w) => (w ? (w.style as any).contentVisibility || "" : ""));
+      const queueWaRequested = Boolean(_opts?.queueMode);
 
       try {
         for (let i = 0; i < pageElements.length; i++) {
@@ -1850,11 +1877,6 @@ const LimsReportView = () => {
         });
       }
 
-      const patientNameRaw = patientDisplayName(approvedReports[0]);
-      const patientName = !approvedReports[0] || patientNameRaw === "—" ? "Report" : patientNameRaw;
-      const invoiceNum = approvedReports[0]?.invoice_number || "";
-      const filename = [patientName, invoiceNum].filter(Boolean).join(" ").replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim() + ".pdf";
-
       // Embed captured JPEGs as-is (NONE = no second re-encode / blur).
       const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
       for (let i = 0; i < jpegPages.length; i++) {
@@ -1863,7 +1885,7 @@ const LimsReportView = () => {
       }
       const blob = pdf.output("blob") as Blob;
 
-      cachedPdfRef.current = { blob, filename };
+      cachedPdfRef.current = { blob, filename, engine: pdfEngine };
       if (cacheKey) await setCachedReportPdf(cacheKey, blob, filename);
       return { blob, filename };
     })();
@@ -1901,8 +1923,7 @@ const LimsReportView = () => {
     if (!printRef.current && !cachedPdfRef.current) return;
     setDownloading(true);
     try {
-      // Always use full-quality capture; reuse session/eager cache when present.
-      const built = cachedPdfRef.current || await buildPdfBlob({ queueMode: true });
+      const built = await buildPdfBlob({ queueMode: true });
       if (!built) { toast.error("No pages to export"); setDownloading(false); return; }
 
       const { blob, filename } = built;
@@ -1936,7 +1957,12 @@ const LimsReportView = () => {
       setHasDownloadedOnce(true);
       toast.success("PDF downloaded successfully");
     } catch (err: any) {
-      toast.error("PDF export failed: " + (err.message || "Unknown error"));
+      const msg = String(err?.message || "Unknown error");
+      toast.error(
+        msg.includes("Chromium") || msg.includes("PDF service") || msg.includes("REPORT_PDF")
+          ? `PDF export failed: ${msg}. Switch to Screen JPEG in Report Layout Settings to revert.`
+          : `PDF export failed: ${msg}`,
+      );
     }
     setDownloading(false);
   };
@@ -2057,7 +2083,7 @@ const LimsReportView = () => {
           }
         })();
 
-        const built = cachedPdfRef.current || await withTimeout(
+        const built = await withTimeout(
           buildPdfBlob({ queueMode: true }),
           buildTimeoutMs,
           "report PDF build",
@@ -2147,7 +2173,7 @@ const LimsReportView = () => {
       launched = true;
       setDownloading(true);
       try {
-        const built = cachedPdfRef.current || await withTimeout(
+        const built = await withTimeout(
           buildPdfBlob({ queueMode: true }),
           90_000,
           "report PDF download",
