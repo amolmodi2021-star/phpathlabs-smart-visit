@@ -106,6 +106,3 @@ verify_jwt = true
 # Report PDF → Cloudflare R2 (presign + status); anon/publishable key OK
 [functions.r2-report-media]
 verify_jwt = true
-
-[functions.report-pdf-render]
-verify_jwt = true
