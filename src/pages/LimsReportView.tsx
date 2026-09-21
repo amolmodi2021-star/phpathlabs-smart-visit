@@ -269,12 +269,8 @@ const rowHeightMm = (p: any, descriptionText?: string | null): number => {
   const description: string = String(descriptionText ?? "").trim();
   const note: string = String(p?.note ?? "").trim();
 
-  // Reference Range col ~30% width => ~38 chars/line at 13px
-  const refLines = Math.max(
-    1,
-    Math.ceil((refText.length || 1) / 38),
-    refText.trim() ? refText.split(/\r?\n/).length : 1,
-  );
+  // Reference Range keeps Test Management line breaks (no mid-line wrap).
+  const refLines = Math.max(1, refText.trim() ? refText.split(/\r\n|\n|\r/).length : 1);
   // Result col ~20% width (~22 chars). Blank Display Text → Result spans Ref (~55 chars/line).
   const isDescriptive = !refText;
   const resultPerLine = isDescriptive ? 55 : 22;

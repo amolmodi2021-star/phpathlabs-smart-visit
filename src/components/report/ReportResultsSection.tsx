@@ -1,5 +1,6 @@
 import React from 'react';
 import { isCanonicalTimeValue, formatTimeResult } from '@/lib/timeRange';
+import FitReferenceRange from '@/components/report/FitReferenceRange';
 
 export interface TestResult {
   department?: string;
@@ -240,19 +241,22 @@ const ParamRow = ({ r, rowKey, compact, isMorph, showFlagText, rowFontSize, colC
           </td>
           <td
             className={`text-left px-2 text-gray-600 ${rangeWeight} ${py}`}
-            style={{ whiteSpace: "pre-wrap", ...(isAbnormal ? { fontWeight: 700 } : {}) }}
+            style={{ minWidth: 0, ...(isAbnormal ? { fontWeight: 700 } : {}) }}
           >
             {(() => {
               const rawText = r.normal_range_text != null ? String(r.normal_range_text) : "";
               // Emptiness check may trim; displayed value must keep leading/trailing/extra spaces.
-              if (rawText.trim().length > 0) return rawText;
-              const low = r.normal_range_low;
-              const high = r.normal_range_high;
-              const u = r.unit ? ` ${r.unit}` : "";
-              if (low != null && high != null) return `${low} - ${high}${u}`;
-              if (high != null && low == null) return `< ${high}${u}`;
-              if (low != null && high == null) return `> ${low}${u}`;
-              return "";
+              let display = "";
+              if (rawText.trim().length > 0) display = rawText;
+              else {
+                const low = r.normal_range_low;
+                const high = r.normal_range_high;
+                const u = r.unit ? ` ${r.unit}` : "";
+                if (low != null && high != null) display = `${low} - ${high}${u}`;
+                else if (high != null && low == null) display = `< ${high}${u}`;
+                else if (low != null && high == null) display = `> ${low}${u}`;
+              }
+              return display ? <FitReferenceRange text={display} /> : null;
             })()}
           </td>
           {showFlagText && (
