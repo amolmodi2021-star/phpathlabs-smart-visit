@@ -72,6 +72,33 @@ export function resetReportFontEmbedCache(): void {
   embedInflight = null;
 }
 
+/**
+ * Wait until IBM Plex is on the document and embed CSS is ready.
+ * Dispatch All popups race this — capturing too early uses a fallback face
+ * (distorted glyphs + different row heights that clip the last table line).
+ */
+export async function awaitReportCaptureFonts(node?: HTMLElement | null): Promise<string> {
+  try {
+    const fonts = (document as any).fonts;
+    if (fonts?.ready) await fonts.ready;
+    if (fonts?.load) {
+      await Promise.all(
+        LOCAL_IBM_PLEX_WEIGHTS.map((w) =>
+          fonts.load(`${w} 13px "IBM Plex Sans"`).catch(() => undefined),
+        ),
+      );
+    }
+  } catch {
+    /* ignore */
+  }
+  if (!node) return cachedEmbedCSS || "";
+  try {
+    return (await getCachedReportFontEmbedCSS(node)) || "";
+  } catch {
+    return cachedEmbedCSS || "";
+  }
+}
+
 export function reportCaptureStyle(extra: Record<string, string> = {}): Record<string, string> {
   return {
     fontFamily: REPORT_CAPTURE_FONT,

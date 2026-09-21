@@ -70,6 +70,7 @@ describe("report capture wiring", () => {
       "utf8",
     );
     expect(source).toContain("getCachedReportFontEmbedCSS");
+    expect(source).toContain("awaitReportCaptureFonts");
     expect(source).toContain("fontEmbedCSS");
     expect(source).toContain("REPORT_CAPTURE_FONT");
     expect(source).not.toMatch(/skipFonts:\s*true/);

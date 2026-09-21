@@ -7,7 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Loader2, Printer, ArrowLeft, Download, Share2 } from "lucide-react";
 import { toPng, toJpeg } from "html-to-image";
-import { getCachedReportFontEmbedCSS, reportCaptureStyle, REPORT_CAPTURE_FONT } from "@/lib/htmlCaptureFonts";
+import { awaitReportCaptureFonts, getCachedReportFontEmbedCSS, reportCaptureStyle, REPORT_CAPTURE_FONT } from "@/lib/htmlCaptureFonts";
 import jsPDF from "jspdf";
 import * as pdfjsLib from "pdfjs-dist";
 import LimsReportHeader from "@/components/report/LimsReportHeader";
@@ -69,13 +69,8 @@ const withTimeout = <T,>(promise: Promise<T>, ms: number, label: string): Promis
 const waitForCaptureReady = async (root: HTMLElement) => {
   // Canvas pixels do not survive html-to-image (SVG foreignObject). Same fix as invoice WhatsApp.
   replaceCanvasesWithPngImages(root);
-  try {
-    if ((document as any).fonts?.ready) {
-      await (document as any).fonts.ready;
-    }
-  } catch {}
-  // Prefetch embed CSS in parallel with images so PDF/WhatsApp reuse the View Reports face.
-  void getCachedReportFontEmbedCSS(root);
+  // Must await embed CSS — Dispatch All popups otherwise capture a fallback face.
+  await awaitReportCaptureFonts(root);
   const imgs = Array.from(root.querySelectorAll("img")) as HTMLImageElement[];
   await Promise.all(
     imgs.map((img) => {
@@ -260,7 +255,7 @@ const OUTSOURCED_MM = 6;            // outsourced caption row
 const INTER_PROFILE_GAP_MM = 2;     // matches spacer outside profile; internal 1mm is inside measured block
 const SAFETY_PAD_MM = 3;            // first-pass cushion only; measure-then-repack uses real heights
 const FIT_TOLERANCE_MM = 2;         // never let estimate spill onto signature
-const MEASURE_FIT_GAP_MM = 1.5;     // measured pack: keep this gap above signature top
+const MEASURE_FIT_GAP_MM = 5;       // keep last table row off the signature/footer rule
 const PX_PER_MM = 96 / 25.4;
 const STANDALONE_DIVIDER_MM = 3;    // border-t-2 + 3mm gap between standalone params
 
@@ -646,9 +641,14 @@ const LimsReportView = () => {
   };
 
   // A4 width at 96dpi ≈ 794px. Recompute scale on resize so the page fits the viewport on mobile.
+  // Dispatch All / manual-WA popups must stay at 1 — scaled measure packs too many rows and clips.
   useEffect(() => {
     const A4_WIDTH_PX = (PAGE_WIDTH_MM / 25.4) * 96; // ~794
     const compute = () => {
+      if (queueWaRequested || manualWaRequested) {
+        setPreviewScale(1);
+        return;
+      }
       const wrap = previewWrapRef.current;
       if (!wrap) return;
       const available = wrap.clientWidth;
@@ -1539,6 +1539,7 @@ const LimsReportView = () => {
   const [paginationReady, setPaginationReady] = useState(false);
   const paginationReadyRef = useRef(false);
   const measurePassRef = useRef(0);
+  const overflowPadRef = useRef(0);
 
   useEffect(() => {
     paginationReadyRef.current = paginationReady;
@@ -1548,6 +1549,7 @@ const LimsReportView = () => {
     setMeasuredPages(null);
     setPaginationReady(false);
     measurePassRef.current = 0;
+    overflowPadRef.current = 0;
   }, [packPlan.packKey]);
 
   const pages = measuredPages ?? packPlan.pages;
@@ -1567,7 +1569,7 @@ const LimsReportView = () => {
     let cancelled = false;
     const run = async () => {
       try {
-        if ((document as any).fonts?.ready) await (document as any).fonts.ready;
+        await awaitReportCaptureFonts(printRef.current);
       } catch {}
       await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
       if (cancelled || !printRef.current) return;
@@ -1591,7 +1593,9 @@ const LimsReportView = () => {
         // Use the flex content box height only (excludes pickup note + signature band below it).
         if (content && content.clientHeight > 0) {
           const slotMm = content.clientHeight / PX_PER_MM;
-          if (slotMm > 40) usableMm = slotMm;
+          // Never grow the slot past the planned usable height — flex-1 can look taller
+          // before fonts/images settle and then clip the last urine/table row.
+          if (slotMm > 40) usableMm = Math.min(packPlan.usableHeightMm, slotMm);
         }
         const deptHeader = firstPage.querySelector<HTMLElement>("[data-report-dept-header]");
         if (deptHeader && deptHeader.offsetHeight > 0) {
@@ -1615,7 +1619,7 @@ const LimsReportView = () => {
         const last = kids[kids.length - 1];
         const childBottom = last.offsetTop + last.offsetHeight;
         // Relative to content box; leave a tiny gap above signature.
-        if (childBottom > content.clientHeight - 1) overflowDetected = true;
+        if (childBottom > content.clientHeight - 8) overflowDetected = true;
       });
 
       if (measured.size === 0 && !overflowDetected) {
@@ -1644,10 +1648,14 @@ const LimsReportView = () => {
         }
       }
 
+      if (overflowDetected) {
+        overflowPadRef.current = Math.min(14, overflowPadRef.current + 4);
+      }
+
       const getHeight = (block: TestBlock, isFirst: boolean) => {
         const base = measured.get(block.testId) ?? block.estimatedHeightMm;
         // On overflow, prefer bumping measured heights slightly (fonts/images may still settle).
-        const bump = overflowDetected ? (measured.has(block.testId) ? 2 : 8) : 0;
+        const bump = overflowDetected ? (measured.has(block.testId) ? 3 : 8) : 0;
         return base + bump + (isFirst ? 0 : INTER_PROFILE_GAP_MM);
       };
 
@@ -1697,7 +1705,7 @@ const LimsReportView = () => {
       const structured = packStructuredTestBlocks(
         packPlan.sortedTestBlocks,
         getHeight,
-        Math.max(40, usableMm),
+        Math.max(40, usableMm - overflowPadRef.current),
         deptHeaderMm,
       );
       const nextPages = appendHistoricalTrendPages(
@@ -1710,8 +1718,13 @@ const LimsReportView = () => {
       );
 
       measurePassRef.current += 1;
-      if (pagesFingerprint(nextPages) !== pagesFingerprint(pages)) {
+      const packChanged = pagesFingerprint(nextPages) !== pagesFingerprint(pages);
+      if (packChanged) {
         setMeasuredPages(nextPages);
+        setPaginationReady(false);
+      } else if (overflowDetected && measurePassRef.current < 4) {
+        // Same pack but still clipped — remount after pad bump on next pass.
+        setMeasuredPages([...nextPages]);
         setPaginationReady(false);
       } else {
         setPaginationReady(true);
@@ -1785,14 +1798,24 @@ const LimsReportView = () => {
 
       // Wait for measure-then-repack to settle so export matches densest safe layout.
       const waitStart = Date.now();
-      while (!paginationReadyRef.current && Date.now() - waitStart < 6_000) {
+      while (!paginationReadyRef.current && Date.now() - waitStart < 8_000) {
         await new Promise((r) => setTimeout(r, 25));
       }
 
       const pageElements = Array.from(printRef.current.querySelectorAll("[data-page]")) as HTMLElement[];
       if (pageElements.length === 0) return null;
 
-      await waitForCaptureReady(printRef.current);
+      // Capture at native A4 (no previewScale) so Dispatch popup matches Download.
+      const prevPageTransforms = pageElements.map((el) => el.style.transform);
+      pageElements.forEach((el) => {
+        el.style.transform = "none";
+      });
+
+      try {
+        await waitForCaptureReady(printRef.current);
+        // Extra paint after fonts/embed so old PCs don't raster a fallback face.
+        await new Promise((r) => setTimeout(r, 180));
+        await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
 
       const NATIVE_W = Math.round((PAGE_WIDTH_MM / 25.4) * 96);
       const NATIVE_H = Math.round((PAGE_HEIGHT_MM / 25.4) * 96);
@@ -1863,9 +1886,14 @@ const LimsReportView = () => {
       }
       const blob = pdf.output("blob") as Blob;
 
-      cachedPdfRef.current = { blob, filename };
-      if (cacheKey) await setCachedReportPdf(cacheKey, blob, filename);
-      return { blob, filename };
+        cachedPdfRef.current = { blob, filename };
+        if (cacheKey) await setCachedReportPdf(cacheKey, blob, filename);
+        return { blob, filename };
+      } finally {
+        pageElements.forEach((el, i) => {
+          el.style.transform = prevPageTransforms[i];
+        });
+      }
     })();
 
     pdfBuildInFlightRef.current = run;
@@ -2100,7 +2128,7 @@ const LimsReportView = () => {
         window.clearTimeout(failSafe);
         setDownloading(false);
       }
-    }, 100);
+    }, 400);
 
     return () => {
       cancelled = true;
@@ -2169,7 +2197,7 @@ const LimsReportView = () => {
       } finally {
         setDownloading(false);
       }
-    }, 100);
+    }, 400);
     return () => {
       cancelled = true;
       window.clearTimeout(t);
@@ -2451,7 +2479,7 @@ const LimsReportView = () => {
               )}
 
               {/* Main Content Area — packs down to top of signature band */}
-              <div data-report-content className={page.type === "histogram" || page.type === "snip" || page.type === "trends" ? "flex-1 min-h-0 overflow-hidden" : "flex-1 overflow-visible"}>{/* overflow-visible: surfaces any pagination-estimate regression instead of silently clipping rows (e.g. RFT being truncated). Histogram/snip pages must not paint over the signature. */}
+              <div data-report-content className={page.type === "histogram" || page.type === "snip" || page.type === "trends" ? "flex-1 min-h-0 overflow-hidden" : "flex-1 overflow-visible"} style={page.type === "structured" ? { paddingBottom: "3mm" } : undefined}>{/* overflow-visible: surfaces any pagination-estimate regression instead of silently clipping rows (e.g. RFT being truncated). Histogram/snip pages must not paint over the signature. */}
                 {page.type === "structured" && page.testBlocks && (() => {
                   const hasFitToPage = page.testBlocks.some(b => b.fitToPage);
                   const resultsContent = (

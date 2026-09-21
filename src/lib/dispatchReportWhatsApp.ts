@@ -18,7 +18,7 @@ export function openReportForManualWhatsApp(opts: {
   const win = window.open(
     url,
     `lims-report-manual-wa-${Date.now()}`,
-    "popup=yes,width=720,height=540,left=80,top=80",
+    "popup=yes,width=920,height=1240,left=40,top=20",
   );
   if (!win) {
     return { ok: false, error: "Popup blocked — allow popups to download the report PDF" };
@@ -117,7 +117,7 @@ export function queueApprovedReportWhatsApp(opts: {
     const win = window.open(
       url,
       `lims-report-wa-queue-${Date.now()}`,
-      "popup=yes,width=720,height=540,left=80,top=80",
+      "popup=yes,width=920,height=1240,left=40,top=20",
     );
     if (!win) {
       resolve({
