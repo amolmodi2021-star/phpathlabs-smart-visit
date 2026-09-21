@@ -255,7 +255,7 @@ const OUTSOURCED_MM = 6;            // outsourced caption row
 const INTER_PROFILE_GAP_MM = 2;     // matches spacer outside profile; internal 1mm is inside measured block
 const SAFETY_PAD_MM = 3;            // first-pass cushion only; measure-then-repack uses real heights
 const FIT_TOLERANCE_MM = 2;         // never let estimate spill onto signature
-const MEASURE_FIT_GAP_MM = 5;       // keep last table row off the signature/footer rule
+const MEASURE_FIT_GAP_MM = 2.5;     // small gap above signature; do not steal a whole extra test
 const PX_PER_MM = 96 / 25.4;
 const STANDALONE_DIVIDER_MM = 3;    // border-t-2 + 3mm gap between standalone params
 
@@ -1539,7 +1539,6 @@ const LimsReportView = () => {
   const [paginationReady, setPaginationReady] = useState(false);
   const paginationReadyRef = useRef(false);
   const measurePassRef = useRef(0);
-  const overflowPadRef = useRef(0);
 
   useEffect(() => {
     paginationReadyRef.current = paginationReady;
@@ -1549,7 +1548,6 @@ const LimsReportView = () => {
     setMeasuredPages(null);
     setPaginationReady(false);
     measurePassRef.current = 0;
-    overflowPadRef.current = 0;
   }, [packPlan.packKey]);
 
   const pages = measuredPages ?? packPlan.pages;
@@ -1593,9 +1591,9 @@ const LimsReportView = () => {
         // Use the flex content box height only (excludes pickup note + signature band below it).
         if (content && content.clientHeight > 0) {
           const slotMm = content.clientHeight / PX_PER_MM;
-          // Never grow the slot past the planned usable height — flex-1 can look taller
-          // before fonts/images settle and then clip the last urine/table row.
-          if (slotMm > 40) usableMm = Math.min(packPlan.usableHeightMm, slotMm);
+          // Use the painted flex slot (after fonts). Do not shrink it further with a
+          // global pad — that was pushing RFT onto the next page while LFT still had room.
+          if (slotMm > 40) usableMm = slotMm;
         }
         const deptHeader = firstPage.querySelector<HTMLElement>("[data-report-dept-header]");
         if (deptHeader && deptHeader.offsetHeight > 0) {
@@ -1609,17 +1607,8 @@ const LimsReportView = () => {
         const content = pageEl.querySelector<HTMLElement>("[data-report-content]");
         const signature = pageEl.querySelector<HTMLElement>("[data-report-signature]");
         if (!content || !signature) return;
-        // flex-1 box fills to signature; detect true child overflow only.
-        if (content.scrollHeight > content.clientHeight + 2) {
-          overflowDetected = true;
-          return;
-        }
-        const kids = Array.from(content.children) as HTMLElement[];
-        if (kids.length === 0) return;
-        const last = kids[kids.length - 1];
-        const childBottom = last.offsetTop + last.offsetHeight;
-        // Relative to content box; leave a tiny gap above signature.
-        if (childBottom > content.clientHeight - 8) overflowDetected = true;
+        // True clip only — a near-full page (LFT+RFT) must not count as overflow.
+        if (content.scrollHeight > content.clientHeight + 2) overflowDetected = true;
       });
 
       if (measured.size === 0 && !overflowDetected) {
@@ -1648,15 +1637,9 @@ const LimsReportView = () => {
         }
       }
 
-      if (overflowDetected) {
-        overflowPadRef.current = Math.min(14, overflowPadRef.current + 4);
-      }
-
       const getHeight = (block: TestBlock, isFirst: boolean) => {
         const base = measured.get(block.testId) ?? block.estimatedHeightMm;
-        // On overflow, prefer bumping measured heights slightly (fonts/images may still settle).
-        const bump = overflowDetected ? (measured.has(block.testId) ? 3 : 8) : 0;
-        return base + bump + (isFirst ? 0 : INTER_PROFILE_GAP_MM);
+        return base + (isFirst ? 0 : INTER_PROFILE_GAP_MM);
       };
 
       // Source of truth: re-pack ALL structured blocks with measured heights (fills whitespace),
@@ -1705,7 +1688,7 @@ const LimsReportView = () => {
       const structured = packStructuredTestBlocks(
         packPlan.sortedTestBlocks,
         getHeight,
-        Math.max(40, usableMm - overflowPadRef.current),
+        Math.max(40, usableMm),
         deptHeaderMm,
       );
       const nextPages = appendHistoricalTrendPages(
@@ -1718,13 +1701,8 @@ const LimsReportView = () => {
       );
 
       measurePassRef.current += 1;
-      const packChanged = pagesFingerprint(nextPages) !== pagesFingerprint(pages);
-      if (packChanged) {
+      if (pagesFingerprint(nextPages) !== pagesFingerprint(pages)) {
         setMeasuredPages(nextPages);
-        setPaginationReady(false);
-      } else if (overflowDetected && measurePassRef.current < 4) {
-        // Same pack but still clipped — remount after pad bump on next pass.
-        setMeasuredPages([...nextPages]);
         setPaginationReady(false);
       } else {
         setPaginationReady(true);
@@ -2479,7 +2457,7 @@ const LimsReportView = () => {
               )}
 
               {/* Main Content Area — packs down to top of signature band */}
-              <div data-report-content className={page.type === "histogram" || page.type === "snip" || page.type === "trends" ? "flex-1 min-h-0 overflow-hidden" : "flex-1 overflow-visible"} style={page.type === "structured" ? { paddingBottom: "3mm" } : undefined}>{/* overflow-visible: surfaces any pagination-estimate regression instead of silently clipping rows (e.g. RFT being truncated). Histogram/snip pages must not paint over the signature. */}
+              <div data-report-content className={page.type === "histogram" || page.type === "snip" || page.type === "trends" ? "flex-1 min-h-0 overflow-hidden" : "flex-1 overflow-visible"}>{/* overflow-visible: surfaces any pagination-estimate regression instead of silently clipping rows (e.g. RFT being truncated). Histogram/snip pages must not paint over the signature. */}
                 {page.type === "structured" && page.testBlocks && (() => {
                   const hasFitToPage = page.testBlocks.some(b => b.fitToPage);
                   const resultsContent = (

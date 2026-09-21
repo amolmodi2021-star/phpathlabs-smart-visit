@@ -22,8 +22,8 @@ export function reportPdfCacheKey(registrationId: string, testIds: string[] | st
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean);
-  // v10: wait for IBM Plex embed + safer last-row pack (Dispatch All clip / soft fonts).
-  return `v10|${String(registrationId || "").trim()}|${[...ids].sort().join(",")}`;
+  // v11: font-ready capture; pack from measured heights without a global overflow pad.
+  return `v11|${String(registrationId || "").trim()}|${[...ids].sort().join(",")}`;
 }
 
 function openDb(): Promise<IDBDatabase> {
