@@ -918,10 +918,15 @@ const Dispatch = () => {
     else setSelectedTestIds(new Set(reportableTests.map((t) => t.testId)));
   };
 
-  const handleGenerateReport = () => {
+  const handleGenerateReport = async () => {
     if (!reportSelectEntry || selectedTestIds.size === 0) return;
     const regId = reportSelectEntry.registration.id;
     const queryParam = Array.from(selectedTestIds).join(",");
+    try {
+      await ensureApprovedReportSnapshotHealed(supabase, regId);
+    } catch (healErr) {
+      console.warn("approved_reports heal before generate skipped", healErr);
+    }
     saveDispatchUiForReturn();
     setReportSelectEntry(null);
     navigate(`/lims/report/${regId}?tests=${encodeURIComponent(queryParam)}`, {

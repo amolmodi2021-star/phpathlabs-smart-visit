@@ -1,3 +1,5 @@
+import { snapshotAgeAtApproval } from "@/lib/patientAge";
+
 /**
  * Resolve a patient_results row for a specific (registration, test, parameter).
  *
@@ -343,11 +345,21 @@ export type HealApprovedSnapshotResult = {
   reportsArr: any[];
 };
 
+function snapshotApproverMeta(r: any) {
+  return {
+    approved_by_doctor_code: r?.approved_by_doctor_code || null,
+    approved_by_qualification: r?.approved_by_qualification || null,
+    approved_by_designation: r?.approved_by_designation || null,
+    approved_by_signature_url: null,
+  };
+}
+
 /**
  * View Report / PDF reads approved_reports.test_results. If Doctor Approval
- * races or a later save drops a test, live patient_results can still be
- * approved/dispatched while the snapshot omits them (CBC on 2608170010).
- * Merge any missing live rows into the in-memory report (and persist).
+ * races or a later save drops a test — or never wrote the snapshot at all
+ * (2609230028) — live patient_results can still be approved/dispatched.
+ * Merge missing live rows into the in-memory report and persist (insert
+ * when no snapshot row exists).
  */
 export async function healApprovedReportSnapshotFromLive(
   supabase: { from: (table: string) => any },
@@ -355,7 +367,7 @@ export async function healApprovedReportSnapshotFromLive(
   reportsArr: any[],
   testNameById: Record<string, string> = {},
 ): Promise<HealApprovedSnapshotResult> {
-  if (!registrationId || !reportsArr.length) {
+  if (!registrationId) {
     return { added: 0, reportsArr };
   }
 
@@ -368,7 +380,55 @@ export async function healApprovedReportSnapshotFromLive(
     .in("status", ["approved", "dispatched"]);
   if (error || !liveRows?.length) return { added: 0, reportsArr };
 
-  const primary = reportsArr[0];
+  let working = Array.isArray(reportsArr) ? [...reportsArr] : [];
+  let created = false;
+
+  if (working.length === 0) {
+    const { data: reg } = await supabase
+      .from("patient_registrations")
+      .select(
+        "id, invoice_number, umr_number, patient_name, title, gender, dob, age_text, mobile_number, email, address, doctor_name, visit_type, is_stat, report_language, created_at",
+      )
+      .eq("id", registrationId)
+      .maybeSingle();
+    if (!reg) return { added: 0, reportsArr: [] };
+
+    const approvedAt =
+      (liveRows as any[])
+        .map((r) => r.approved_at)
+        .filter(Boolean)
+        .sort()
+        .at(-1) || new Date().toISOString();
+    const approvedBy =
+      (liveRows as any[]).find((r) => String(r.approved_by || "").trim())?.approved_by || null;
+
+    working = [{
+      registration_id: registrationId,
+      invoice_number: reg.invoice_number ?? null,
+      umr_number: reg.umr_number ?? null,
+      patient_name: reg.patient_name ?? null,
+      title: reg.title ?? null,
+      gender: reg.gender ?? null,
+      dob: reg.dob ?? null,
+      age_text: snapshotAgeAtApproval(reg, approvedAt) ?? reg.age_text ?? null,
+      mobile_number: reg.mobile_number ?? null,
+      email: reg.email ?? null,
+      address: reg.address ?? null,
+      doctor_name: reg.doctor_name ?? null,
+      visit_type: reg.visit_type ?? null,
+      is_stat: !!reg.is_stat,
+      report_language: reg.report_language ?? null,
+      approved_by: approvedBy,
+      registration_date: reg.created_at ?? null,
+      approval_date: approvedAt,
+      sample_collection_date: null,
+      test_results: [],
+      outsourced_snip_urls: [],
+    }];
+    created = true;
+  }
+
+  const primary = working[0];
   const existing = Array.isArray(primary?.test_results) ? [...primary.test_results] : [];
   const existingKeys = new Set(
     existing
@@ -381,22 +441,39 @@ export async function healApprovedReportSnapshotFromLive(
   let anyMeta: any = null;
   for (const r of existing) {
     if (!anyMeta && (r?.approved_by_doctor_code || r?.approved_by_qualification || r?.approved_by_designation || r?.approved_by)) {
-      anyMeta = {
-        approved_by_doctor_code: r.approved_by_doctor_code || null,
-        approved_by_qualification: r.approved_by_qualification || null,
-        approved_by_designation: r.approved_by_designation || null,
-        approved_by_signature_url: null,
-      };
+      anyMeta = snapshotApproverMeta(r);
     }
     const by = String(r?.approved_by || "").trim();
     if (!by || metaByApprover.has(by)) continue;
     if (r?.approved_by_qualification || r?.approved_by_designation || r?.approved_by || r?.approved_by_doctor_code) {
-      metaByApprover.set(by, {
-        approved_by_doctor_code: r.approved_by_doctor_code || null,
-        approved_by_qualification: r.approved_by_qualification || null,
-        approved_by_designation: r.approved_by_designation || null,
-        approved_by_signature_url: null,
-      });
+      metaByApprover.set(by, snapshotApproverMeta(r));
+    }
+  }
+
+  if (!anyMeta) {
+    const names = [...new Set(
+      (liveRows as any[]).map((r) => String(r.approved_by || "").trim()).filter(Boolean),
+    )];
+    if (names.length) {
+      const { data: sigs } = await supabase
+        .from("pathologist_signatures")
+        .select("pathologist_name, doctor_code, qualification, designation");
+      for (const sig of sigs || []) {
+        const key = String(sig.pathologist_name || "").trim().toLowerCase();
+        if (!key) continue;
+        const meta = {
+          approved_by_doctor_code: sig.doctor_code || null,
+          approved_by_qualification: sig.qualification || null,
+          approved_by_designation: sig.designation || null,
+          approved_by_signature_url: null,
+        };
+        for (const name of names) {
+          if (name.toLowerCase() === key) {
+            metaByApprover.set(name, meta);
+            if (!anyMeta) anyMeta = meta;
+          }
+        }
+      }
     }
   }
 
@@ -433,18 +510,32 @@ export async function healApprovedReportSnapshotFromLive(
     existingKeys.add(key);
   }
 
-  if (missing.length === 0) return { added: 0, reportsArr };
+  if (missing.length === 0) return { added: 0, reportsArr: working };
 
   const mergedResults = existing.concat(missing);
-  const healed = reportsArr.map((r, i) =>
+  const healed = working.map((r, i) =>
     i === 0 ? { ...r, test_results: mergedResults } : r,
   );
 
-  // Persist so Dispatch / Modified Approval stay consistent after this view.
-  await supabase
-    .from("approved_reports")
-    .update({ test_results: mergedResults } as any)
-    .eq("registration_id", registrationId);
+  try {
+    if (created) {
+      const insertRow = { ...healed[0], test_results: mergedResults };
+      const { data: inserted, error: insErr } = await supabase
+        .from("approved_reports")
+        .insert(insertRow as any)
+        .select("*")
+        .maybeSingle();
+      if (!insErr && inserted) {
+        return { added: missing.length, reportsArr: [inserted] };
+      }
+    }
+    await supabase
+      .from("approved_reports")
+      .update({ test_results: mergedResults } as any)
+      .eq("registration_id", registrationId);
+  } catch (persistErr) {
+    console.warn("approved_reports snapshot persist skipped", persistErr);
+  }
 
   return { added: missing.length, reportsArr: healed };
 }
@@ -473,7 +564,7 @@ export async function ensureApprovedReportSnapshotHealed(
     .select("*")
     .eq("registration_id", registrationId)
     .maybeSingle();
-  if (error || !report) return 0;
+  if (error) return 0;
 
   const { data: tests } = await supabase.from("tests").select("id, test_name");
   const testNameById: Record<string, string> = {};
@@ -484,7 +575,7 @@ export async function ensureApprovedReportSnapshotHealed(
   const healed = await healApprovedReportSnapshotFromLive(
     supabase,
     registrationId,
-    [report],
+    report ? [report] : [],
     testNameById,
   );
   return healed.added;

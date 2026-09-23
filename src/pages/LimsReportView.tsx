@@ -813,9 +813,10 @@ const LimsReportView = () => {
       }];
     }
 
-    // Final reports: backfill approved/dispatched live rows missing from the snapshot
-    // (e.g. concurrent Doctor Approval upserts dropping CBC from approved_reports).
-    if (!isProvisional && registrationId && reportsArr.length > 0) {
+    // Final reports: create/backfill snapshot from approved/dispatched live rows
+    // when Doctor Approval wrote patient_results but approved_reports is missing
+    // or incomplete (2609230028 / concurrent upserts dropping CBC).
+    if (!isProvisional && registrationId) {
       const testNameById: Record<string, string> = {};
       (allTests || []).forEach((t: any) => { testNameById[t.id] = t.test_name; });
       const healed = await healApprovedReportSnapshotFromLive(
