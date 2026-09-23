@@ -311,6 +311,24 @@ const Dispatch = () => {
   const restoredUiRef = useRef<DispatchUiRestore | null>(readDispatchUiRestore());
   const listScrollRef = useRef<HTMLDivElement | null>(null);
   const listScrollTopRef = useRef(restoredUiRef.current?.scrollTop ?? 0);
+  /** Dedupe snapshot heals when View Report starts one and Generate / Dispatch All await it. */
+  const snapshotHealByReg = useRef(new Map<string, Promise<number>>());
+
+  const startApprovedSnapshotHeal = (registrationId: string) => {
+    if (!registrationId) return Promise.resolve(0);
+    const existing = snapshotHealByReg.current.get(registrationId);
+    if (existing) return existing;
+    const pending = ensureApprovedReportSnapshotHealed(supabase, registrationId)
+      .catch((err) => {
+        console.warn("approved_reports heal skipped", err);
+        return 0;
+      })
+      .finally(() => {
+        snapshotHealByReg.current.delete(registrationId);
+      });
+    snapshotHealByReg.current.set(registrationId, pending);
+    return pending;
+  };
   const [search, setSearch] = useState("");
   /** all = lean date-range list; filters = pending / all-approved / partially-approved. */
   const [listMode, setListMode] = useState<DispatchListMode>("all");
@@ -706,8 +724,8 @@ const Dispatch = () => {
     setActionKey(`${reg.id}||dispatch`);
     try {
       toast.message("Queuing report PDF for WhatsApp…");
-      // approved_reports.test_results ← backfill from patient_results if needed
-      await ensureApprovedReportSnapshotHealed(supabase, reg.id);
+      // approved_reports.test_results ← create/backfill from live approved rows
+      await startApprovedSnapshotHeal(reg.id);
       const pendingNames = entry.tests
         .filter((t) => t.status !== "approved" && t.status !== "dispatched")
         .map((t) => t.testName);
@@ -834,7 +852,7 @@ const Dispatch = () => {
     setSendToEntry(null);
     try {
       toast.message("Generating report PDF for WhatsApp…");
-      await ensureApprovedReportSnapshotHealed(supabase, reg.id);
+      await startApprovedSnapshotHeal(reg.id);
       const pendingNames = entry.tests
         .filter((t) => t.status !== "approved" && t.status !== "dispatched")
         .map((t) => t.testName);
@@ -900,6 +918,7 @@ const Dispatch = () => {
     const reportableTests = entry.tests.filter((t) => t.status === "approved" || t.status === "dispatched");
     setSelectedTestIds(new Set(reportableTests.map((t) => t.testId)));
     setReportSelectEntry(entry);
+    void startApprovedSnapshotHeal(entry.registration.id);
   };
 
   const reportableTests = reportSelectEntry?.tests.filter((t) => t.status === "approved" || t.status === "dispatched") || [];
@@ -922,11 +941,7 @@ const Dispatch = () => {
     if (!reportSelectEntry || selectedTestIds.size === 0) return;
     const regId = reportSelectEntry.registration.id;
     const queryParam = Array.from(selectedTestIds).join(",");
-    try {
-      await ensureApprovedReportSnapshotHealed(supabase, regId);
-    } catch (healErr) {
-      console.warn("approved_reports heal before generate skipped", healErr);
-    }
+    await startApprovedSnapshotHeal(regId);
     saveDispatchUiForReturn();
     setReportSelectEntry(null);
     navigate(`/lims/report/${regId}?tests=${encodeURIComponent(queryParam)}`, {
@@ -944,7 +959,7 @@ const Dispatch = () => {
     }
     setActionKey(`${entry.registration.id}||manualWa`);
     try {
-      await ensureApprovedReportSnapshotHealed(supabase, entry.registration.id);
+      await startApprovedSnapshotHeal(entry.registration.id);
       const opened = openReportForManualWhatsApp({
         registrationId: entry.registration.id,
         testIds,
