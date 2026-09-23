@@ -354,12 +354,39 @@ function snapshotApproverMeta(r: any) {
   };
 }
 
+function snapshotRowTestId(r: any): string {
+  return String(r?.test_id || r?.testId || "").trim().toLowerCase();
+}
+
+function snapshotRowParameterId(r: any): string {
+  return String(r?.parameter_id || r?.parameterId || "").trim().toLowerCase();
+}
+
+/** Stable key so partial-snapshot heals match live rows regardless of UUID case. */
+export function approvedSnapshotResultKey(testId: unknown, parameterId: unknown): string {
+  return `${String(testId || "").trim().toLowerCase()}||${String(parameterId || "").trim().toLowerCase()}`;
+}
+
+function snapshotTestResultsArray(primary: any): any[] {
+  const raw = primary?.test_results;
+  if (Array.isArray(raw)) return [...raw];
+  if (typeof raw === "string" && raw.trim()) {
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
 /**
  * View Report / PDF reads approved_reports.test_results. If Doctor Approval
  * races or a later save drops a test — or never wrote the snapshot at all
  * (2609230028) — live patient_results can still be approved/dispatched.
- * Merge missing live rows into the in-memory report and persist (insert
- * when no snapshot row exists).
+ * Merge missing live tests/parameters into the in-memory report and persist
+ * (insert when no snapshot row exists; append when the snapshot is partial).
  */
 export async function healApprovedReportSnapshotFromLive(
   supabase: { from: (table: string) => any },
@@ -429,12 +456,18 @@ export async function healApprovedReportSnapshotFromLive(
   }
 
   const primary = working[0];
-  const existing = Array.isArray(primary?.test_results) ? [...primary.test_results] : [];
+  const existing = snapshotTestResultsArray(primary);
   const existingKeys = new Set(
     existing
-      .filter((r: any) => r?.test_id && r?.parameter_id)
-      .map((r: any) => `${r.test_id}||${r.parameter_id}`),
+      .filter((r: any) => snapshotRowTestId(r) && snapshotRowParameterId(r))
+      .map((r: any) => approvedSnapshotResultKey(snapshotRowTestId(r), snapshotRowParameterId(r))),
   );
+  const testNameFromSnapshot: Record<string, string> = {};
+  for (const r of existing) {
+    const tid = snapshotRowTestId(r);
+    const name = String(r?.test_name || r?.testName || "").trim();
+    if (tid && name && !testNameFromSnapshot[tid]) testNameFromSnapshot[tid] = name;
+  }
 
   // Reuse signature metadata from an existing snapshot row for the same approver.
   const metaByApprover = new Map<string, any>();
@@ -480,13 +513,14 @@ export async function healApprovedReportSnapshotFromLive(
   const missing: any[] = [];
   for (const row of liveRows as any[]) {
     if (!row.test_id || !row.parameter_id) continue;
-    const key = `${row.test_id}||${row.parameter_id}`;
+    const key = approvedSnapshotResultKey(row.test_id, row.parameter_id);
     if (existingKeys.has(key)) continue;
     const by = String(row.approved_by || "").trim();
     const meta = metaByApprover.get(by) || anyMeta || {};
+    const tidKey = String(row.test_id).trim().toLowerCase();
     missing.push({
       test_id: row.test_id,
-      test_name: testNameById[row.test_id] || "",
+      test_name: testNameById[row.test_id] || testNameFromSnapshot[tidKey] || "",
       parameter_id: row.parameter_id,
       param_code: row.param_code || null,
       parameter_name: row.parameter_name || null,
@@ -551,20 +585,23 @@ export async function ensureApprovedReportSnapshotHealed(
 ): Promise<number> {
   if (!registrationId) return 0;
 
-  // Prefer DB heal (row lock) when available.
+  let added = 0;
+  // DB heal (row lock) first — creates a missing snapshot or merges missing tests/params.
   if (typeof (supabase as any).rpc === "function") {
     const { data, error } = await (supabase as any).rpc("lims_heal_approved_report_from_live", {
       p_registration_id: registrationId,
     });
-    if (!error) return Number(data ?? 0);
+    if (!error) added += Number(data ?? 0);
   }
 
+  // Always re-read and fill any leftover live approved/dispatched rows the RPC
+  // missed (partial snapshot, UUID case mismatch, or RPC unavailable).
   const { data: report, error } = await supabase
     .from("approved_reports")
     .select("*")
     .eq("registration_id", registrationId)
     .maybeSingle();
-  if (error) return 0;
+  if (error) return added;
 
   const { data: tests } = await supabase.from("tests").select("id, test_name");
   const testNameById: Record<string, string> = {};
@@ -578,7 +615,7 @@ export async function ensureApprovedReportSnapshotHealed(
     report ? [report] : [],
     testNameById,
   );
-  return healed.added;
+  return added + healed.added;
 }
 
 

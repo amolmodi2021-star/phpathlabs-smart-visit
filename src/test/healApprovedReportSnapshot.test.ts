@@ -120,4 +120,76 @@ describe("healApprovedReportSnapshotFromLive", () => {
     expect(healed.reportsArr).toEqual([]);
     expect(calls.insert).toBeNull();
   });
+
+  it("appends a missing approved test onto a partial snapshot", async () => {
+    const { supabase, calls } = mockSupabase({
+      liveRows: [
+        {
+          test_id: "t-cbc",
+          parameter_id: "p-hb",
+          parameter_name: "Haemoglobin",
+          result_value: "13.2",
+          approved_by: "Dr. HEMANG JADAWALA",
+        },
+        {
+          test_id: "t-crp",
+          parameter_id: "p-crp",
+          parameter_name: "CRP",
+          result_value: "6.1",
+          approved_by: "Dr. HEMANG JADAWALA",
+        },
+      ],
+    });
+
+    const healed = await healApprovedReportSnapshotFromLive(
+      supabase as any,
+      "reg-1",
+      [{
+        registration_id: "reg-1",
+        invoice_number: "2609230028",
+        test_results: [
+          {
+            test_id: "t-cbc",
+            test_name: "CBC",
+            parameter_id: "p-hb",
+            parameter_name: "Haemoglobin",
+            result_value: "13.2",
+            approved_by: "Dr. HEMANG JADAWALA",
+          },
+        ],
+      }],
+      { "t-cbc": "CBC", "t-crp": "CRP" },
+    );
+
+    expect(healed.added).toBe(1);
+    expect(calls.insert).toBeNull();
+    expect(calls.update.test_results).toHaveLength(2);
+    expect(calls.update.test_results.map((r: any) => r.test_name)).toEqual(["CBC", "CRP"]);
+  });
+
+  it("appends missing parameters onto a test that is only partly in the snapshot", async () => {
+    const { supabase, calls } = mockSupabase({
+      liveRows: [
+        { test_id: "t-cbc", parameter_id: "p-hb", parameter_name: "Haemoglobin", result_value: "11.2" },
+        { test_id: "t-cbc", parameter_id: "p-wbc", parameter_name: "WBC", result_value: "6500" },
+        { test_id: "t-cbc", parameter_id: "p-plt", parameter_name: "Platelet", result_value: "360000" },
+      ],
+    });
+
+    const healed = await healApprovedReportSnapshotFromLive(
+      supabase as any,
+      "reg-1",
+      [{
+        registration_id: "reg-1",
+        test_results: [
+          { test_id: "T-CBC", test_name: "CBC", parameter_id: "P-HB", parameter_name: "Haemoglobin", result_value: "11.2" },
+        ],
+      }],
+      { "t-cbc": "CBC" },
+    );
+
+    expect(healed.added).toBe(2);
+    expect(calls.update.test_results.map((r: any) => r.parameter_id)).toEqual(["P-HB", "p-wbc", "p-plt"]);
+    expect(healed.reportsArr[0].test_results).toHaveLength(3);
+  });
 });
