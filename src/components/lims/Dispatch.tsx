@@ -37,6 +37,7 @@ import { useNewArrivalsBadge } from "@/hooks/useNewArrivalsBadge";
 import NewBadge from "./NewBadge";
 import { openReportForManualWhatsApp, queueApprovedReportWhatsApp, tryQueueCachedReportWhatsApp } from "@/lib/dispatchReportWhatsApp";
 import { ensureApprovedReportSnapshotHealed } from "@/lib/patientResultLookup";
+import { maybeQueueGoogleReviewAfterDispatch } from "@/lib/googleReviewRequest";
 import { dismissFailedWhatsAppConsoleJobs, dismissAllFailedWhatsAppConsoleJobs } from "@/lib/whatsappConsoleBridge";
 import {
   dispatchDotFromRegStatus,
@@ -802,10 +803,23 @@ const Dispatch = () => {
         await dismissFailedWhatsAppConsoleJobs(failed.map((j: any) => j.id));
         await qc.invalidateQueries({ queryKey: ["dispatch_failed_wa_outbox"] });
       }
+      let reviewNote = "";
+      try {
+        const review = await maybeQueueGoogleReviewAfterDispatch({
+          registration: reg,
+          tests: entry.tests,
+          dispatchingTestIds: testIds,
+          dispatchedAt: new Date(now),
+          hvChargeOnly: entry.hvChargeOnly,
+        });
+        if (review.queued) reviewNote = " Google review request will be sent in 5 minutes.";
+      } catch (reviewErr) {
+        console.warn("google review queue skipped", reviewErr);
+      }
       toast.success(`Dispatched & queued WhatsApp for ${patientDisplayName(reg)}`, {
-        description: cached?.fromCache
+        description: (cached?.fromCache
           ? `Sent instantly from cache → ${phone}`
-          : `Report PDF sending to ${phone} via WhatsApp Console`,
+          : `Report PDF sending to ${phone} via WhatsApp Console`) + reviewNote,
       });
     } catch (err: any) {
       toast.error(err.message || "Dispatch failed");

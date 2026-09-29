@@ -19,6 +19,8 @@ export interface EnqueueWhatsAppConsolePayload {
   payload?: Record<string, unknown>;
   /** Default 2. Use 1 for plain-text reminders to avoid false-failure retries. */
   max_attempts?: number;
+  /** When set, WhatsApp Console claims the row only after this time. */
+  next_retry_at?: string | null;
 }
 
 function phone10(raw: string): string {
@@ -47,6 +49,7 @@ export async function enqueueWhatsAppConsoleMessage(
     status: "pending",
     max_attempts: maxAttempts,
     payload: input.payload || {},
+    ...(input.next_retry_at ? { next_retry_at: input.next_retry_at } : {}),
   };
 
   const { data, error } = await supabase
