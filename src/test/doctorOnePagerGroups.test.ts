@@ -3,8 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   buildDoctorOnePagerInput,
   clinicalGroupsFor,
+  leftoverAbnormalBoxes,
   matchPatternResultRows,
   normalizeDoctorOnePagerSummary,
+  rowsForPatternBox,
   scrubClinicalText,
 } from "@/lib/doctorOnePagerGroups";
 import { referencesForSummary } from "@/lib/doctorOnePagerSources";
@@ -75,6 +77,33 @@ describe("matchPatternResultRows", () => {
     expect(rows.map((row) => row.parameter_name)).toEqual(["Total Cholesterol", "HDL Cholesterol"]);
     expect(rows[0].result_value).toBe("246.69");
     expect(rows[1].reference_range).toBe("No Risk: > 60 mg/dL");
+  });
+
+  it("adds every abnormal parameter from the same test into the pattern box", () => {
+    const rows = rowsForPatternBox(
+      {
+        category: "lipid",
+        pattern_name: "Isolated low HDL",
+        current_findings: ["HDL Cholesterol"],
+        related_parameters_considered: ["Total Cholesterol"],
+      },
+      [
+        { parameter_name: "Total Cholesterol", result_value: "180", unit: "mg/dL", reference_range: "< 200", flag: "N" },
+        { parameter_name: "HDL Cholesterol", result_value: "52.12", unit: "mg/dL", reference_range: "> 60", flag: "L" },
+        { parameter_name: "LDLC/HDLC Ratio", result_value: "3.4", unit: "", reference_range: "< 3.0", flag: "H" },
+        { parameter_name: "Haemoglobin", result_value: "10.2", unit: "g/dL", reference_range: "13-17", flag: "L" },
+      ],
+    );
+    expect(rows.map((row) => row.parameter_name)).toEqual(["HDL Cholesterol", "LDLC/HDLC Ratio"]);
+    const rest = leftoverAbnormalBoxes(
+      [
+        { parameter_name: "HDL Cholesterol", result_value: "52.12", flag: "L" },
+        { parameter_name: "Haemoglobin", result_value: "10.2", unit: "g/dL", reference_range: "13-17", flag: "L" },
+      ],
+      new Set(["hdl cholesterol"]),
+    );
+    expect(rest.map((box) => box.label)).toEqual(["CBC / Haematology"]);
+    expect(rest[0].rows[0].parameter_name).toBe("Haemoglobin");
   });
 });
 

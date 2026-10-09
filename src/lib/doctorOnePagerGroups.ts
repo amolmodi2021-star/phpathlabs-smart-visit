@@ -35,7 +35,7 @@ const GLUCOSE = /hba1c|hb\s*a1c|glycated|glycosylated|\bfbs\b|fasting (blood )?s
 const HAEM = /haemoglobin|hemoglobin|(^|[^a-z])hb([^a-z]|$)|r\.?b\.?c|red blood|\bpcv\b|hematocrit|haematocrit|\bhct\b|\bmcv\b|\bmchc\b|\bmch\b|\brdw\b|\bwbc\b|\btlc\b|leucocyte|leukocyte|neutrophil|lymphocyte|monocyte|eosinophil|basophil|platelet|\bplt\b|\bmpv\b|\bpdw\b|p-?lcr|absolute neutrophil|absolute lymph/;
 const RENAL = /creatinine|\begfr\b|\bgfr\b|\burea\b|\bbun\b|uric acid|sodium|\bna\b|potassium|\bk\+?\b|chloride|phosphorus|phosphate|urine protein|urine albumin|microalbumin|\bacr\b/;
 const LIVER = /bilirubin|\bsgot\b|\bsgpt\b|\bast\b|\balt\b|\balp\b|\bggt\b|total protein|\balbumin\b|globulin|a\/g|ag ratio/;
-const LIPID = /cholesterol|\bldl\b|\bhdl\b|triglyceride|\bvldl\b|non-hdl/;
+const LIPID = /cholesterol|\bldl\b|\bhdl\b|ldlc|hdlc|triglyceride|\bvldl\b|non-hdl|ldl\s*[/:-]\s*hdl|hdl\s*[/:-]\s*ldl|chol\s*[/:-]\s*hdl/;
 const THYROID = /\btsh\b|free t3|free t4|\bft3\b|\bft4\b|\bt3\b|\bt4\b|anti-?tpo|thyroglobulin|thyroid antibody/;
 const IRON = /serum iron|\biron\b|ferritin|\btibc\b|\buibc\b|transferrin|saturation/;
 const VITAMIN = /vitamin\s*b12|b12|cobalamin|folate|folic|vitamin\s*d|\bvit\s*d\b|\bpth\b|parathyroid/;
@@ -123,6 +123,112 @@ export function matchPatternResultRows(
   return picked.slice(0, 8);
 }
 
+const GROUP_HINTS: Record<string, RegExp> = {
+  haematology: /haematolog|hematolog|\bcbc\b|red cell|haemoglobin|hemoglobin/,
+  glucose: /glucose|\bfbs\b|\bppbs\b|hba1c|glycaem|glycem|diabetes/,
+  renal: /renal|kidney|creatinine|\begfr\b|\burea\b/,
+  liver: /liver|bilirubin|\bast\b|\balt\b|sgot|sgpt|\bggt\b/,
+  lipid: /lipid|cholesterol|\bhdl\b|\bldl\b|ldlc|hdlc|triglyceride|\bvldl\b/,
+  thyroid: /thyroid|\btsh\b|\bft3\b|\bft4\b/,
+  iron: /\biron\b|ferritin|\btibc\b/,
+  vitamins: /vitamin|\bb12\b|folate|cobalamin/,
+  urinalysis: /urin/,
+  inflammatory: /inflammat|\bcrp\b|\besr\b/,
+};
+
+function toPatternTableRow(row: OnePagerResult): PatternTableRow | null {
+  const parameter_name = String(row.parameter_name || row.param_code || "").trim();
+  const result_value = String(row.result_value ?? "").trim();
+  if (!parameter_name || !result_value) return null;
+  return {
+    parameter_name,
+    result_value,
+    unit: String(row.unit || "").trim(),
+    reference_range: String(row.reference_range || "").trim(),
+    flag: String(row.flag || "").trim().toUpperCase(),
+  };
+}
+
+function groupsForPattern(
+  pattern: { category?: string; pattern_name?: string; current_findings?: string[] },
+  named: PatternTableRow[],
+  results: OnePagerResult[],
+): string[] {
+  const blob = [pattern.category, pattern.pattern_name, ...(pattern.current_findings || [])].filter(Boolean).join(" ").toLowerCase();
+  const ids: string[] = [];
+  const add = (id: string) => {
+    if (CLINICAL_GROUP_LABELS[id] && !ids.includes(id)) ids.push(id);
+  };
+  for (const [id, label] of Object.entries(CLINICAL_GROUP_LABELS)) {
+    if (blob.includes(id) || blob.includes(label.toLowerCase())) add(id);
+  }
+  for (const [id, hint] of Object.entries(GROUP_HINTS)) {
+    if (hint.test(blob)) add(id);
+  }
+  if (ids.length > 0) return ids;
+  for (const row of named) {
+    const source = (results || []).find((item) => String(item.parameter_name || item.param_code || "").trim().toLowerCase() === row.parameter_name.toLowerCase());
+    if (source) clinicalGroupsFor(source).forEach(add);
+  }
+  return ids;
+}
+
+function abnormalRowsInGroups(groupIds: string[], results: OnePagerResult[]): PatternTableRow[] {
+  if (groupIds.length === 0) return [];
+  const picked: PatternTableRow[] = [];
+  const used = new Set<string>();
+  for (const row of results || []) {
+    if (!isAbnormalFlag(row.flag)) continue;
+    const groups = clinicalGroupsFor(row);
+    if (!groupIds.some((id) => groups.includes(id))) continue;
+    const table = toPatternTableRow(row);
+    if (!table) continue;
+    const key = table.parameter_name.toLowerCase();
+    if (used.has(key)) continue;
+    used.add(key);
+    picked.push(table);
+  }
+  return picked;
+}
+
+/**
+ * Pattern table rows: every abnormal parameter in the same test group, plus any
+ * abnormal row the summary named. Normal related values stay in the narrative.
+ */
+export function rowsForPatternBox(
+  pattern: { category?: string; pattern_name?: string; current_findings?: string[]; related_parameters_considered?: string[] },
+  results: OnePagerResult[],
+): PatternTableRow[] {
+  const named = matchPatternResultRows(pattern.current_findings || [], pattern.related_parameters_considered || [], results);
+  const groupIds = groupsForPattern(pattern, named, results);
+  const abnormal = abnormalRowsInGroups(groupIds, results);
+  const seen = new Set(abnormal.map((row) => row.parameter_name.toLowerCase()));
+  const extras = named.filter((row) => isAbnormalFlag(row.flag) && !seen.has(row.parameter_name.toLowerCase()));
+  return [...abnormal, ...extras].slice(0, 24);
+}
+
+export type AbnormalBox = { id: string; label: string; rows: PatternTableRow[] };
+
+/** Abnormal parameters that no pattern box already shows, grouped by test family. */
+export function leftoverAbnormalBoxes(results: OnePagerResult[], shownNames: Set<string>): AbnormalBox[] {
+  const buckets = new Map<string, PatternTableRow[]>();
+  for (const row of results || []) {
+    if (!isAbnormalFlag(row.flag)) continue;
+    const table = toPatternTableRow(row);
+    if (!table || shownNames.has(table.parameter_name.toLowerCase())) continue;
+    const groups = clinicalGroupsFor(row).filter((id) => CLINICAL_GROUP_LABELS[id]);
+    const id = groups[0] || "other";
+    const list = buckets.get(id) || [];
+    list.push(table);
+    buckets.set(id, list);
+  }
+  return [...buckets.entries()].map(([id, rows]) => ({
+    id,
+    label: CLINICAL_GROUP_LABELS[id] || "Other abnormal results",
+    rows,
+  }));
+}
+
 export function resultKey(row: OnePagerResult): string {
   const code = String(row.param_code || "").trim().toLowerCase();
   if (code) return `c:${code}`;
@@ -133,7 +239,7 @@ export function resultKey(row: OnePagerResult): string {
 export function isAbnormalFlag(flag: string | null | undefined): boolean {
   const f = String(flag || "").trim().toUpperCase();
   if (!f || f === "N" || f === "NORMAL") return false;
-  return f === "H" || f === "L" || f === "A" || f === "X" || f.includes("HH") || f.includes("LL") || f.includes("CRIT");
+  return f === "H" || f === "L" || f === "A" || f === "X" || f === "HIGH" || f === "LOW" || f.includes("HH") || f.includes("LL") || f.includes("CRIT");
 }
 
 export type OnePagerParameter = {

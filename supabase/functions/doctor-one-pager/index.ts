@@ -121,6 +121,7 @@ Rules:
 - Avoid: patient has, definitely, confirmed diagnosis, must take.
 - Keep it scannable in 20-30 seconds. Maximum 4 patterns. Snapshot is at most 2 short sentences.
 - Each current finding is the parameter name only, such as "Total Cholesterol" or "Vitamin D". Do not put the value, unit, or reference range in current_findings. The page shows those in a table from the laboratory record.
+- current_findings must name every abnormal parameter in that pattern's group, including ratios, not only the lead abnormality.
 - Say "result is low" or "result is high". Never write "by lab", "flagged by lab", or "low by lab".
 - If no earlier result exists, write "Prior history for <test or panel name> not available." Never write "no prior results provided" or "no previous results".
 - Never mention sample contamination, haemolysis, clotting, insufficient sample, laboratory error, pre-analytical problems, or any wording that could be read as a fault in the sample or the laboratory.

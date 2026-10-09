@@ -9,7 +9,7 @@ import {
   loadPriorVisitsForOnePager,
   requestDoctorOnePager,
 } from "@/lib/doctorOnePager";
-import { matchPatternResultRows, type DoctorOnePagerSummary } from "@/lib/doctorOnePagerGroups";
+import { leftoverAbnormalBoxes, rowsForPatternBox, type DoctorOnePagerSummary, type PatternTableRow } from "@/lib/doctorOnePagerGroups";
 import { referencesForSummary } from "@/lib/doctorOnePagerSources";
 import { toast } from "sonner";
 
@@ -322,14 +322,36 @@ function summaryBlocks(
       </div>
     </Section>,
   );
+  const shown = new Set<string>();
   summary.clinical_patterns.forEach((pattern, index) => {
+    const rows = rowsForPatternBox(pattern, labResults).filter((row) => {
+      const key = row.parameter_name.toLowerCase();
+      if (shown.has(key)) return false;
+      shown.add(key);
+      return true;
+    });
     blocks.push(
       <div style={{ paddingBottom: "8px" }}>
         {index === 0 && <SectionTitle>Key clinical patterns</SectionTitle>}
-        <PatternCard pattern={pattern} results={labResults} />
+        <PatternCard pattern={pattern} rows={rows} />
       </div>,
     );
   });
+  const leftovers = leftoverAbnormalBoxes(labResults, shown);
+  leftovers.forEach((box) => box.rows.forEach((row) => shown.add(row.parameter_name.toLowerCase())));
+  if (leftovers.length > 0) {
+    blocks.push(
+      <div style={{ paddingBottom: "8px" }}>
+        <SectionTitle>Abnormal parameters</SectionTitle>
+        {leftovers.map((box) => (
+          <div key={box.id} style={{ border: "1px solid #e2e8f0", borderLeft: "3px solid #1e3a8a", padding: "6px 8px", marginBottom: "6px" }}>
+            <strong style={{ fontSize: "13px" }}>{box.label}</strong>
+            <ResultTable rows={box.rows} />
+          </div>
+        ))}
+      </div>,
+    );
+  }
   if (changeLines.length > 0) {
     blocks.push(
       <Section title="Significant changes">
@@ -337,10 +359,14 @@ function summaryBlocks(
       </Section>,
     );
   }
-  if (summary.important_isolated_findings.length > 0) {
+  const isolated = summary.important_isolated_findings.filter((line) => {
+    const text = line.trim().toLowerCase().replace(/[.:]$/, "");
+    return ![...shown].some((name) => text === name);
+  });
+  if (isolated.length > 0) {
     blocks.push(
       <Section title="Isolated findings">
-        <BulletList items={summary.important_isolated_findings} />
+        <BulletList items={isolated} />
       </Section>,
     );
   }
@@ -406,15 +432,56 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
+function flagTone(flag: string): "high" | "low" | "other" {
+  const value = String(flag || "").toUpperCase();
+  if (value === "H" || value === "HH" || value === "HIGH" || value.includes("HH")) return "high";
+  if (value === "L" || value === "LL" || value === "LOW" || value.includes("LL")) return "low";
+  return "other";
+}
+
+function ResultTable({ rows }: { rows: PatternTableRow[] }) {
+  if (rows.length === 0) return null;
+  return (
+    <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed", margin: "4px 0", fontSize: "11px" }}>
+      <thead>
+        <tr style={{ color: "#64748b", borderBottom: "1px solid #cbd5e1" }}>
+          <th style={{ textAlign: "left", width: "32%", fontWeight: 600, padding: "2px 4px" }}>Parameter</th>
+          <th style={{ textAlign: "center", width: "18%", fontWeight: 600, padding: "2px 4px" }}>Result</th>
+          <th style={{ textAlign: "left", width: "38%", fontWeight: 600, padding: "2px 4px" }}>Reference Range</th>
+          <th style={{ textAlign: "center", width: "12%", fontWeight: 600, padding: "2px 4px" }}>Flag</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((row) => {
+          const tone = flagTone(row.flag);
+          const high = tone === "high";
+          const low = tone === "low";
+          return (
+            <tr key={`${row.parameter_name}-${row.result_value}`} style={{ borderBottom: "1px solid #f1f5f9", background: "#fef2f2", verticalAlign: "top" }}>
+              <td style={{ padding: "3px 4px", fontWeight: 700, color: "#dc2626" }}>{row.parameter_name}</td>
+              <td style={{ padding: "3px 4px", textAlign: "center", fontWeight: 700, color: "#dc2626", whiteSpace: "nowrap" }}>
+                {row.result_value}{row.unit ? ` ${row.unit}` : ""}
+              </td>
+              <td style={{ padding: "3px 4px", color: "#334155", whiteSpace: "pre-line", lineHeight: 1.25 }}>{row.reference_range}</td>
+              <td style={{ padding: "3px 4px", textAlign: "center", fontWeight: 700, color: high ? "#dc2626" : low ? "#2563eb" : "#9a3412" }}>
+                {high ? "HIGH" : low ? "LOW" : row.flag}
+              </td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+}
+
 function PatternCard({
   pattern,
-  results,
+  rows,
 }: {
   pattern: DoctorOnePagerSummary["clinical_patterns"][number];
-  results: any[];
+  rows: PatternTableRow[];
 }) {
   const status = STATUS_STYLE[pattern.status] || STATUS_STYLE.INDETERMINATE;
-  const rows = matchPatternResultRows(pattern.current_findings, pattern.related_parameters_considered, results);
   return (
     <div style={{ border: "1px solid #e2e8f0", borderLeft: "3px solid #1e3a8a", padding: "6px 8px" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
@@ -423,37 +490,7 @@ function PatternCard({
           {pattern.status}
         </span>
       </div>
-      {rows.length > 0 && (
-        <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed", marginBottom: "4px", fontSize: "11px" }}>
-          <thead>
-            <tr style={{ color: "#64748b", borderBottom: "1px solid #cbd5e1" }}>
-              <th style={{ textAlign: "left", width: "32%", fontWeight: 600, padding: "2px 4px" }}>Parameter</th>
-              <th style={{ textAlign: "center", width: "18%", fontWeight: 600, padding: "2px 4px" }}>Result</th>
-              <th style={{ textAlign: "left", width: "38%", fontWeight: 600, padding: "2px 4px" }}>Reference Range</th>
-              <th style={{ textAlign: "center", width: "12%", fontWeight: 600, padding: "2px 4px" }}>Flag</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => {
-              const high = row.flag === "H" || row.flag === "HH";
-              const low = row.flag === "L" || row.flag === "LL";
-              const abnormal = high || low;
-              return (
-                <tr key={row.parameter_name} style={{ borderBottom: "1px solid #f1f5f9", background: abnormal ? "#fef2f2" : "transparent", verticalAlign: "top" }}>
-                  <td style={{ padding: "3px 4px", fontWeight: abnormal ? 700 : 400, color: abnormal ? "#dc2626" : "#0f172a" }}>{row.parameter_name}</td>
-                  <td style={{ padding: "3px 4px", textAlign: "center", fontWeight: abnormal ? 700 : 400, color: abnormal ? "#dc2626" : "#0f172a", whiteSpace: "nowrap" }}>
-                    {row.result_value}{row.unit ? ` ${row.unit}` : ""}
-                  </td>
-                  <td style={{ padding: "3px 4px", color: "#334155", whiteSpace: "pre-line", lineHeight: 1.25 }}>{row.reference_range}</td>
-                  <td style={{ padding: "3px 4px", textAlign: "center", fontWeight: 700, color: high ? "#dc2626" : low ? "#2563eb" : "#64748b" }}>
-                    {high ? "HIGH" : low ? "LOW" : ""}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      )}
+      <ResultTable rows={rows} />
       {pattern.integrated_interpretation && <div>{pattern.integrated_interpretation}</div>}
       {pattern.historical_context && (
         <div style={{ marginTop: "2px", color: "#475569" }}><strong>History: </strong>{pattern.historical_context}</div>
