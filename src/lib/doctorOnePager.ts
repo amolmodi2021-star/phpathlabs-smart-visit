@@ -1,5 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import {
+  alignSummaryToReportMorphology,
   buildDoctorOnePagerInput,
   normalizeDoctorOnePagerSummary,
   type DoctorOnePagerSummary,
@@ -81,5 +82,5 @@ export async function requestDoctorOnePager(opts: {
     }
     throw new Error(detail || error.message || "Doctor summary failed");
   }
-  return normalizeDoctorOnePagerSummary(data);
+  return alignSummaryToReportMorphology(normalizeDoctorOnePagerSummary(data), opts.current);
 }

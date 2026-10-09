@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildDoctorOnePagerInput,
   clinicalGroupsFor,
+  alignSummaryToReportMorphology,
   leftoverAbnormalBoxes,
   matchPatternResultRows,
   normalizeDoctorOnePagerSummary,
@@ -174,6 +175,22 @@ describe("scrubClinicalText", () => {
     expect(scrubClinicalText("Vitamin D is low by lab.")).toBe("Vitamin D result is low.");
     expect(scrubClinicalText("Result may reflect sample contamination.")).toBe("");
     expect(scrubClinicalText("HbA1c result is high, particularly alongside the CBC findings.")).toBe("HbA1c result is high, particularly alongside the haemoglobin findings.");
+  });
+
+  it("uses the report RBC morphology instead of a conflicting index class", () => {
+    const summary = alignSummaryToReportMorphology(
+      normalizeDoctorOnePagerSummary({
+        overall_clinical_snapshot: "Microcytic hypochromic anaemia.",
+        clinical_patterns: [{
+          pattern_name: "Microcytic hypochromic anaemia",
+          integrated_interpretation: "Low MCV and MCH suggest a microcytic hypochromic pattern.",
+        }],
+      }),
+      [{ parameter_name: "RBC Morphology", result_value: "Normocytic Normochromic" }],
+    );
+    expect(summary.clinical_patterns[0].pattern_name).toBe("Normocytic normochromic anaemia");
+    expect(summary.clinical_patterns[0].integrated_interpretation).toBe("Low MCV and MCH suggest a normocytic normochromic pattern.");
+    expect(summary.overall_clinical_snapshot).toBe("Normocytic normochromic anaemia.");
   });
 });
 
