@@ -6,6 +6,7 @@ import {
   type OnePagerResult,
   type PriorVisit,
 } from "@/lib/doctorOnePagerGroups";
+import { applyClinicalPriority, reviewDoctorOnePagerInput } from "@/lib/doctorOnePagerSignificance";
 
 function visitDate(row: any): string {
   const iso = row.sample_collection_date || row.approval_date || row.registration_date || row.created_at || "";
@@ -58,7 +59,7 @@ export async function requestDoctorOnePager(opts: {
   current: OnePagerResult[];
   priorVisits: PriorVisit[];
 }): Promise<DoctorOnePagerSummary> {
-  const payload = buildDoctorOnePagerInput(opts);
+  const payload = reviewDoctorOnePagerInput(buildDoctorOnePagerInput(opts));
   if (payload.groups.length === 0 && payload.ungrouped_abnormal.length === 0) {
     return normalizeDoctorOnePagerSummary({
       overall_clinical_snapshot: "No reportable laboratory values were available to summarise.",
@@ -81,5 +82,5 @@ export async function requestDoctorOnePager(opts: {
     }
     throw new Error(detail || error.message || "Doctor summary failed");
   }
-  return normalizeDoctorOnePagerSummary(data);
+  return applyClinicalPriority(normalizeDoctorOnePagerSummary(data), payload);
 }
