@@ -5,12 +5,13 @@ import { Label } from "@/components/ui/label";
 import { useParams, useNavigate, useSearchParams, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Loader2, Printer, ArrowLeft, Download, Share2 } from "lucide-react";
+import { Loader2, Printer, ArrowLeft, Download, Share2, Stethoscope } from "lucide-react";
 import { toPng, toJpeg } from "html-to-image";
 import { awaitReportCaptureFonts, getCachedReportFontEmbedCSS, reportCaptureStyle, REPORT_CAPTURE_FONT } from "@/lib/htmlCaptureFonts";
 import jsPDF from "jspdf";
 import * as pdfjsLib from "pdfjs-dist";
 import LimsReportHeader from "@/components/report/LimsReportHeader";
+import DoctorOnePagerView from "@/components/report/DoctorOnePagerView";
 import ReportSignatureBlock from "@/components/report/ReportSignatureBlock";
 import ReportInvoiceBarcode from "@/components/report/ReportInvoiceBarcode";
 import ReportResultsSection from "@/components/report/ReportResultsSection";
@@ -624,6 +625,7 @@ const LimsReportView = () => {
   const [hasDownloadedOnce, setHasDownloadedOnce] = useState(false);
   const [sharingWa, setSharingWa] = useState(false);
   const [showLetterhead, setShowLetterhead] = useState(!isProvisional);
+  const [showDoctorSummary, setShowDoctorSummary] = useState(false);
   const enableHistograms = true;
   const [previewScale, setPreviewScale] = useState(1);
 
@@ -2306,6 +2308,21 @@ const LimsReportView = () => {
     );
   }
 
+  if (showDoctorSummary && !isPublic && !isProvisional) {
+    const onePagerResults = approvedReports.flatMap((row: any) =>
+      Array.isArray(row?.test_results) ? row.test_results : [],
+    );
+    return (
+      <DoctorOnePagerView
+        report={{ ...report, test_results: onePagerResults }}
+        letterheadUrl={showLetterhead ? letterheadImageUrl : null}
+        topMarginCm={layoutSettings.top_margin_cm}
+        bottomMarginCm={layoutSettings.bottom_margin_cm}
+        onBack={() => setShowDoctorSummary(false)}
+      />
+    );
+  }
+
   const NATIVE_W_PX = (PAGE_WIDTH_MM / 25.4) * 96;
   const NATIVE_H_PX = (PAGE_HEIGHT_MM / 25.4) * 96;
   const scaledHeight = NATIVE_H_PX * previewScale;
@@ -2334,6 +2351,12 @@ const LimsReportView = () => {
                     <span className="hidden sm:inline">With </span>Letterhead
                   </Label>
                 </div>
+              )}
+              {!isProvisional && (
+                <Button size="sm" variant="outline" onClick={() => setShowDoctorSummary(true)} aria-label="Doctor summary">
+                  <Stethoscope className="h-4 w-4 sm:mr-1" />
+                  <span className="hidden sm:inline">Doctor Summary</span>
+                </Button>
               )}
               <Button size="sm" variant="outline" onClick={handlePrint} disabled={downloading} aria-label="Print">
                 <Printer className="h-4 w-4 sm:mr-1" />
