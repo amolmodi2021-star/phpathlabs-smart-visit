@@ -9,7 +9,7 @@ import {
   loadPriorVisitsForOnePager,
   requestDoctorOnePager,
 } from "@/lib/doctorOnePager";
-import { explanationsForBox, leftoverAbnormalBoxes, rowsForPatternBox, type DoctorOnePagerSummary, type PatternTableRow } from "@/lib/doctorOnePagerGroups";
+import { explanationsForBox, mergedAbnormalBoxes, type DoctorOnePagerSummary, type PatternTableRow } from "@/lib/doctorOnePagerGroups";
 import { formatPatientAge } from "@/lib/patientAge";
 import { toast } from "sonner";
 
@@ -322,42 +322,31 @@ function summaryBlocks(
     </Section>,
   );
   const shown = new Set<string>();
-  summary.clinical_patterns.forEach((pattern, index) => {
-    const rows = rowsForPatternBox(pattern, labResults).filter((row) => {
-      const key = row.parameter_name.toLowerCase();
-      if (shown.has(key)) return false;
-      shown.add(key);
-      return true;
-    });
+  const abnormalBoxes = mergedAbnormalBoxes(summary.clinical_patterns, labResults);
+  abnormalBoxes.forEach((box, index) => {
+    const notes = explanationsForBox(
+      box,
+      box.interpretation ? [{ profile: box.label, note: box.interpretation }, ...summary.profile_notes] : summary.profile_notes,
+      summary.important_isolated_findings,
+    );
+    notes.forEach((note) => shown.add(`note:${note.toLowerCase()}`));
+    box.rows.forEach((row) => shown.add(row.parameter_name.toLowerCase()));
     blocks.push(
       <div style={{ paddingBottom: "8px" }}>
-        {index === 0 && <SectionTitle>Key clinical patterns</SectionTitle>}
-        <PatternCard pattern={pattern} rows={rows} />
+        {index === 0 && <SectionTitle>Abnormal parameters</SectionTitle>}
+        <div style={{ border: "1px solid #e2e8f0", borderLeft: "3px solid #1e3a8a", padding: "6px 8px" }}>
+          <strong style={{ fontSize: "16px" }}>{box.label}</strong>
+          <ResultTable rows={box.rows} />
+          {notes.map((note) => (
+            <div key={note} style={{ marginTop: "2px" }}>{note}</div>
+          ))}
+          {box.history && (
+            <div style={{ marginTop: "2px", color: "#475569" }}><strong>History: </strong>{box.history}</div>
+          )}
+        </div>
       </div>,
     );
   });
-  const leftovers = leftoverAbnormalBoxes(labResults, shown);
-  leftovers.forEach((box) => box.rows.forEach((row) => shown.add(row.parameter_name.toLowerCase())));
-  if (leftovers.length > 0) {
-    blocks.push(
-      <div style={{ paddingBottom: "8px" }}>
-        <SectionTitle>Abnormal parameters</SectionTitle>
-        {leftovers.map((box) => {
-          const notes = explanationsForBox(box, summary.profile_notes, summary.important_isolated_findings);
-          notes.forEach((note) => shown.add(`note:${note.toLowerCase()}`));
-          return (
-            <div key={box.id} style={{ border: "1px solid #e2e8f0", borderLeft: "3px solid #1e3a8a", padding: "6px 8px", marginBottom: "6px" }}>
-              <strong style={{ fontSize: "16px" }}>{box.label}</strong>
-              <ResultTable rows={box.rows} />
-              {notes.map((note) => (
-                <div key={note} style={{ marginTop: "2px" }}>{note}</div>
-              ))}
-            </div>
-          );
-        })}
-      </div>,
-    );
-  }
   if (changeLines.length > 0) {
     blocks.push(
       <Section title="Significant changes">
@@ -451,27 +440,6 @@ function ResultTable({ rows }: { rows: PatternTableRow[] }) {
         })}
       </tbody>
     </table>
-  );
-}
-
-function PatternCard({
-  pattern,
-  rows,
-}: {
-  pattern: DoctorOnePagerSummary["clinical_patterns"][number];
-  rows: PatternTableRow[];
-}) {
-  return (
-    <div style={{ border: "1px solid #e2e8f0", borderLeft: "3px solid #1e3a8a", padding: "6px 8px" }}>
-      <div style={{ marginBottom: "4px" }}>
-        <strong style={{ fontSize: "16px" }}>{pattern.pattern_name}</strong>
-      </div>
-      <ResultTable rows={rows} />
-      {pattern.integrated_interpretation && <div>{pattern.integrated_interpretation}</div>}
-      {pattern.historical_context && (
-        <div style={{ marginTop: "2px", color: "#475569" }}><strong>History: </strong>{pattern.historical_context}</div>
-      )}
-    </div>
   );
 }
 

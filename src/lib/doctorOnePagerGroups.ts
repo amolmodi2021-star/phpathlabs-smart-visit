@@ -354,6 +354,56 @@ export function leftoverAbnormalBoxes(results: OnePagerResult[], shownNames: Set
   }));
 }
 
+export type MergedAbnormalBox = AbnormalBox & { interpretation: string; history: string };
+
+/** Every abnormal test in one list. Pattern comments sit under the matching test. */
+export function mergedAbnormalBoxes(
+  patterns: Array<{
+    category?: string;
+    pattern_name?: string;
+    current_findings?: string[];
+    related_parameters_considered?: string[];
+    integrated_interpretation?: string;
+    historical_context?: string;
+  }>,
+  results: OnePagerResult[],
+): MergedAbnormalBox[] {
+  const boxes: MergedAbnormalBox[] = leftoverAbnormalBoxes(results, new Set()).map((box) => ({
+    ...box,
+    interpretation: "",
+    history: "",
+  }));
+  const byId = new Map(boxes.map((box) => [box.id, box]));
+  for (const pattern of patterns || []) {
+    const named = matchPatternResultRows(pattern.current_findings || [], pattern.related_parameters_considered || [], results);
+    const id = patternHomeGroup(pattern, named, results);
+    const interpretation = String(pattern.integrated_interpretation || "").trim();
+    const history = String(pattern.historical_context || "").trim();
+    let box = id ? byId.get(id) : undefined;
+    if (!box) {
+      const rows = rowsForPatternBox(pattern, results);
+      if (rows.length === 0 && !interpretation && !history) continue;
+      const key = id || `pattern:${boxes.length}`;
+      box = {
+        id: key,
+        label: (id && CLINICAL_GROUP_LABELS[id]) || String(pattern.pattern_name || "").trim() || "Other abnormal results",
+        rows,
+        interpretation: "",
+        history: "",
+      };
+      boxes.push(box);
+      byId.set(key, box);
+    }
+    if (interpretation) {
+      box.interpretation = box.interpretation && !sameFinding(box.interpretation, interpretation)
+        ? `${box.interpretation} ${interpretation}`
+        : box.interpretation || interpretation;
+    }
+    if (history && !box.history) box.history = history;
+  }
+  return boxes.filter((box) => box.rows.length > 0 || box.interpretation || box.history);
+}
+
 export function resultKey(row: OnePagerResult): string {
   const code = String(row.param_code || "").trim().toLowerCase();
   if (code) return `c:${code}`;

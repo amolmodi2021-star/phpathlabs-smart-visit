@@ -6,6 +6,7 @@ import {
   explanationsForBox,
   leftoverAbnormalBoxes,
   matchPatternResultRows,
+  mergedAbnormalBoxes,
   normalizeDoctorOnePagerSummary,
   snapshotBullets,
   rowsForPatternBox,
@@ -220,6 +221,29 @@ describe("scrubClinicalText", () => {
     expect(line).not.toMatch(/anaem|thrombocyt|anisocyt/i);
     expect(line).toMatch(/Low haemoglobin/);
     expect(line).toMatch(/within range/);
+  });
+});
+
+describe("mergedAbnormalBoxes", () => {
+  it("puts pattern tests and other abnormal results in one list", () => {
+    const boxes = mergedAbnormalBoxes(
+      [{
+        pattern_name: "Low haemoglobin with a high platelet count",
+        current_findings: ["Haemoglobin"],
+        integrated_interpretation: "Haemoglobin result is low and the platelet count result is high.",
+        historical_context: "Prior history for haematology not available.",
+      }],
+      [
+        { parameter_name: "Haemoglobin", test_name: "CBC", result_value: "9.0", flag: "L" },
+        { parameter_name: "Platelet Count", test_name: "CBC", result_value: "480", flag: "H" },
+        { parameter_name: "Creatinine", test_name: "Renal Function", result_value: "1.8", flag: "H" },
+      ],
+    );
+    expect(boxes.map((box) => box.label)).toEqual(["CBC / Haematology", "Renal function"]);
+    expect(boxes[0].rows.map((row) => row.parameter_name)).toEqual(["Haemoglobin", "Platelet Count"]);
+    expect(boxes[0].interpretation).toMatch(/Haemoglobin result is low/);
+    expect(boxes[0].history).toMatch(/not available/);
+    expect(boxes[1].interpretation).toBe("");
   });
 });
 
