@@ -116,7 +116,7 @@ Rules:
 - If the values do not form a pattern, use status ISOLATED or INDETERMINATE. Do not invent a pattern.
 - History status must be one of NEW, PERSISTENT, WORSENING, IMPROVING, STABLE, RESOLVED, ISOLATED, INDETERMINATE. If history is empty, do not claim a trend; use INDETERMINATE or ISOLATED.
 - Use only the numbers, units, ranges and flags provided. Never invent values, ranges, symptoms or history.
-- If report_morphology gives an RBC morphology result, that wording is the morphological class. Do not contradict it. If it says normocytic normochromic, do not write microcytic, macrocytic, hypochromic, or hyperchromic, even when MCV, MCH, or MCHC are outside the reference range. You may say those indices are low or high, and that the reported RBC morphology is the class written on the report.
+- Never mention smear morphology or the reported RBC morphology. Never write normocytic, microcytic, macrocytic, normochromic, hypochromic, or hyperchromic. Do not compare red-cell indices with the morphology report. Describe haemoglobin, PCV, MCV, MCH, MCHC, and RDW only.
 - Laboratory flags H and L are the lab flags. Do not invent critical or panic thresholds.
 - Never diagnose. Never prescribe. Never mention drugs, doses, starting or stopping medication.
 - Use cautious wording: suggests, consistent with, pattern of, correlate clinically.

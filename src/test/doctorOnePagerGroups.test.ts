@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import {
   buildDoctorOnePagerInput,
   clinicalGroupsFor,
-  alignSummaryToReportMorphology,
   leftoverAbnormalBoxes,
   matchPatternResultRows,
   normalizeDoctorOnePagerSummary,
@@ -177,20 +176,12 @@ describe("scrubClinicalText", () => {
     expect(scrubClinicalText("HbA1c result is high, particularly alongside the CBC findings.")).toBe("HbA1c result is high, particularly alongside the haemoglobin findings.");
   });
 
-  it("uses the report RBC morphology instead of a conflicting index class", () => {
-    const summary = alignSummaryToReportMorphology(
-      normalizeDoctorOnePagerSummary({
-        overall_clinical_snapshot: "Microcytic hypochromic anaemia.",
-        clinical_patterns: [{
-          pattern_name: "Microcytic hypochromic anaemia",
-          integrated_interpretation: "Low MCV and MCH suggest a microcytic hypochromic pattern.",
-        }],
-      }),
-      [{ parameter_name: "RBC Morphology", result_value: "Normocytic Normochromic" }],
+  it("does not comment on the reported morphology", () => {
+    const text = scrubClinicalText(
+      "Low MCV and MCH suggest an anaemia pattern, while the reported RBC morphology is normocytic normochromic and WBC counts are within range.",
     );
-    expect(summary.clinical_patterns[0].pattern_name).toBe("Normocytic normochromic anaemia");
-    expect(summary.clinical_patterns[0].integrated_interpretation).toBe("Low MCV and MCH suggest a normocytic normochromic pattern.");
-    expect(summary.overall_clinical_snapshot).toBe("Normocytic normochromic anaemia.");
+    expect(text).toBe("Low MCV and MCH suggest an anaemia pattern and WBC counts are within range.");
+    expect(text).not.toMatch(/morpholog|normocytic|microcytic|hypochromic/i);
   });
 });
 

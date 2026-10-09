@@ -329,7 +329,6 @@ export type DoctorOnePagerInput = {
   groups: { id: string; label: string; parameters: OnePagerParameter[] }[];
   ungrouped_abnormal: OnePagerParameter[];
   prior_visit_count: number;
-  report_morphology: string[];
 };
 
 function pack(row: OnePagerResult, history: { date: string; value: string; flag: string }[]): OnePagerParameter {
@@ -377,6 +376,7 @@ export function buildDoctorOnePagerInput(opts: {
 
   const packed = (opts.current || [])
     .filter((row) => String(row.result_value ?? "").trim())
+    .filter((row) => !/morpholog/.test(resultBlob(row)))
     .map((row) => pack(row, historyByKey.get(resultKey(row)) || []));
 
   const clinicalIds = Object.keys(CLINICAL_GROUP_LABELS);
@@ -396,12 +396,7 @@ export function buildDoctorOnePagerInput(opts: {
     return p.abnormal && !groupedKeys.has(key);
   });
 
-  return {
-    groups,
-    ungrouped_abnormal,
-    prior_visit_count: priors.length,
-    report_morphology: rbcMorphologyLines(opts.current || []),
-  };
+  return { groups, ungrouped_abnormal, prior_visit_count: priors.length };
 }
 
 const BANNED =
@@ -428,6 +423,12 @@ export function scrubClinicalText(text: string): string {
     /\bno\s+(?:prior|previous|earlier)\s+results?\b[^.]*\.?/gi,
     "Prior history for this test not available.",
   );
+  clean = clean.replace(
+    /,?\s*(?:while|whereas|although|but|and)?\s*(?:the\s+)?(?:reported\s+)?(?:rbc\s+|red\s*cell\s+|erythrocyte\s+|smear\s+)?morphology\s+is\s+(?:(?:normocytic|microcytic|macrocytic|normochromic|hypochromic|hyperchromic)\s*)+/gi,
+    " ",
+  );
+  clean = clean.replace(/\b(?:reported\s+)?(?:rbc\s+|red\s*cell\s+|smear\s+)?morphology\b/gi, "");
+  clean = clean.replace(/\b(?:normocytic|microcytic|macrocytic|normochromic|hypochromic|hyperchromic)\b/gi, "");
   clean = clean.replace(/\b(?:cbc|haematology|hematology|blood[- ]count)\s+findings\b/gi, "haemoglobin findings");
   clean = clean.replace(/\b(?:alongside|along with|together with)\s+the\s+cbc\b/gi, "alongside the haemoglobin findings");
   clean = clean.replace(/\s+/g, " ").replace(/\s+([,.;])/g, "$1").trim();
@@ -510,71 +511,5 @@ export function normalizeDoctorOnePagerSummary(raw: any): DoctorOnePagerSummary 
       }))
       .filter((item: SuggestedFollowUp) => item.test),
     overall_comment: scrubClinicalText(raw?.overall_comment),
-  };
-}
-
-const RBC_SIZE = ["normocytic", "microcytic", "macrocytic"] as const;
-const RBC_CHROMA = ["normochromic", "hypochromic", "hyperchromic"] as const;
-
-function termInReportCase(sample: string, term: string): string {
-  return sample[0] === sample[0]?.toUpperCase() ? term.charAt(0).toUpperCase() + term.slice(1) : term;
-}
-
-/** The smear text on the report, such as "Normocytic Normochromic". Indices must not override it. */
-export function rbcMorphologyTerms(results: OnePagerResult[]): { size: string | null; chroma: string | null } {
-  const text = (results || [])
-    .filter((row) => /rbc\s*morpholog|red\s*cell\s*morpholog|erythrocyte\s*morpholog/.test([row.parameter_name, row.param_code].filter(Boolean).join(" ").toLowerCase()))
-    .map((row) => String(row.result_value || ""))
-    .join(" ")
-    .toLowerCase();
-  return {
-    size: RBC_SIZE.find((term) => text.includes(term)) || null,
-    chroma: RBC_CHROMA.find((term) => text.includes(term)) || null,
-  };
-}
-
-export function rbcMorphologyLines(results: OnePagerResult[]): string[] {
-  return (results || [])
-    .filter((row) => /rbc\s*morpholog|red\s*cell\s*morpholog|erythrocyte\s*morpholog/.test([row.parameter_name, row.param_code].filter(Boolean).join(" ").toLowerCase()))
-    .map((row) => `${String(row.parameter_name || row.param_code).trim()}: ${String(row.result_value || "").trim()}`)
-    .filter((line) => !line.endsWith(":"));
-}
-
-export function alignTextToMorphology(text: string, morph: { size: string | null; chroma: string | null }): string {
-  let next = String(text || "");
-  if (morph.size) {
-    next = next.replace(/\b(normocytic|microcytic|macrocytic)\b/gi, (word) => termInReportCase(word, morph.size!));
-  }
-  if (morph.chroma) {
-    next = next.replace(/\b(normochromic|hypochromic|hyperchromic)\b/gi, (word) => termInReportCase(word, morph.chroma!));
-  }
-  return next;
-}
-
-export function alignSummaryToReportMorphology(summary: DoctorOnePagerSummary, results: OnePagerResult[]): DoctorOnePagerSummary {
-  const morph = rbcMorphologyTerms(results);
-  if (!morph.size && !morph.chroma) return summary;
-  const fix = (text: string) => alignTextToMorphology(text, morph);
-  return {
-    ...summary,
-    overall_clinical_snapshot: fix(summary.overall_clinical_snapshot),
-    overall_comment: fix(summary.overall_comment),
-    important_isolated_findings: summary.important_isolated_findings.map(fix),
-    historical_changes: {
-      new: summary.historical_changes.new.map(fix),
-      worsening: summary.historical_changes.worsening.map(fix),
-      improving: summary.historical_changes.improving.map(fix),
-      stable: summary.historical_changes.stable.map(fix),
-      resolved: summary.historical_changes.resolved.map(fix),
-    },
-    points_for_clinical_review: summary.points_for_clinical_review.map(fix),
-    clinical_patterns: summary.clinical_patterns.map((pattern) => ({
-      ...pattern,
-      pattern_name: fix(pattern.pattern_name),
-      historical_context: fix(pattern.historical_context),
-      integrated_interpretation: fix(pattern.integrated_interpretation),
-      clinical_correlation: pattern.clinical_correlation.map(fix),
-    })),
-    suggested_follow_up: summary.suggested_follow_up.map((item) => ({ ...item, note: fix(item.note) })),
   };
 }
