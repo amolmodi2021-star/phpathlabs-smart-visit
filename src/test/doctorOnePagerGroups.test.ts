@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildDoctorOnePagerInput,
   clinicalGroupsFor,
+  matchPatternResultRows,
   normalizeDoctorOnePagerSummary,
   scrubClinicalText,
 } from "@/lib/doctorOnePagerGroups";
@@ -53,6 +54,26 @@ describe("buildDoctorOnePagerInput", () => {
     expect(glucose?.parameters.map((p) => p.parameter_name)).toEqual(["FBS", "PPBS", "HbA1c"]);
     expect(glucose?.parameters[0].history[0].value).toBe("128");
     expect(glucose?.parameters[1].abnormal).toBe(false);
+  });
+});
+
+describe("matchPatternResultRows", () => {
+  it("uses the verified row instead of the prose finding", () => {
+    const rows = matchPatternResultRows(
+      [
+        "Total Cholesterol 246.69 mg/dL (Ref < 200 mg/dL) H",
+        "HDL Cholesterol 59.26 mg/dL (Ref 40 mg/dL) L",
+      ],
+      [],
+      [
+        { parameter_name: "Total Cholesterol", result_value: "246.69", unit: "mg/dL", reference_range: "< 200 mg/dL", flag: "H" },
+        { parameter_name: "HDL Cholesterol", result_value: "59.26", unit: "mg/dL", reference_range: "No Risk: > 60 mg/dL", flag: "L" },
+        { parameter_name: "Cholesterol", result_value: "1", unit: "mg/dL", reference_range: "x", flag: "N" },
+      ],
+    );
+    expect(rows.map((row) => row.parameter_name)).toEqual(["Total Cholesterol", "HDL Cholesterol"]);
+    expect(rows[0].result_value).toBe("246.69");
+    expect(rows[1].reference_range).toBe("No Risk: > 60 mg/dL");
   });
 });
 

@@ -73,6 +73,56 @@ export function clinicalGroupsFor(row: OnePagerResult): string[] {
   return groups;
 }
 
+export type PatternTableRow = {
+  parameter_name: string;
+  result_value: string;
+  unit: string;
+  reference_range: string;
+  flag: string;
+};
+
+/** Match a pattern back to verified rows so the page can use the report table, not parsed prose. */
+export function matchPatternResultRows(
+  findings: string[],
+  related: string[],
+  results: OnePagerResult[],
+): PatternTableRow[] {
+  const rows = (results || [])
+    .map((row) => ({
+      parameter_name: String(row.parameter_name || row.param_code || "").trim(),
+      result_value: String(row.result_value ?? "").trim(),
+      unit: String(row.unit || "").trim(),
+      reference_range: String(row.reference_range || "").trim(),
+      flag: String(row.flag || "").trim().toUpperCase(),
+    }))
+    .filter((row) => row.parameter_name && row.result_value);
+
+  const used = new Set<string>();
+  const picked: PatternTableRow[] = [];
+  const take = (text: string) => {
+    const hay = text.toLowerCase();
+    let best: PatternTableRow | null = null;
+    let bestLen = 0;
+    for (const row of rows) {
+      const name = row.parameter_name.toLowerCase();
+      if (used.has(name) || name.length < 2) continue;
+      const hit = hay.includes(name) || (hay.length >= 3 && name.includes(hay));
+      if (hit && name.length > bestLen) {
+        best = row;
+        bestLen = name.length;
+      }
+    }
+    if (!best) return;
+    used.add(best.parameter_name.toLowerCase());
+    picked.push(best);
+  };
+  for (const text of findings || []) take(String(text || ""));
+  if (picked.length === 0) {
+    for (const text of related || []) take(String(text || ""));
+  }
+  return picked.slice(0, 8);
+}
+
 export function resultKey(row: OnePagerResult): string {
   const code = String(row.param_code || "").trim().toLowerCase();
   if (code) return `c:${code}`;

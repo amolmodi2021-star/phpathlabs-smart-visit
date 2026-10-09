@@ -9,7 +9,7 @@ import {
   loadPriorVisitsForOnePager,
   requestDoctorOnePager,
 } from "@/lib/doctorOnePager";
-import type { DoctorOnePagerSummary } from "@/lib/doctorOnePagerGroups";
+import { matchPatternResultRows, type DoctorOnePagerSummary } from "@/lib/doctorOnePagerGroups";
 import { toast } from "sonner";
 
 const PAGE_W = 210;
@@ -28,57 +28,6 @@ const STATUS_STYLE: Record<string, { color: string; background: string; border: 
   INDETERMINATE: { color: "#475569", background: "#f1f5f9", border: "#cbd5e1" },
 };
 
-function parseFinding(line: string): { label: string; value: string; flag: string; range: string } {
-  const text = line.replace(/\s+/g, " ").trim();
-  const match = text.match(/^(.*)\s+(\d+(?:\.\d+)?)\s+(\S+)(?:\s+\((?:Ref\s+)?([^)]+)\))?\s+(HH|LL|H|L|N|A|X)$/i);
-  if (!match) return { label: text, value: "", flag: "", range: "" };
-  return {
-    label: match[1].trim(),
-    value: `${match[2]} ${match[3]}`,
-    range: String(match[4] || "").trim(),
-    flag: match[5].toUpperCase(),
-  };
-}
-
-function rangeKey(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9]+/g, "");
-}
-
-function referenceIndex(results: any[]): Map<string, string> {
-  const map = new Map<string, string>();
-  for (const row of results || []) {
-    const range = String(row?.reference_range || "").trim();
-    if (!range) continue;
-    for (const raw of [row?.parameter_name, row?.param_code, row?.test_name]) {
-      const key = rangeKey(String(raw || ""));
-      if (key && !map.has(key)) map.set(key, range);
-    }
-  }
-  return map;
-}
-
-function lookupRange(label: string, index: Map<string, string>): string {
-  const key = rangeKey(label);
-  if (!key) return "";
-  if (index.has(key)) return index.get(key) || "";
-  let best = "";
-  let bestLen = 0;
-  for (const [candidate, range] of index) {
-    if (candidate.length < 3) continue;
-    if ((key.includes(candidate) || candidate.includes(key)) && candidate.length > bestLen) {
-      best = range;
-      bestLen = candidate.length;
-    }
-  }
-  return best;
-}
-
-function flagStyle(flag: string): { color: string; background: string } | null {
-  if (flag === "H" || flag === "HH" || flag === "A") return { color: "#991b1b", background: "#fee2e2" };
-  if (flag === "L" || flag === "LL") return { color: "#9a3412", background: "#ffedd5" };
-  if (flag === "N") return { color: "#64748b", background: "#f8fafc" };
-  return null;
-}
 
 type Props = {
   report: any;
@@ -154,7 +103,7 @@ const DoctorOnePagerView = ({ report, letterheadUrl, topMarginCm, bottomMarginCm
     }
   };
 
-  const ranges = referenceIndex(Array.isArray(report?.test_results) ? report.test_results : []);
+  const labResults = Array.isArray(report?.test_results) ? report.test_results : [];
   const topMm = (Number(topMarginCm) || 2.5) * 10;
   const bottomMm = Math.max(8, (Number(bottomMarginCm) || 1.2) * 10);
   const changes = summary?.historical_changes;
@@ -261,7 +210,7 @@ const DoctorOnePagerView = ({ report, letterheadUrl, topMarginCm, bottomMarginCm
                 <Section title="Key clinical patterns">
                   <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                     {summary.clinical_patterns.map((pattern, i) => (
-                      <PatternCard key={i} pattern={pattern} ranges={ranges} />
+                      <PatternCard key={i} pattern={pattern} results={labResults} />
                     ))}
                   </div>
                 </Section>
@@ -323,12 +272,13 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 
 function PatternCard({
   pattern,
-  ranges,
+  results,
 }: {
   pattern: DoctorOnePagerSummary["clinical_patterns"][number];
-  ranges: Map<string, string>;
+  results: any[];
 }) {
   const status = STATUS_STYLE[pattern.status] || STATUS_STYLE.INDETERMINATE;
+  const rows = matchPatternResultRows(pattern.current_findings, pattern.related_parameters_considered, results);
   return (
     <div style={{ border: "1px solid #e2e8f0", borderLeft: "3px solid #1e3a8a", padding: "6px 8px" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
@@ -337,26 +287,36 @@ function PatternCard({
           {pattern.status}
         </span>
       </div>
-      {pattern.current_findings.length > 0 && (
-        <div style={{ display: "flex", flexDirection: "column", gap: "1px", marginBottom: "4px" }}>
-          {pattern.current_findings.map((line, i) => {
-            const item = parseFinding(line);
-            const range = item.range || lookupRange(item.label, ranges);
-            const tone = flagStyle(item.flag);
-            const abnormal = item.flag === "H" || item.flag === "HH" || item.flag === "L" || item.flag === "LL" || item.flag === "A";
-            if (!item.value) return <div key={i}>{line}</div>;
-            return (
-              <div key={i} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto auto auto", columnGap: "8px", alignItems: "baseline", background: abnormal ? "#fff7f7" : "transparent", padding: "1px 3px" }}>
-                <span style={{ fontWeight: abnormal ? 600 : 400 }}>{item.label}</span>
-                <span style={{ fontWeight: abnormal ? 700 : 400, textAlign: "right", whiteSpace: "nowrap" }}>{item.value}</span>
-                <span style={{ color: "#475569", textAlign: "right", whiteSpace: "nowrap" }}>{range ? `Ref ${range}` : ""}</span>
-                <span style={{ justifySelf: "end", minWidth: "16px", textAlign: "center", fontSize: "9px", fontWeight: 700, color: tone?.color || "#64748b", background: abnormal ? (tone?.background || "transparent") : "transparent", borderRadius: "2px", padding: "0 3px" }}>
-                  {item.flag === "N" ? "" : item.flag}
-                </span>
-              </div>
-            );
-          })}
-        </div>
+      {rows.length > 0 && (
+        <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed", marginBottom: "4px", fontSize: "11px" }}>
+          <thead>
+            <tr style={{ color: "#64748b", borderBottom: "1px solid #cbd5e1" }}>
+              <th style={{ textAlign: "left", width: "32%", fontWeight: 600, padding: "2px 4px" }}>Parameter</th>
+              <th style={{ textAlign: "center", width: "18%", fontWeight: 600, padding: "2px 4px" }}>Result</th>
+              <th style={{ textAlign: "left", width: "38%", fontWeight: 600, padding: "2px 4px" }}>Reference Range</th>
+              <th style={{ textAlign: "center", width: "12%", fontWeight: 600, padding: "2px 4px" }}>Flag</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => {
+              const high = row.flag === "H" || row.flag === "HH";
+              const low = row.flag === "L" || row.flag === "LL";
+              const abnormal = high || low;
+              return (
+                <tr key={row.parameter_name} style={{ borderBottom: "1px solid #f1f5f9", background: abnormal ? "#fef2f2" : "transparent", verticalAlign: "top" }}>
+                  <td style={{ padding: "3px 4px", fontWeight: abnormal ? 700 : 400, color: abnormal ? "#dc2626" : "#0f172a" }}>{row.parameter_name}</td>
+                  <td style={{ padding: "3px 4px", textAlign: "center", fontWeight: abnormal ? 700 : 400, color: abnormal ? "#dc2626" : "#0f172a", whiteSpace: "nowrap" }}>
+                    {row.result_value}{row.unit ? ` ${row.unit}` : ""}
+                  </td>
+                  <td style={{ padding: "3px 4px", color: "#334155", whiteSpace: "pre-line", lineHeight: 1.25 }}>{row.reference_range}</td>
+                  <td style={{ padding: "3px 4px", textAlign: "center", fontWeight: 700, color: high ? "#dc2626" : low ? "#2563eb" : "#64748b" }}>
+                    {high ? "HIGH" : low ? "LOW" : ""}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       )}
       {pattern.integrated_interpretation && <div>{pattern.integrated_interpretation}</div>}
       {pattern.historical_context && (
