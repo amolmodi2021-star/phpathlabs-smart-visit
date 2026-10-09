@@ -208,6 +208,17 @@ describe("explanationsForBox", () => {
     );
     expect(urine).toEqual(["Pus cells and epithelial cells are present in urine."]);
   });
+
+  it("keeps one line when two sentences repeat the same result", () => {
+    const iron = explanationsForBox(
+      { id: "iron", label: "Iron / anaemia-related", rows: [{ parameter_name: "Total Iron Binding Capacity (TIBC)" }] },
+      [{ profile: "Iron studies", note: "Total Iron Binding Capacity (TIBC) result is low, while Iron, Iron Saturation, and UIBC are within range." }],
+      ["Total Iron Binding Capacity (TIBC) result is low with Iron, Iron Saturation, and UIBC within range."],
+    );
+    expect(iron).toEqual([
+      "Total Iron Binding Capacity (TIBC) result is low, while Iron, Iron Saturation, and UIBC are within range.",
+    ]);
+  });
 });
 
 describe("snapshotBullets", () => {

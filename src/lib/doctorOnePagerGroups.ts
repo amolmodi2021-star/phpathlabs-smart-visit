@@ -287,16 +287,32 @@ function mentionsParameter(line: string, parameterName: string): boolean {
   return core.length >= 4 && text.includes(core);
 }
 
-/** Short AI sentences that belong under an abnormal-parameter box. */
+function sameFinding(a: string, b: string): boolean {
+  const words = (line: string) => new Set(line.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((word) => word.length > 2));
+  const left = words(a);
+  const right = words(b);
+  const [small, large] = left.size <= right.size ? [left, right] : [right, left];
+  if (small.size < 4) return false;
+  let shared = 0;
+  for (const word of small) if (large.has(word)) shared += 1;
+  return shared / small.size >= 0.72;
+}
+
+/** Short AI sentences that belong under an abnormal-parameter box. Repeated wording is dropped. */
 export function explanationsForBox(
   box: { id: string; label: string; rows: { parameter_name: string }[] },
   notes: { profile: string; note: string }[],
   isolated: string[],
 ): string[] {
   const lines: string[] = [];
+  const covered = new Set<string>();
   const add = (line: string) => {
     const text = line.trim();
-    if (text && !lines.includes(text)) lines.push(text);
+    if (!text || lines.some((kept) => kept.toLowerCase() === text.toLowerCase() || sameFinding(kept, text))) return;
+    const mentioned = box.rows.map((row) => row.parameter_name).filter((name) => mentionsParameter(text, name));
+    if (mentioned.length > 0 && mentioned.every((name) => covered.has(name.toLowerCase()))) return;
+    mentioned.forEach((name) => covered.add(name.toLowerCase()));
+    lines.push(text);
   };
   const blob = `${box.id} ${box.label}`.toLowerCase();
   for (const note of notes || []) {
