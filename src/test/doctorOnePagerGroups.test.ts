@@ -61,6 +61,12 @@ describe("scrubClinicalText", () => {
     expect(scrubClinicalText("Patient has diabetes. Start medication 500 mg/day.")).toMatch(/does not diagnose/);
     expect(scrubClinicalText("Correlate clinically.")).toBe("Correlate clinically.");
   });
+
+  it("rewrites missing history and lab-blame wording", () => {
+    expect(scrubClinicalText("No prior lipid results provided.")).toBe("Prior history for lipid not available.");
+    expect(scrubClinicalText("Vitamin D is low by lab.")).toBe("Vitamin D result is low.");
+    expect(scrubClinicalText("Result may reflect sample contamination.")).toBe("");
+  });
 });
 
 describe("normalizeDoctorOnePagerSummary", () => {
@@ -72,5 +78,22 @@ describe("normalizeDoctorOnePagerSummary", () => {
     });
     expect(summary.clinical_patterns).toHaveLength(4);
     expect(summary.points_for_clinical_review[0]).toMatch(/does not diagnose/);
+    expect(summary.suggested_follow_up).toEqual([]);
+  });
+
+  it("keeps a follow-up test and interval", () => {
+    const summary = normalizeDoctorOnePagerSummary({
+      overall_clinical_snapshot: "Lipid pattern.",
+      suggested_follow_up: [
+        { test: "Lipid profile", when: "after 3 months", note: "Recheck the lipid pattern." },
+        { test: "Repeat the sample because of contamination", when: "tomorrow", note: "" },
+      ],
+    });
+    expect(summary.suggested_follow_up[0]).toEqual({
+      test: "Lipid profile",
+      when: "after 3 months",
+      note: "Recheck the lipid pattern.",
+    });
+    expect(summary.suggested_follow_up[1]?.test || "").toBe("");
   });
 });

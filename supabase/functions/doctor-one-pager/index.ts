@@ -46,6 +46,18 @@ const toolParameters = {
       },
     },
     points_for_clinical_review: { type: "array", items: { type: "string" } },
+    suggested_follow_up: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          test: { type: "string" },
+          when: { type: "string" },
+          note: { type: "string" },
+        },
+        required: ["test", "when"],
+      },
+    },
     overall_comment: { type: "string" },
   },
   required: ["overall_clinical_snapshot", "clinical_patterns", "points_for_clinical_review"],
@@ -101,9 +113,13 @@ Rules:
 - Use cautious wording: suggests, consistent with, pattern of, correlate clinically.
 - Avoid: patient has, definitely, confirmed diagnosis, must take.
 - Keep it scannable in 20-30 seconds. Maximum 4 patterns. Snapshot is at most 2 short sentences.
-- Each current finding is a short line such as "FBS 132 mg/dL H".
+- Each current finding is a short line that includes the reference_range from the data, such as "FBS 132 mg/dL (Ref 70-100) H". Copy the range exactly. If reference_range is empty, omit the parentheses.
+- Say "result is low" or "result is high". Never write "by lab", "flagged by lab", or "low by lab".
+- If no earlier result exists, write "Prior history for <test or panel name> not available." Never write "no prior results provided" or "no previous results".
+- Never mention sample contamination, haemolysis, clotting, insufficient sample, laboratory error, pre-analytical problems, or any wording that could be read as a fault in the sample or the laboratory.
 - integrated_interpretation is one sentence.
 - points_for_clinical_review: at most 4 short correlation points, not a treatment plan.
+- suggested_follow_up: 2 to 4 laboratory tests that would help the doctor, only when an abnormal pattern makes them relevant. Each item has test (the investigation), when (a concrete interval such as "after 6-8 weeks" or "after 3 months"), and note (one short reason). These are repeat or additional laboratory tests, not medicines and not a treatment plan. Do not invent a follow-up when the available results do not support one.
 - Omit minor isolated noise. Prefer concordant patterns, then persistent or worsening change, then important isolated findings.
 - Do not reproduce charts.`;
 

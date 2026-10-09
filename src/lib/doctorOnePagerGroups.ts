@@ -175,8 +175,28 @@ export function buildDoctorOnePagerInput(opts: {
 const BANNED =
   /\b(prescribe|prescription|start medication|stop medication|dosage|dose change|mg\/day|tablet|capsule|definitely has|confirmed diagnosis|must take|patient has)\b/i;
 
+const LAB_BLAME_SENTENCE =
+  /[^.]*\b(contaminat\w*|haemolys\w*|hemolys\w*|clotted sample|insufficient sample|lab(?:oratory)? error|analytical error|pre-?analytical|sample mix-?up|wrong sample|spoiled sample|unfit sample|repeat collection)\b[^.]*\.?/gi;
+
 export function scrubClinicalText(text: string): string {
-  const clean = String(text || "").replace(/\s+/g, " ").trim();
+  let clean = String(text || "").replace(/\s+/g, " ").trim();
+  if (!clean) return "";
+  clean = clean.replace(LAB_BLAME_SENTENCE, " ").replace(/\s+/g, " ").trim();
+  clean = clean.replace(/\bflagged\s+(low|high)\s+by\s+(the\s+)?lab\b/gi, "result is $1");
+  clean = clean.replace(/\b(is|are)\s+(low|high)\s+by\s+(the\s+)?lab\b/gi, "result is $2");
+  clean = clean.replace(/\bby\s+(the\s+)?lab\b/gi, "");
+  clean = clean.replace(
+    /\bno\s+(?:prior|previous|earlier)\s+(?:results?\s+)?(?:for\s+|of\s+)?([^.]{0,60}?)\s+results?\s+(?:were\s+|are\s+|was\s+)?(?:not\s+)?(?:provided|available|given)\b[^.]*\.?/gi,
+    (_match, what: string) => {
+      const name = String(what || "").replace(/^(for|of)\s+/i, "").replace(/\s+(results?|values?)$/i, "").trim();
+      return name ? `Prior history for ${name} not available.` : "Prior history for this test not available.";
+    },
+  );
+  clean = clean.replace(
+    /\bno\s+(?:prior|previous|earlier)\s+results?\b[^.]*\.?/gi,
+    "Prior history for this test not available.",
+  );
+  clean = clean.replace(/\s+/g, " ").replace(/\s+([,.;])/g, "$1").trim();
   if (!clean) return "";
   if (!BANNED.test(clean)) return clean;
   return "Correlate with clinical history. This summary does not diagnose or recommend treatment.";
@@ -193,6 +213,12 @@ export type DoctorOnePagerPattern = {
   clinical_correlation: string[];
 };
 
+export type SuggestedFollowUp = {
+  test: string;
+  when: string;
+  note: string;
+};
+
 export type DoctorOnePagerSummary = {
   overall_clinical_snapshot: string;
   clinical_patterns: DoctorOnePagerPattern[];
@@ -205,6 +231,7 @@ export type DoctorOnePagerSummary = {
     resolved: string[];
   };
   points_for_clinical_review: string[];
+  suggested_follow_up: SuggestedFollowUp[];
   overall_comment: string;
 };
 
@@ -240,6 +267,14 @@ export function normalizeDoctorOnePagerSummary(raw: any): DoctorOnePagerSummary 
       resolved: asStringList(history.resolved, 3),
     },
     points_for_clinical_review: asStringList(raw?.points_for_clinical_review, 4),
+    suggested_follow_up: (Array.isArray(raw?.suggested_follow_up) ? raw.suggested_follow_up : [])
+      .slice(0, 4)
+      .map((item: any) => ({
+        test: scrubClinicalText(item?.test),
+        when: scrubClinicalText(item?.when),
+        note: scrubClinicalText(item?.note),
+      }))
+      .filter((item: SuggestedFollowUp) => item.test),
     overall_comment: scrubClinicalText(raw?.overall_comment),
   };
 }
