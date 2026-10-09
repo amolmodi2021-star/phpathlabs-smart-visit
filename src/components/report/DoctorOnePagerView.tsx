@@ -230,7 +230,6 @@ function SummaryChrome({ report }: { report: any }) {
   return (
     <>
       <LimsReportHeader
-        fontSizePx={16}
         patientName={report.patient_name}
         title={report.title}
         gender={report.gender}
