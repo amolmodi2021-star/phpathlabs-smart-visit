@@ -464,7 +464,7 @@ function ResultTable({ rows }: { rows: PatternTableRow[] }) {
               </td>
               <td style={{ padding: "3px 4px", color: "#334155", whiteSpace: "pre-line", lineHeight: 1.25 }}>{row.reference_range}</td>
               <td style={{ padding: "3px 4px", textAlign: "center", fontWeight: 700, color: high ? "#dc2626" : low ? "#2563eb" : "#9a3412" }}>
-                {high ? "HIGH" : low ? "LOW" : row.flag}
+                {high ? "HIGH" : low ? "LOW" : row.flag === "X" ? "" : row.flag}
               </td>
             </tr>
           );
