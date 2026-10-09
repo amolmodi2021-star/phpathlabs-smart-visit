@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildDoctorOnePagerInput,
   clinicalGroupsFor,
+  explanationsForBox,
   leftoverAbnormalBoxes,
   matchPatternResultRows,
   normalizeDoctorOnePagerSummary,
@@ -183,6 +184,29 @@ describe("scrubClinicalText", () => {
     );
     expect(text).toBe("Low MCV and MCH suggest an anaemia pattern and WBC counts are within range.");
     expect(text).not.toMatch(/morpholog|normocytic|microcytic|hypochromic/i);
+  });
+});
+
+describe("explanationsForBox", () => {
+  it("places the sentence under the box that contains the parameter", () => {
+    const renal = explanationsForBox(
+      { id: "renal", label: "Renal function", rows: [{ parameter_name: "Calcium" }, { parameter_name: "Uric Acid" }] },
+      [{ profile: "Urinalysis", note: "Pus cells and epithelial cells are present in urine." }],
+      [
+        "Calcium result is high with normal creatinine, urea, phosphorus and BUN.",
+        "Uric Acid result is high with otherwise preserved renal function markers.",
+      ],
+    );
+    expect(renal).toEqual([
+      "Calcium result is high with normal creatinine, urea, phosphorus and BUN.",
+      "Uric Acid result is high with otherwise preserved renal function markers.",
+    ]);
+    const urine = explanationsForBox(
+      { id: "urinalysis", label: "Urinalysis", rows: [{ parameter_name: "Pus cells (Urine)" }, { parameter_name: "Epithelial cells (Urine)" }] },
+      [{ profile: "Urinalysis", note: "Pus cells and epithelial cells are present in urine." }],
+      [],
+    );
+    expect(urine).toEqual(["Pus cells and epithelial cells are present in urine."]);
   });
 });
 

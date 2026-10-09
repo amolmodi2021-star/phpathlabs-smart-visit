@@ -279,6 +279,37 @@ export function rowsForPatternBox(
 
 export type AbnormalBox = { id: string; label: string; rows: PatternTableRow[] };
 
+function mentionsParameter(line: string, parameterName: string): boolean {
+  const text = line.toLowerCase();
+  const name = parameterName.toLowerCase().trim();
+  if (name.length >= 4 && text.includes(name)) return true;
+  const core = name.replace(/\(.*?\)/g, "").trim();
+  return core.length >= 4 && text.includes(core);
+}
+
+/** Short AI sentences that belong under an abnormal-parameter box. */
+export function explanationsForBox(
+  box: { id: string; label: string; rows: { parameter_name: string }[] },
+  notes: { profile: string; note: string }[],
+  isolated: string[],
+): string[] {
+  const lines: string[] = [];
+  const add = (line: string) => {
+    const text = line.trim();
+    if (text && !lines.includes(text)) lines.push(text);
+  };
+  const blob = `${box.id} ${box.label}`.toLowerCase();
+  for (const note of notes || []) {
+    const profile = note.profile.toLowerCase();
+    const aboutBox = blob.includes(profile) || profile.includes(box.id) || box.rows.some((row) => mentionsParameter(note.profile, row.parameter_name) || mentionsParameter(note.note, row.parameter_name));
+    if (aboutBox) add(note.note);
+  }
+  for (const line of isolated || []) {
+    if (box.rows.some((row) => mentionsParameter(line, row.parameter_name))) add(line);
+  }
+  return lines.slice(0, 3);
+}
+
 /** Abnormal parameters that no pattern box already shows, grouped by test family. */
 export function leftoverAbnormalBoxes(results: OnePagerResult[], shownNames: Set<string>): AbnormalBox[] {
   const buckets = new Map<string, PatternTableRow[]>();
@@ -467,6 +498,7 @@ export type DoctorOnePagerSummary = {
   };
   points_for_clinical_review: string[];
   suggested_follow_up: SuggestedFollowUp[];
+  profile_notes: { profile: string; note: string }[];
   overall_comment: string;
 };
 
@@ -516,7 +548,7 @@ export function normalizeDoctorOnePagerSummary(raw: any): DoctorOnePagerSummary 
       integrated_interpretation: scrubClinicalText(p?.integrated_interpretation),
       clinical_correlation: asStringList(p?.clinical_correlation, 2),
     })),
-    important_isolated_findings: asStringList(raw?.important_isolated_findings, 3),
+    important_isolated_findings: asStringList(raw?.important_isolated_findings, 8),
     historical_changes: {
       new: asStringList(history.new, 3),
       worsening: asStringList(history.worsening, 3),
@@ -525,6 +557,13 @@ export function normalizeDoctorOnePagerSummary(raw: any): DoctorOnePagerSummary 
       resolved: asStringList(history.resolved, 3),
     },
     points_for_clinical_review: asStringList(raw?.points_for_clinical_review, 4),
+    profile_notes: (Array.isArray(raw?.profile_notes) ? raw.profile_notes : [])
+      .slice(0, 8)
+      .map((item: any) => ({
+        profile: scrubClinicalText(item?.profile),
+        note: scrubClinicalText(item?.note),
+      }))
+      .filter((item: { profile: string; note: string }) => item.note),
     suggested_follow_up: (Array.isArray(raw?.suggested_follow_up) ? raw.suggested_follow_up : [])
       .slice(0, 4)
       .map((item: any) => ({

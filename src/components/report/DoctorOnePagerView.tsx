@@ -9,7 +9,7 @@ import {
   loadPriorVisitsForOnePager,
   requestDoctorOnePager,
 } from "@/lib/doctorOnePager";
-import { leftoverAbnormalBoxes, rowsForPatternBox, type DoctorOnePagerSummary, type PatternTableRow } from "@/lib/doctorOnePagerGroups";
+import { explanationsForBox, leftoverAbnormalBoxes, rowsForPatternBox, type DoctorOnePagerSummary, type PatternTableRow } from "@/lib/doctorOnePagerGroups";
 import { referencesForSummary } from "@/lib/doctorOnePagerSources";
 import { toast } from "sonner";
 
@@ -344,12 +344,19 @@ function summaryBlocks(
     blocks.push(
       <div style={{ paddingBottom: "8px" }}>
         <SectionTitle>Abnormal parameters</SectionTitle>
-        {leftovers.map((box) => (
-          <div key={box.id} style={{ border: "1px solid #e2e8f0", borderLeft: "3px solid #1e3a8a", padding: "6px 8px", marginBottom: "6px" }}>
-            <strong style={{ fontSize: "16px" }}>{box.label}</strong>
-            <ResultTable rows={box.rows} />
-          </div>
-        ))}
+        {leftovers.map((box) => {
+          const notes = explanationsForBox(box, summary.profile_notes, summary.important_isolated_findings);
+          notes.forEach((note) => shown.add(`note:${note.toLowerCase()}`));
+          return (
+            <div key={box.id} style={{ border: "1px solid #e2e8f0", borderLeft: "3px solid #1e3a8a", padding: "6px 8px", marginBottom: "6px" }}>
+              <strong style={{ fontSize: "16px" }}>{box.label}</strong>
+              <ResultTable rows={box.rows} />
+              {notes.map((note) => (
+                <div key={note} style={{ marginTop: "2px" }}>{note}</div>
+              ))}
+            </div>
+          );
+        })}
       </div>,
     );
   }
@@ -362,6 +369,7 @@ function summaryBlocks(
   }
   const isolated = summary.important_isolated_findings.filter((line) => {
     const text = line.trim().toLowerCase().replace(/[.:]$/, "");
+    if (shown.has(`note:${line.trim().toLowerCase()}`)) return false;
     return ![...shown].some((name) => text === name);
   });
   if (isolated.length > 0) {
