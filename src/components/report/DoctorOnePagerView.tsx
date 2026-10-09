@@ -43,18 +43,29 @@ const DoctorOnePagerView = ({ report, letterheadUrl, topMarginCm, bottomMarginCm
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
+  const reportRef = useRef(report);
   useEffect(() => {
+    const currentReport = reportRef.current;
     let cancelled = false;
     (async () => {
       setBusy(true);
       setError("");
       try {
-        const current = Array.isArray(report?.test_results) ? report.test_results : [];
-        const priorVisits = await loadPriorVisitsForOnePager(report?.umr_number, report?.registration_id);
+        const current = Array.isArray(currentReport?.test_results) ? currentReport.test_results : [];
+        let priorVisits: Awaited<ReturnType<typeof loadPriorVisitsForOnePager>> = [];
+        try {
+          priorVisits = await loadPriorVisitsForOnePager(currentReport?.umr_number, currentReport?.registration_id);
+        } catch (historyErr) {
+          console.warn("doctor summary history skipped", historyErr);
+        }
         const next = await requestDoctorOnePager({ current, priorVisits });
         if (!cancelled) setSummary(next);
       } catch (e: any) {
-        if (!cancelled) setError(e?.message || "Could not prepare the doctor summary");
+        const message = e?.message || "Could not prepare the doctor summary";
+        if (!cancelled) {
+          setError(message);
+          toast.error(message);
+        }
       } finally {
         if (!cancelled) setBusy(false);
       }
@@ -62,7 +73,7 @@ const DoctorOnePagerView = ({ report, letterheadUrl, topMarginCm, bottomMarginCm
     return () => {
       cancelled = true;
     };
-  }, [report]);
+  }, []);
 
   const printPage = () => {
     document.body.classList.add("lims-report-printing");
