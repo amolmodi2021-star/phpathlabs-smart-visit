@@ -50,28 +50,32 @@ export function resultBlob(row: OnePagerResult): string {
     .replace(/\./g, "");
 }
 
-/** Groups a parameter belongs to. Related normals stay in the same group as abnormals. */
-export function clinicalGroupsFor(row: OnePagerResult): string[] {
+/**
+ * The one box a parameter belongs in. Specimen and test family win over a shared
+ * word such as RBC, glucose, or protein, so a urine result cannot join the CBC box.
+ */
+export function primaryGroupFor(row: OnePagerResult): string | null {
   const b = resultBlob(row);
-  if (!b.trim()) return [];
-  const groups: string[] = [];
-  const add = (id: string) => {
-    if (!groups.includes(id)) groups.push(id);
-  };
+  if (!b.trim()) return null;
   const isA1c = /hba1c|hb a1c|glycated|glycosylated/.test(b);
-  const urine = URINE.test(b);
-  if (GLUCOSE.test(b) || isA1c) add("glucose");
-  if (!urine && !isA1c && HAEM.test(b)) add("haematology");
-  if (RENAL.test(b) || (/calcium/.test(b) && !/vitamin/.test(b))) add("renal");
-  if (LIVER.test(b) && !urine) add("liver");
-  if (LIPID.test(b)) add("lipid");
-  if (THYROID.test(b)) add("thyroid");
-  if (!urine && (IRON.test(b) || (!isA1c && /haemoglobin|hemoglobin|(^|[^a-z])hb([^a-z]|$)|mcv|mch|rdw|ferritin|b12|folate/.test(b)))) add("iron");
-  if (VITAMIN.test(b) || /calcium|phosphorus|phosphate/.test(b)) add("vitamins");
-  if (urine) add("urinalysis");
-  if (INFLAM.test(b)) add("inflammatory");
-  if (/urine/.test(b) && /glucose/.test(b)) add("glucose");
-  return groups;
+  if (URINE.test(b)) return "urinalysis";
+  if (INFLAM.test(b)) return "inflammatory";
+  if (LIPID.test(b)) return "lipid";
+  if (THYROID.test(b)) return "thyroid";
+  if (isA1c || GLUCOSE.test(b)) return "glucose";
+  if (LIVER.test(b)) return "liver";
+  if (RENAL.test(b)) return "renal";
+  if (VITAMIN.test(b)) return "vitamins";
+  if (IRON.test(b)) return "iron";
+  if (HAEM.test(b)) return "haematology";
+  if (/calcium|phosphorus|phosphate/.test(b)) return "renal";
+  return null;
+}
+
+/** Groups a parameter belongs to. A parameter has one home group. */
+export function clinicalGroupsFor(row: OnePagerResult): string[] {
+  const id = primaryGroupFor(row);
+  return id ? [id] : [];
 }
 
 export type PatternTableRow = {
@@ -150,50 +154,103 @@ function toPatternTableRow(row: OnePagerResult): PatternTableRow | null {
   };
 }
 
-function groupsForPattern(
-  pattern: { category?: string; pattern_name?: string; current_findings?: string[] },
-  named: PatternTableRow[],
-  results: OnePagerResult[],
-): string[] {
-  const title = [pattern.category, pattern.pattern_name].filter(Boolean).join(" ").toLowerCase();
-  const findings = (pattern.current_findings || []).join(" ").toLowerCase();
+const GROUP_PRIORITY = ["urinalysis", "inflammatory", "lipid", "thyroid", "glucose", "liver", "renal", "vitamins", "iron", "haematology"];
+
+function groupsMentioned(blob: string): string[] {
   const ids: string[] = [];
   const add = (id: string) => {
     if (CLINICAL_GROUP_LABELS[id] && !ids.includes(id)) ids.push(id);
   };
-  const collect = (blob: string) => {
-    for (const [id, label] of Object.entries(CLINICAL_GROUP_LABELS)) {
-      if (blob.includes(id) || blob.includes(label.toLowerCase())) add(id);
-    }
-    for (const [id, hint] of Object.entries(GROUP_HINTS)) {
-      if (hint.test(blob)) add(id);
-    }
-  };
-  collect(title);
-  if (ids.length > 0) return ids;
-  collect(findings);
-  if (ids.length > 0) return ids;
-  for (const row of named) {
-    const source = (results || []).find((item) => String(item.parameter_name || item.param_code || "").trim().toLowerCase() === row.parameter_name.toLowerCase());
-    if (source) clinicalGroupsFor(source).forEach(add);
+  for (const [id, label] of Object.entries(CLINICAL_GROUP_LABELS)) {
+    if (blob.includes(id) || blob.includes(label.toLowerCase())) add(id);
+  }
+  for (const [id, hint] of Object.entries(GROUP_HINTS)) {
+    if (hint.test(blob)) add(id);
   }
   return ids;
 }
 
-function abnormalRowsInGroups(groupIds: string[], results: OnePagerResult[]): PatternTableRow[] {
-  if (groupIds.length === 0) return [];
+function findSource(row: PatternTableRow, results: OnePagerResult[]): OnePagerResult | undefined {
+  const name = row.parameter_name.toLowerCase();
+  return (results || []).find((item) => String(item.parameter_name || item.param_code || "").trim().toLowerCase() === name);
+}
+
+function pickOneGroup(
+  hits: string[],
+  pattern: { current_findings?: string[] },
+  results: OnePagerResult[],
+): string | null {
+  if (hits.length === 0) return null;
+  if (hits.length === 1) return hits[0];
+  const named = matchPatternResultRows(pattern.current_findings || [], [], results);
+  const scores = new Map<string, number>();
+  for (const row of named) {
+    const source = findSource(row, results);
+    const home = source ? primaryGroupFor(source) : null;
+    if (home && hits.includes(home)) scores.set(home, (scores.get(home) || 0) + 1);
+  }
+  let best: string | null = null;
+  let bestScore = 0;
+  for (const id of hits) {
+    const score = scores.get(id) || 0;
+    if (score > bestScore) {
+      best = id;
+      bestScore = score;
+    }
+  }
+  if (best) return best;
+  return [...hits].sort((a, b) => GROUP_PRIORITY.indexOf(a) - GROUP_PRIORITY.indexOf(b))[0] || null;
+}
+
+function patternHomeGroup(
+  pattern: { category?: string; pattern_name?: string; current_findings?: string[] },
+  named: PatternTableRow[],
+  results: OnePagerResult[],
+): string | null {
+  const title = [pattern.category, pattern.pattern_name].filter(Boolean).join(" ").toLowerCase();
+  const fromTitle = pickOneGroup(groupsMentioned(title), pattern, results);
+  if (fromTitle) return fromTitle;
+  const fromFindings = pickOneGroup(groupsMentioned((pattern.current_findings || []).join(" ").toLowerCase()), pattern, results);
+  if (fromFindings) return fromFindings;
+  const homes = named
+    .map((row) => {
+      const source = findSource(row, results);
+      return source ? primaryGroupFor(source) : null;
+    })
+    .filter((id): id is string => !!id);
+  return pickOneGroup([...new Set(homes)], pattern, results);
+}
+
+function testKey(row: OnePagerResult): string {
+  const id = String(row.test_id || "").trim();
+  if (id) return `id:${id}`;
+  const name = String(row.test_name || "").trim().toLowerCase();
+  return name ? `name:${name}` : "";
+}
+
+function abnormalRowsForHome(groupId: string | null, results: OnePagerResult[]): PatternTableRow[] {
+  if (!groupId) return [];
   const picked: PatternTableRow[] = [];
   const used = new Set<string>();
-  for (const row of results || []) {
-    if (!isAbnormalFlag(row.flag)) continue;
-    const groups = clinicalGroupsFor(row);
-    if (!groupIds.some((id) => groups.includes(id))) continue;
+  const testKeys = new Set<string>();
+  const take = (row: OnePagerResult) => {
     const table = toPatternTableRow(row);
-    if (!table) continue;
+    if (!table) return;
     const key = table.parameter_name.toLowerCase();
-    if (used.has(key)) continue;
+    if (used.has(key)) return;
     used.add(key);
     picked.push(table);
+    const token = testKey(row);
+    if (token) testKeys.add(token);
+  };
+  for (const row of results || []) {
+    if (!isAbnormalFlag(row.flag)) continue;
+    if (primaryGroupFor(row) === groupId) take(row);
+  }
+  for (const row of results || []) {
+    if (!isAbnormalFlag(row.flag) || primaryGroupFor(row)) continue;
+    const token = testKey(row);
+    if (token && testKeys.has(token)) take(row);
   }
   return picked;
 }
@@ -207,15 +264,15 @@ export function rowsForPatternBox(
   results: OnePagerResult[],
 ): PatternTableRow[] {
   const named = matchPatternResultRows(pattern.current_findings || [], pattern.related_parameters_considered || [], results);
-  const groupIds = groupsForPattern(pattern, named, results);
-  const abnormal = abnormalRowsInGroups(groupIds, results);
+  const groupId = patternHomeGroup(pattern, named, results);
+  const abnormal = abnormalRowsForHome(groupId, results);
   const seen = new Set(abnormal.map((row) => row.parameter_name.toLowerCase()));
   const extras = named.filter((row) => {
     if (!isAbnormalFlag(row.flag) || seen.has(row.parameter_name.toLowerCase())) return false;
-    if (groupIds.length === 0) return true;
-    const source = (results || []).find((item) => String(item.parameter_name || item.param_code || "").trim().toLowerCase() === row.parameter_name.toLowerCase());
+    const source = findSource(row, results);
     if (!source) return false;
-    return groupIds.some((id) => clinicalGroupsFor(source).includes(id));
+    const home = primaryGroupFor(source);
+    return !groupId || home === groupId || !home;
   });
   return [...abnormal, ...extras].slice(0, 24);
 }
@@ -229,15 +286,15 @@ export function leftoverAbnormalBoxes(results: OnePagerResult[], shownNames: Set
     if (!isAbnormalFlag(row.flag)) continue;
     const table = toPatternTableRow(row);
     if (!table || shownNames.has(table.parameter_name.toLowerCase())) continue;
-    const groups = clinicalGroupsFor(row).filter((id) => CLINICAL_GROUP_LABELS[id]);
-    const id = groups[0] || "other";
+    const home = primaryGroupFor(row);
+    const id = home || testKey(row) || "other";
     const list = buckets.get(id) || [];
     list.push(table);
     buckets.set(id, list);
   }
   return [...buckets.entries()].map(([id, rows]) => ({
     id,
-    label: CLINICAL_GROUP_LABELS[id] || "Other abnormal results",
+    label: CLINICAL_GROUP_LABELS[id] || String(results.find((row) => testKey(row) === id)?.test_name || "").trim() || "Other abnormal results",
     rows,
   }));
 }

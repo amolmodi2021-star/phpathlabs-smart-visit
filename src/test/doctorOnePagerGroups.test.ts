@@ -144,6 +144,23 @@ describe("matchPatternResultRows", () => {
     );
     expect(urine.map((row) => row.parameter_name)).toEqual(["Red Blood Cells (Urine)", "Pus cells (Urine)"]);
   });
+
+  it("puts each abnormal parameter only in the box for its own test", () => {
+    const results = [
+      { parameter_name: "Haemoglobin", test_name: "CBC", result_value: "9.0", flag: "L" },
+      { parameter_name: "Abs Monocytes", test_name: "CBC", result_value: "153", flag: "L" },
+      { parameter_name: "Ferritin", test_name: "Iron Studies", result_value: "8", flag: "L" },
+      { parameter_name: "Blood Glucose Fasting", test_name: "FBS", result_value: "106", flag: "H" },
+      { parameter_name: "Urine Glucose", test_name: "Urine Routine Examination", result_value: "Present", flag: "X" },
+      { parameter_name: "Red Blood Cells (Urine)", test_name: "Urine Routine Examination", result_value: "1-2/hpf", flag: "X" },
+      { parameter_name: "Creatinine", test_name: "Renal Function", result_value: "1.8", flag: "H" },
+    ];
+    expect(rowsForPatternBox({ pattern_name: "Normocytic normochromic anaemia pattern", current_findings: ["Haemoglobin"] }, results).map((row) => row.parameter_name)).toEqual(["Haemoglobin", "Abs Monocytes"]);
+    expect(rowsForPatternBox({ pattern_name: "Low ferritin", category: "iron", current_findings: ["Ferritin"] }, results).map((row) => row.parameter_name)).toEqual(["Ferritin"]);
+    expect(rowsForPatternBox({ pattern_name: "Isolated fasting glucose elevation", current_findings: ["Blood Glucose Fasting"] }, results).map((row) => row.parameter_name)).toEqual(["Blood Glucose Fasting"]);
+    expect(rowsForPatternBox({ pattern_name: "Pyuria with blood-positive urine findings", current_findings: ["Red Blood Cells (Urine)"] }, results).map((row) => row.parameter_name)).toEqual(["Urine Glucose", "Red Blood Cells (Urine)"]);
+    expect(rowsForPatternBox({ pattern_name: "Raised creatinine", category: "renal", current_findings: ["Creatinine"] }, results).map((row) => row.parameter_name)).toEqual(["Creatinine"]);
+  });
 });
 
 describe("scrubClinicalText", () => {
