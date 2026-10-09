@@ -11,6 +11,7 @@ import {
 } from "@/lib/doctorOnePager";
 import { explanationsForBox, leftoverAbnormalBoxes, rowsForPatternBox, type DoctorOnePagerSummary, type PatternTableRow } from "@/lib/doctorOnePagerGroups";
 import { referencesForSummary } from "@/lib/doctorOnePagerSources";
+import { formatPatientAge } from "@/lib/patientAge";
 import { toast } from "sonner";
 
 const PAGE_W = 210;
@@ -51,7 +52,17 @@ const DoctorOnePagerView = ({ report, letterheadUrl, topMarginCm, bottomMarginCm
         } catch (historyErr) {
           console.warn("doctor summary history skipped", historyErr);
         }
-        const next = await requestDoctorOnePager({ current, priorVisits });
+        const age = formatPatientAge({
+          dob: currentReport?.dob,
+          ageText: currentReport?.age_text,
+          asOf: currentReport?.approval_date || currentReport?.registration_date || null,
+        });
+        const next = await requestDoctorOnePager({
+          current,
+          priorVisits,
+          age,
+          gender: currentReport?.gender,
+        });
         if (!cancelled) setSummary(next);
       } catch (e: any) {
         const message = e?.message || "Could not prepare the doctor summary";

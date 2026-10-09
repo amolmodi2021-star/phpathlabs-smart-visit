@@ -373,6 +373,7 @@ export type OnePagerParameter = {
 };
 
 export type DoctorOnePagerInput = {
+  patient: { age: string | null; gender: string | null };
   groups: { id: string; label: string; parameters: OnePagerParameter[] }[];
   ungrouped_abnormal: OnePagerParameter[];
   prior_visit_count: number;
@@ -402,6 +403,8 @@ function pack(row: OnePagerResult, history: { date: string; value: string; flag:
 export function buildDoctorOnePagerInput(opts: {
   current: OnePagerResult[];
   priorVisits: PriorVisit[];
+  age?: string | null;
+  gender?: string | null;
 }): DoctorOnePagerInput {
   const priors = opts.priorVisits.slice(0, 4);
   const historyByKey = new Map<string, { date: string; value: string; flag: string }[]>();
@@ -443,7 +446,17 @@ export function buildDoctorOnePagerInput(opts: {
     return p.abnormal && !groupedKeys.has(key);
   });
 
-  return { groups, ungrouped_abnormal, prior_visit_count: priors.length };
+  const age = String(opts.age || "").trim();
+  const gender = String(opts.gender || "").trim();
+  return {
+    patient: {
+      age: !age || age === "—" ? null : age,
+      gender: gender || null,
+    },
+    groups,
+    ungrouped_abnormal,
+    prior_visit_count: priors.length,
+  };
 }
 
 const BANNED =

@@ -118,7 +118,9 @@ function shouldTryNextModel(status: number, bodyText: string): boolean {
 const SYSTEM_PROMPT = `You prepare a one-page doctor-facing laboratory summary for PH PathLabs.
 You are given current verified results already grouped with clinically related parameters, including NORMAL related values, plus prior values for the same patient.
 
-Reason in this order only: individual result, related parameters in the same group, the pattern they form together, then history.
+Before any assessment, read patient.age and patient.gender. Weigh that age and sex when a result depends on them, such as haemoglobin, red-cell indices, creatinine, uric acid, lipids, and hormones. Keep the printed reference range. Do not invent an age or sex. Do not repeat the age or sex as advice to the doctor.
+
+Reason in this order only: age and gender, individual result, related parameters in the same group, the pattern they form together, then history.
 
 Rules:
 - Do NOT list each abnormal test as its own finding. Combine related results into one pattern.
@@ -175,6 +177,7 @@ serve(async (req) => {
 
     const userText = [
       "Prepare the doctor one-pager from this grouped laboratory JSON.",
+      "Read patient.age and patient.gender before the assessment.",
       "Groups already contain related parameters, including normals. Interpret each group as a set.",
       "Parameters may also carry a panel id so same-test siblings stay together.",
       "",

@@ -72,6 +72,13 @@ describe("buildDoctorOnePagerInput", () => {
     expect(glucose?.parameters.map((p) => p.parameter_name)).toEqual(["FBS", "PPBS", "HbA1c"]);
     expect(glucose?.parameters[0].history[0].value).toBe("128");
     expect(glucose?.parameters[1].abnormal).toBe(false);
+    const withPatient = buildDoctorOnePagerInput({
+      current: [{ parameter_name: "FBS", result_value: "132", flag: "H" }],
+      priorVisits: [],
+      age: "31 Years",
+      gender: "Male",
+    });
+    expect(withPatient.patient).toEqual({ age: "31 Years", gender: "Male" });
   });
 });
 

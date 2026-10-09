@@ -57,6 +57,8 @@ export async function loadPriorVisitsForOnePager(
 export async function requestDoctorOnePager(opts: {
   current: OnePagerResult[];
   priorVisits: PriorVisit[];
+  age?: string | null;
+  gender?: string | null;
 }): Promise<DoctorOnePagerSummary> {
   const payload = buildDoctorOnePagerInput(opts);
   if (payload.groups.length === 0 && payload.ungrouped_abnormal.length === 0) {
