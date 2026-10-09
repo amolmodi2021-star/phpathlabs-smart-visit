@@ -17,16 +17,30 @@ const PAGE_H = 297;
 const DISCLAIMER =
   "AI-assisted laboratory summary for clinical review only. Not a diagnosis or treatment advice. Refer to the original verified report.";
 
-const STATUS_COLOR: Record<string, string> = {
-  NEW: "#b45309",
-  PERSISTENT: "#1d4ed8",
-  WORSENING: "#b91c1c",
-  IMPROVING: "#15803d",
-  STABLE: "#334155",
-  RESOLVED: "#15803d",
-  ISOLATED: "#b45309",
-  INDETERMINATE: "#64748b",
+const STATUS_STYLE: Record<string, { color: string; background: string; border: string }> = {
+  NEW: { color: "#9a3412", background: "#ffedd5", border: "#fdba74" },
+  PERSISTENT: { color: "#1e40af", background: "#dbeafe", border: "#93c5fd" },
+  WORSENING: { color: "#991b1b", background: "#fee2e2", border: "#fca5a5" },
+  IMPROVING: { color: "#166534", background: "#dcfce7", border: "#86efac" },
+  STABLE: { color: "#334155", background: "#f1f5f9", border: "#cbd5e1" },
+  RESOLVED: { color: "#166534", background: "#dcfce7", border: "#86efac" },
+  ISOLATED: { color: "#9a3412", background: "#ffedd5", border: "#fdba74" },
+  INDETERMINATE: { color: "#475569", background: "#f1f5f9", border: "#cbd5e1" },
 };
+
+function parseFinding(line: string): { label: string; value: string; flag: string } {
+  const text = line.replace(/\s+/g, " ").trim();
+  const match = text.match(/^(.*)\s+(\d+(?:\.\d+)?)\s+(\S+)\s+(HH|LL|H|L|N|A|X)$/i);
+  if (!match) return { label: text, value: "", flag: "" };
+  return { label: match[1].trim(), value: `${match[2]} ${match[3]}`, flag: match[4].toUpperCase() };
+}
+
+function flagStyle(flag: string): { color: string; background: string } | null {
+  if (flag === "H" || flag === "HH" || flag === "A") return { color: "#991b1b", background: "#fee2e2" };
+  if (flag === "L" || flag === "LL") return { color: "#9a3412", background: "#ffedd5" };
+  if (flag === "N") return { color: "#64748b", background: "#f8fafc" };
+  return null;
+}
 
 type Props = {
   report: any;
@@ -184,7 +198,7 @@ const DoctorOnePagerView = ({ report, letterheadUrl, topMarginCm, bottomMarginCm
             printDate={report.print_date}
             visitType={report.visit_type}
           />
-          <div style={{ fontSize: "11px", fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", color: "#1e3a8a", margin: "4px 0 6px" }}>
+          <div style={{ margin: "6px 0 8px", background: "#1e3a8a", color: "#ffffff", fontSize: "10px", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", textAlign: "center", padding: "4px 8px" }}>
             Doctor clinical summary
           </div>
 
@@ -197,28 +211,18 @@ const DoctorOnePagerView = ({ report, letterheadUrl, topMarginCm, bottomMarginCm
             <div className="flex-1 text-sm text-red-700 pt-4">{error}</div>
           )}
           {!busy && summary && (
-            <div className="flex-1 min-h-0 overflow-hidden" style={{ fontSize: "10.5px", lineHeight: 1.35 }}>
+            <div className="flex-1 min-h-0 overflow-hidden" style={{ fontSize: "10.5px", lineHeight: 1.4 }}>
               <Section title="Clinical snapshot">
-                <p style={{ margin: 0 }}>{summary.overall_clinical_snapshot || "No dominant pattern was identified from the available results."}</p>
+                <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderLeft: "3px solid #1e3a8a", padding: "6px 8px" }}>
+                  {summary.overall_clinical_snapshot || "No dominant pattern was identified from the available results."}
+                </div>
               </Section>
 
               {summary.clinical_patterns.length > 0 && (
                 <Section title="Key clinical patterns">
-                  <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                     {summary.clinical_patterns.map((pattern, i) => (
-                      <div key={i} style={{ borderLeft: "3px solid #1d4ed8", paddingLeft: "6px" }}>
-                        <div style={{ display: "flex", gap: "6px", alignItems: "baseline", flexWrap: "wrap" }}>
-                          <strong>{pattern.pattern_name}</strong>
-                          <span style={{ fontSize: "9px", fontWeight: 700, color: STATUS_COLOR[pattern.status] || "#64748b" }}>{pattern.status}</span>
-                        </div>
-                        {pattern.current_findings.length > 0 && (
-                          <div style={{ color: "#0f172a" }}>{pattern.current_findings.join("  ·  ")}</div>
-                        )}
-                        {pattern.integrated_interpretation && <div>{pattern.integrated_interpretation}</div>}
-                        {pattern.historical_context && (
-                          <div style={{ color: "#334155" }}><strong>History: </strong>{pattern.historical_context}</div>
-                        )}
-                      </div>
+                      <PatternCard key={i} pattern={pattern} />
                     ))}
                   </div>
                 </Section>
@@ -226,31 +230,25 @@ const DoctorOnePagerView = ({ report, letterheadUrl, topMarginCm, bottomMarginCm
 
               {changeLines.length > 0 && (
                 <Section title="Significant changes">
-                  <ul style={{ margin: 0, paddingLeft: "14px" }}>
-                    {changeLines.map((line, i) => <li key={i}>{line}</li>)}
-                  </ul>
+                  <BulletList items={changeLines} />
                 </Section>
               )}
 
               {summary.important_isolated_findings.length > 0 && (
                 <Section title="Isolated findings">
-                  <ul style={{ margin: 0, paddingLeft: "14px" }}>
-                    {summary.important_isolated_findings.map((line, i) => <li key={i}>{line}</li>)}
-                  </ul>
+                  <BulletList items={summary.important_isolated_findings} />
                 </Section>
               )}
 
               {summary.points_for_clinical_review.length > 0 && (
                 <Section title="Points for clinical review">
-                  <ul style={{ margin: 0, paddingLeft: "14px" }}>
-                    {summary.points_for_clinical_review.map((line, i) => <li key={i}>{line}</li>)}
-                  </ul>
+                  <BulletList items={summary.points_for_clinical_review} numbered />
                 </Section>
               )}
             </div>
           )}
 
-          <div style={{ marginTop: "auto", paddingTop: "6px", fontSize: "8px", lineHeight: 1.3, color: "#475569" }}>
+          <div style={{ marginTop: "auto", paddingTop: "6px", borderTop: "1px solid #e2e8f0", fontSize: "8px", lineHeight: 1.35, color: "#64748b" }}>
             {DISCLAIMER}
           </div>
         </div>
@@ -261,12 +259,62 @@ const DoctorOnePagerView = ({ report, letterheadUrl, topMarginCm, bottomMarginCm
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section style={{ marginBottom: "7px" }}>
-      <div style={{ fontSize: "9px", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "#1e3a8a", borderBottom: "1px solid #cbd5e1", marginBottom: "3px" }}>
+    <section style={{ marginBottom: "9px" }}>
+      <div style={{ fontSize: "9px", fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", color: "#1e3a8a", borderBottom: "1px solid #cbd5e1", marginBottom: "5px", paddingBottom: "2px" }}>
         {title}
       </div>
       {children}
     </section>
+  );
+}
+
+function PatternCard({ pattern }: { pattern: DoctorOnePagerSummary["clinical_patterns"][number] }) {
+  const status = STATUS_STYLE[pattern.status] || STATUS_STYLE.INDETERMINATE;
+  return (
+    <div style={{ border: "1px solid #e2e8f0", borderLeft: "3px solid #1e3a8a", padding: "6px 8px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
+        <strong style={{ fontSize: "11.5px" }}>{pattern.pattern_name}</strong>
+        <span style={{ flexShrink: 0, fontSize: "8px", fontWeight: 700, letterSpacing: "0.04em", color: status.color, background: status.background, border: `1px solid ${status.border}`, borderRadius: "999px", padding: "1px 6px" }}>
+          {pattern.status}
+        </span>
+      </div>
+      {pattern.current_findings.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "1px", marginBottom: "4px" }}>
+          {pattern.current_findings.map((line, i) => {
+            const item = parseFinding(line);
+            const tone = flagStyle(item.flag);
+            const abnormal = item.flag === "H" || item.flag === "HH" || item.flag === "L" || item.flag === "LL" || item.flag === "A";
+            if (!item.value) return <div key={i}>{line}</div>;
+            return (
+              <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr auto auto", columnGap: "10px", alignItems: "baseline", background: abnormal ? "#fff7f7" : "transparent", padding: "1px 3px" }}>
+                <span style={{ fontWeight: abnormal ? 600 : 400 }}>{item.label}</span>
+                <span style={{ fontWeight: abnormal ? 700 : 400, textAlign: "right", whiteSpace: "nowrap" }}>{item.value}</span>
+                <span style={{ justifySelf: "end", minWidth: "16px", textAlign: "center", fontSize: "8px", fontWeight: 700, color: tone?.color || "#64748b", background: abnormal ? (tone?.background || "transparent") : "transparent", borderRadius: "2px", padding: "0 3px" }}>
+                  {item.flag === "N" ? "" : item.flag}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {pattern.integrated_interpretation && <div>{pattern.integrated_interpretation}</div>}
+      {pattern.historical_context && (
+        <div style={{ marginTop: "2px", color: "#475569" }}><strong>History: </strong>{pattern.historical_context}</div>
+      )}
+    </div>
+  );
+}
+
+function BulletList({ items, numbered }: { items: string[]; numbered?: boolean }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
+      {items.map((line, i) => (
+        <div key={i} style={{ display: "flex", gap: "6px" }}>
+          <span style={{ flexShrink: 0, width: "12px", color: "#1e3a8a", fontWeight: 700 }}>{numbered ? `${i + 1}.` : "•"}</span>
+          <span>{line}</span>
+        </div>
+      ))}
+    </div>
   );
 }
 
