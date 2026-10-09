@@ -354,6 +354,22 @@ export function leftoverAbnormalBoxes(results: OnePagerResult[], shownNames: Set
   }));
 }
 
+function resultTitle(rows: PatternTableRow[]): string {
+  const bits = rows.map((row) => {
+    const name = row.parameter_name.trim();
+    if (!name) return "";
+    const flag = String(row.flag || "").toUpperCase();
+    if (flag === "H" || flag === "HH" || flag === "HIGH" || flag.includes("HH")) return `high ${name}`;
+    if (flag === "L" || flag === "LL" || flag === "LOW" || flag.includes("LL")) return `low ${name}`;
+    return name;
+  }).filter(Boolean);
+  const shown = bits.slice(0, 4);
+  if (bits.length > 4) shown.push("other results");
+  if (shown.length === 0) return "";
+  const body = shown.length === 1 ? shown[0] : `${shown.slice(0, -1).join(", ")} and ${shown[shown.length - 1]}`;
+  return body.charAt(0).toUpperCase() + body.slice(1);
+}
+
 export type MergedAbnormalBox = AbnormalBox & { interpretation: string; history: string };
 
 /** Every abnormal test in one list. Pattern comments sit under the matching test. */
@@ -386,7 +402,7 @@ export function mergedAbnormalBoxes(
       const key = id || `pattern:${boxes.length}`;
       box = {
         id: key,
-        label: (id && CLINICAL_GROUP_LABELS[id]) || String(pattern.pattern_name || "").trim() || "Other abnormal results",
+        label: String(pattern.pattern_name || "").trim() || (id && CLINICAL_GROUP_LABELS[id]) || "Other abnormal results",
         rows,
         interpretation: "",
         history: "",
@@ -400,6 +416,14 @@ export function mergedAbnormalBoxes(
         : box.interpretation || interpretation;
     }
     if (history && !box.history) box.history = history;
+    const title = String(pattern.pattern_name || "").trim();
+    if (title && title.toLowerCase() !== "pattern") box.label = title;
+  }
+  const generic = new Set([...Object.values(CLINICAL_GROUP_LABELS), "Other abnormal results"]);
+  for (const box of boxes) {
+    if (!generic.has(box.label)) continue;
+    const title = resultTitle(box.rows);
+    if (title) box.label = title;
   }
   return boxes.filter((box) => box.rows.length > 0 || box.interpretation || box.history);
 }
@@ -652,7 +676,7 @@ export function normalizeDoctorOnePagerSummary(raw: any): DoctorOnePagerSummary 
   const history = raw?.historical_changes && typeof raw.historical_changes === "object" ? raw.historical_changes : {};
   return {
     overall_clinical_snapshot: snapshotBullets(raw?.overall_clinical_snapshot),
-    clinical_patterns: patterns.slice(0, 4).map((p: any) => ({
+    clinical_patterns: patterns.slice(0, 8).map((p: any) => ({
       category: String(p?.category || "").trim(),
       pattern_name: leadCapital(scrubClinicalText(p?.pattern_name)) || "Pattern",
       current_findings: asStringList(p?.current_findings, 6),

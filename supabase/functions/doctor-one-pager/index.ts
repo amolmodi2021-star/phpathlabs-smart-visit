@@ -136,7 +136,8 @@ Rules:
 - Describe only what the results show: which value is low or high, and which related results are within range. Do not write "suggests anaemia", "anaemia pattern", "consistent with thrombocytosis", or "reactive thrombocytosis".
 - Never prescribe. Never mention drugs, doses, starting or stopping medication.
 - Avoid: patient has, definitely, confirmed diagnosis, must take.
-- Keep it scannable in 20-30 seconds. Maximum 4 patterns.
+- Keep it scannable in 20-30 seconds. Write one pattern for every abnormal test family, up to 8.
+- pattern_name is the title of that test's box. Describe the abnormal results in the title, such as "Low haemoglobin with a high platelet count" or "High creatinine". Do not use the panel name alone, such as "CBC" or "Renal function".
 - overall_clinical_snapshot is a list of bullets, one bullet per test or profile. Haematology, urinalysis, glucose, lipids, thyroid, kidney, and liver each get their own bullet. Do not put two profiles in one bullet. Do not write one combined paragraph.
 - Each current finding is the parameter name only, such as "Total Cholesterol" or "Vitamin D". Do not put the value, unit, or reference range in current_findings. The page shows those in a table from the laboratory record.
 - current_findings must name every abnormal parameter in that pattern's group, including ratios, not only the lead abnormality.

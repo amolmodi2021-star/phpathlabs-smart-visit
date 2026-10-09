@@ -239,7 +239,7 @@ describe("mergedAbnormalBoxes", () => {
         { parameter_name: "Creatinine", test_name: "Renal Function", result_value: "1.8", flag: "H" },
       ],
     );
-    expect(boxes.map((box) => box.label)).toEqual(["CBC / Haematology", "Renal function"]);
+    expect(boxes.map((box) => box.label)).toEqual(["Low haemoglobin with a high platelet count", "High Creatinine"]);
     expect(boxes[0].rows.map((row) => row.parameter_name)).toEqual(["Haemoglobin", "Platelet Count"]);
     expect(boxes[0].interpretation).toMatch(/Haemoglobin result is low/);
     expect(boxes[0].history).toMatch(/not available/);
@@ -308,7 +308,7 @@ describe("normalizeDoctorOnePagerSummary", () => {
       clinical_patterns: Array.from({ length: 6 }, (_, i) => ({ pattern_name: `P${i}`, current_findings: ["FBS 132 H"] })),
       points_for_clinical_review: ["Prescribe tablet."],
     });
-    expect(summary.clinical_patterns).toHaveLength(4);
+    expect(summary.clinical_patterns).toHaveLength(6);
     expect(summary.points_for_clinical_review).toEqual([]);
     expect(summary.suggested_follow_up).toEqual([]);
   });
