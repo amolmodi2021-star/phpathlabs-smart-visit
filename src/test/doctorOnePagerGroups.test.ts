@@ -32,6 +32,18 @@ describe("clinicalGroupsFor", () => {
     expect(rdw).toContain("haematology");
   });
 
+  it("keeps urine red cells out of the CBC group", () => {
+    const urineRbc = clinicalGroupsFor({
+      parameter_name: "Red Blood Cells (Urine)",
+      param_code: "RBC",
+      test_name: "Urine Routine Examination",
+    });
+    expect(urineRbc).toContain("urinalysis");
+    expect(urineRbc).not.toContain("haematology");
+    expect(clinicalGroupsFor({ parameter_name: "R.B.C. Count", test_name: "CBC" })).toContain("haematology");
+    expect(clinicalGroupsFor({ parameter_name: "R.B.C. Count", test_name: "CBC" })).not.toContain("urinalysis");
+  });
+
   it("groups TSH with free T4", () => {
     expect(clinicalGroupsFor({ parameter_name: "TSH" })).toContain("thyroid");
     expect(clinicalGroupsFor({ parameter_name: "Free T4", param_code: "FT4" })).toContain("thyroid");
@@ -104,6 +116,33 @@ describe("matchPatternResultRows", () => {
     );
     expect(rest.map((box) => box.label)).toEqual(["CBC / Haematology"]);
     expect(rest[0].rows[0].parameter_name).toBe("Haemoglobin");
+  });
+
+  it("does not place urine red cells in the anaemia box", () => {
+    const results = [
+      { parameter_name: "Red Blood Cells (Urine)", test_name: "Urine Routine Examination", result_value: "1-2/hpf", reference_range: "Nil", flag: "X" },
+      { parameter_name: "Haemoglobin", test_name: "CBC", result_value: "9.0", unit: "g/dL", reference_range: "12 - 15 g/dL", flag: "L" },
+      { parameter_name: "R.B.C. Count", test_name: "CBC", result_value: "3.31", unit: "million/cumm", reference_range: "3.8 - 4.8", flag: "L" },
+      { parameter_name: "Pus cells (Urine)", test_name: "Urine Routine Examination", result_value: "30-35/hpf", reference_range: "Nil", flag: "X" },
+    ];
+    const cbc = rowsForPatternBox(
+      {
+        category: "haematology",
+        pattern_name: "Normocytic normochromic anaemia pattern",
+        current_findings: ["Haemoglobin", "R.B.C. Count", "Red Blood Cells (Urine)"],
+      },
+      results,
+    );
+    expect(cbc.map((row) => row.parameter_name)).toEqual(["Haemoglobin", "R.B.C. Count"]);
+    const urine = rowsForPatternBox(
+      {
+        category: "urinalysis",
+        pattern_name: "Pyuria with blood-positive urine findings",
+        current_findings: ["Pus cells (Urine)"],
+      },
+      results,
+    );
+    expect(urine.map((row) => row.parameter_name)).toEqual(["Red Blood Cells (Urine)", "Pus cells (Urine)"]);
   });
 });
 

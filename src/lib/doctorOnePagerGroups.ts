@@ -39,7 +39,7 @@ const LIPID = /cholesterol|\bldl\b|\bhdl\b|ldlc|hdlc|triglyceride|\bvldl\b|non-h
 const THYROID = /\btsh\b|free t3|free t4|\bft3\b|\bft4\b|\bt3\b|\bt4\b|anti-?tpo|thyroglobulin|thyroid antibody/;
 const IRON = /serum iron|\biron\b|ferritin|\btibc\b|\buibc\b|transferrin|saturation/;
 const VITAMIN = /vitamin\s*b12|b12|cobalamin|folate|folic|vitamin\s*d|\bvit\s*d\b|\bpth\b|parathyroid/;
-const URINE = /urinalysis|urine |ketone|nitrite|leucocyte esterase|leukocyte esterase|specific gravity|\bcasts?\b|\bcrystals?\b/;
+const URINE = /urin|urinalysis|ketone|nitrite|leucocyte esterase|leukocyte esterase|specific gravity|\bcasts?\b|\bcrystals?\b|pus cell|epithelial/;
 const INFLAM = /\bcrp\b|c-reactive|\besr\b|procalcitonin/;
 
 export function resultBlob(row: OnePagerResult): string {
@@ -59,15 +59,16 @@ export function clinicalGroupsFor(row: OnePagerResult): string[] {
     if (!groups.includes(id)) groups.push(id);
   };
   const isA1c = /hba1c|hb a1c|glycated|glycosylated/.test(b);
+  const urine = URINE.test(b);
   if (GLUCOSE.test(b) || isA1c) add("glucose");
-  if (!isA1c && HAEM.test(b)) add("haematology");
+  if (!urine && !isA1c && HAEM.test(b)) add("haematology");
   if (RENAL.test(b) || (/calcium/.test(b) && !/vitamin/.test(b))) add("renal");
-  if (LIVER.test(b) && !/urine/.test(b)) add("liver");
+  if (LIVER.test(b) && !urine) add("liver");
   if (LIPID.test(b)) add("lipid");
   if (THYROID.test(b)) add("thyroid");
-  if (IRON.test(b) || (!isA1c && /haemoglobin|hemoglobin|(^|[^a-z])hb([^a-z]|$)|mcv|mch|rdw|ferritin|b12|folate/.test(b))) add("iron");
+  if (!urine && (IRON.test(b) || (!isA1c && /haemoglobin|hemoglobin|(^|[^a-z])hb([^a-z]|$)|mcv|mch|rdw|ferritin|b12|folate/.test(b)))) add("iron");
   if (VITAMIN.test(b) || /calcium|phosphorus|phosphate/.test(b)) add("vitamins");
-  if (URINE.test(b) || (/urine/.test(b) && /protein|albumin|glucose|blood|rbc|wbc|ph\b/.test(b))) add("urinalysis");
+  if (urine) add("urinalysis");
   if (INFLAM.test(b)) add("inflammatory");
   if (/urine/.test(b) && /glucose/.test(b)) add("glucose");
   return groups;
@@ -124,7 +125,7 @@ export function matchPatternResultRows(
 }
 
 const GROUP_HINTS: Record<string, RegExp> = {
-  haematology: /haematolog|hematolog|\bcbc\b|red cell|haemoglobin|hemoglobin/,
+  haematology: /haematolog|hematolog|\bcbc\b|red cell|haemoglobin|hemoglobin|anaem|anem|normocytic|normochromic/,
   glucose: /glucose|\bfbs\b|\bppbs\b|hba1c|glycaem|glycem|diabetes/,
   renal: /renal|kidney|creatinine|\begfr\b|\burea\b/,
   liver: /liver|bilirubin|\bast\b|\balt\b|sgot|sgpt|\bggt\b/,
@@ -132,7 +133,7 @@ const GROUP_HINTS: Record<string, RegExp> = {
   thyroid: /thyroid|\btsh\b|\bft3\b|\bft4\b/,
   iron: /\biron\b|ferritin|\btibc\b/,
   vitamins: /vitamin|\bb12\b|folate|cobalamin/,
-  urinalysis: /urin/,
+  urinalysis: /urin|pyuria|pus cell/,
   inflammatory: /inflammat|\bcrp\b|\besr\b/,
 };
 
@@ -154,17 +155,23 @@ function groupsForPattern(
   named: PatternTableRow[],
   results: OnePagerResult[],
 ): string[] {
-  const blob = [pattern.category, pattern.pattern_name, ...(pattern.current_findings || [])].filter(Boolean).join(" ").toLowerCase();
+  const title = [pattern.category, pattern.pattern_name].filter(Boolean).join(" ").toLowerCase();
+  const findings = (pattern.current_findings || []).join(" ").toLowerCase();
   const ids: string[] = [];
   const add = (id: string) => {
     if (CLINICAL_GROUP_LABELS[id] && !ids.includes(id)) ids.push(id);
   };
-  for (const [id, label] of Object.entries(CLINICAL_GROUP_LABELS)) {
-    if (blob.includes(id) || blob.includes(label.toLowerCase())) add(id);
-  }
-  for (const [id, hint] of Object.entries(GROUP_HINTS)) {
-    if (hint.test(blob)) add(id);
-  }
+  const collect = (blob: string) => {
+    for (const [id, label] of Object.entries(CLINICAL_GROUP_LABELS)) {
+      if (blob.includes(id) || blob.includes(label.toLowerCase())) add(id);
+    }
+    for (const [id, hint] of Object.entries(GROUP_HINTS)) {
+      if (hint.test(blob)) add(id);
+    }
+  };
+  collect(title);
+  if (ids.length > 0) return ids;
+  collect(findings);
   if (ids.length > 0) return ids;
   for (const row of named) {
     const source = (results || []).find((item) => String(item.parameter_name || item.param_code || "").trim().toLowerCase() === row.parameter_name.toLowerCase());
@@ -203,7 +210,13 @@ export function rowsForPatternBox(
   const groupIds = groupsForPattern(pattern, named, results);
   const abnormal = abnormalRowsInGroups(groupIds, results);
   const seen = new Set(abnormal.map((row) => row.parameter_name.toLowerCase()));
-  const extras = named.filter((row) => isAbnormalFlag(row.flag) && !seen.has(row.parameter_name.toLowerCase()));
+  const extras = named.filter((row) => {
+    if (!isAbnormalFlag(row.flag) || seen.has(row.parameter_name.toLowerCase())) return false;
+    if (groupIds.length === 0) return true;
+    const source = (results || []).find((item) => String(item.parameter_name || item.param_code || "").trim().toLowerCase() === row.parameter_name.toLowerCase());
+    if (!source) return false;
+    return groupIds.some((id) => clinicalGroupsFor(source).includes(id));
+  });
   return [...abnormal, ...extras].slice(0, 24);
 }
 
