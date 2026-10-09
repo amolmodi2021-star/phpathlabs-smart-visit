@@ -422,6 +422,10 @@ export function scrubClinicalText(text: string): string {
     /\bno\s+(?:prior|previous|earlier)\s+results?\b[^.]*\.?/gi,
     "Prior history for this test not available.",
   );
+  clean = clean.replace(
+    /,?\s*(?:particularly\s+|especially\s+)?(?:alongside|along with|together with|in (?:the )?context of)\s+the\s+(?:cbc|haematology|hematology|blood[- ]count)\s+findings?/gi,
+    "",
+  );
   clean = clean.replace(/\s+/g, " ").replace(/\s+([,.;])/g, "$1").trim();
   if (!clean) return "";
   if (!BANNED.test(clean)) return clean;

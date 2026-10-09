@@ -173,6 +173,7 @@ describe("scrubClinicalText", () => {
     expect(scrubClinicalText("No prior lipid results provided.")).toBe("Prior history for lipid not available.");
     expect(scrubClinicalText("Vitamin D is low by lab.")).toBe("Vitamin D result is low.");
     expect(scrubClinicalText("Result may reflect sample contamination.")).toBe("");
+    expect(scrubClinicalText("HbA1c result is high, particularly alongside the CBC findings.")).toBe("HbA1c result is high.");
   });
 });
 
