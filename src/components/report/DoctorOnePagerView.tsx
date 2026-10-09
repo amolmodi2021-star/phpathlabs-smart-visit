@@ -394,13 +394,6 @@ function summaryBlocks(
       </Section>,
     );
   }
-  if (summary.points_for_clinical_review.length > 0) {
-    blocks.push(
-      <Section title="Also noted">
-        <BulletList items={summary.points_for_clinical_review} />
-      </Section>,
-    );
-  }
   const references = referencesForSummary(summary);
   if (references.length > 0) {
     blocks.push(
