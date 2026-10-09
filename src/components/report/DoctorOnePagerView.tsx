@@ -10,7 +10,6 @@ import {
   requestDoctorOnePager,
 } from "@/lib/doctorOnePager";
 import { explanationsForBox, leftoverAbnormalBoxes, rowsForPatternBox, type DoctorOnePagerSummary, type PatternTableRow } from "@/lib/doctorOnePagerGroups";
-import { referencesForSummary } from "@/lib/doctorOnePagerSources";
 import { formatPatientAge } from "@/lib/patientAge";
 import { toast } from "sonner";
 
@@ -387,26 +386,6 @@ function summaryBlocks(
               <strong>{item.test}</strong>
               {item.when ? <span> — {item.when}</span> : null}
               {item.note ? <span style={{ color: "#334155" }}>. {item.note}</span> : null}
-            </div>
-          ))}
-        </div>
-      </Section>,
-    );
-  }
-  const references = referencesForSummary(summary);
-  if (references.length > 0) {
-    blocks.push(
-      <Section title="References">
-        <div style={{ fontSize: "14px", color: "#334155", marginBottom: "4px" }}>
-          Clinical comments on this page follow these published sources.
-        </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
-          {references.map((ref) => (
-            <div key={ref.id}>
-              <a href={ref.url} target="_blank" rel="noopener noreferrer" style={{ color: "#1d4ed8", textDecoration: "underline" }}>
-                {ref.title}
-              </a>
-              <div style={{ fontSize: "13px", color: "#1e40af", wordBreak: "break-all" }}>{ref.url}</div>
             </div>
           ))}
         </div>
