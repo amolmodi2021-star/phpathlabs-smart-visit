@@ -256,7 +256,7 @@ function SummaryChrome({ report }: { report: any }) {
 
 function DisclaimerLine() {
   return (
-    <div style={{ paddingTop: "6px", borderTop: "1px solid #e2e8f0", fontSize: "8px", lineHeight: 1.35, color: "#64748b" }}>
+    <div style={{ paddingTop: "6px", borderTop: "1px solid #e2e8f0", fontSize: "12px", lineHeight: 1.4, color: "#1e293b" }}>
       {DISCLAIMER}
     </div>
   );
