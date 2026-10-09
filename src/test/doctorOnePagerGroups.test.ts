@@ -44,6 +44,8 @@ describe("clinicalGroupsFor", () => {
     expect(urineRbc).toContain("urinalysis");
     expect(urineRbc).not.toContain("haematology");
     expect(clinicalGroupsFor({ parameter_name: "R.B.C. Count", test_name: "CBC" })).toContain("haematology");
+    expect(clinicalGroupsFor({ parameter_name: "Haemoglobin", test_name: "CBC with ESR" })).toEqual(["haematology"]);
+    expect(clinicalGroupsFor({ parameter_name: "ESR", test_name: "CBC with ESR" })).toEqual(["inflammatory"]);
     expect(clinicalGroupsFor({ parameter_name: "R.B.C. Count", test_name: "CBC" })).not.toContain("urinalysis");
   });
 
@@ -170,6 +172,14 @@ describe("matchPatternResultRows", () => {
     expect(rowsForPatternBox({ pattern_name: "Isolated fasting glucose elevation", current_findings: ["Blood Glucose Fasting"] }, results).map((row) => row.parameter_name)).toEqual(["Blood Glucose Fasting"]);
     expect(rowsForPatternBox({ pattern_name: "Pyuria with blood-positive urine findings", current_findings: ["Red Blood Cells (Urine)"] }, results).map((row) => row.parameter_name)).toEqual(["Urine Glucose", "Red Blood Cells (Urine)"]);
     expect(rowsForPatternBox({ pattern_name: "Raised creatinine", category: "renal", current_findings: ["Creatinine"] }, results).map((row) => row.parameter_name)).toEqual(["Creatinine"]);
+    const cbcWithEsr = [
+      { parameter_name: "Haemoglobin", test_name: "CBC with ESR", result_value: "9.2", flag: "L" },
+      { parameter_name: "PCV", test_name: "CBC with ESR", result_value: "28", flag: "L" },
+      { parameter_name: "RDW-CV", test_name: "CBC with ESR", result_value: "18", flag: "H" },
+      { parameter_name: "Platelet Count", test_name: "CBC with ESR", result_value: "450", flag: "H" },
+      { parameter_name: "ESR", test_name: "CBC with ESR", result_value: "12", flag: "N" },
+    ];
+    expect(rowsForPatternBox({ pattern_name: "Low haemoglobin with raised RDW and a high platelet count", current_findings: ["Haemoglobin"] }, cbcWithEsr).map((row) => row.parameter_name)).toEqual(["Haemoglobin", "PCV", "RDW-CV", "Platelet Count"]);
   });
 });
 
@@ -195,8 +205,21 @@ describe("scrubClinicalText", () => {
     const text = scrubClinicalText(
       "Low MCV and MCH suggest an anaemia pattern, while the reported RBC morphology is normocytic normochromic and WBC counts are within range.",
     );
-    expect(text).toBe("Low MCV and MCH suggest an anaemia pattern and WBC counts are within range.");
+    expect(text).toBe("Low MCV and MCH and WBC counts are within range.");
+    expect(text).not.toMatch(/anaem/i);
     expect(text).not.toMatch(/morpholog|normocytic|microcytic|hypochromic/i);
+  });
+
+  it("does not name a disease", () => {
+    const title = scrubClinicalText("Anaemia-pattern haemoglobin findings with raised RDW and mild thrombocytosis");
+    expect(title).toBe("haemoglobin findings with raised RDW and high platelet count");
+    expect(title).not.toMatch(/anaem|thrombocyt/i);
+    const line = scrubClinicalText(
+      "Low haemoglobin with low PCV and reduced red-cell indices, together with high RDW-CV and mildly high platelet count, suggests an anaemia pattern with anisocytosis and mild reactive thrombocytosis, while total and differential white-cell counts and ESR are within range.",
+    );
+    expect(line).not.toMatch(/anaem|thrombocyt|anisocyt/i);
+    expect(line).toMatch(/Low haemoglobin/);
+    expect(line).toMatch(/within range/);
   });
 });
 

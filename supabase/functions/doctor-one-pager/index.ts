@@ -131,8 +131,10 @@ Rules:
 - Use only the numbers, units, ranges and flags provided. Never invent values, ranges, symptoms or history.
 - Never mention smear morphology or the reported RBC morphology. Never write normocytic, microcytic, macrocytic, normochromic, hypochromic, or hyperchromic. Do not compare red-cell indices with the morphology report. Describe haemoglobin, PCV, MCV, MCH, MCHC, and RDW only.
 - Laboratory flags H and L are the lab flags. Do not invent critical or panic thresholds.
-- Never diagnose. Never prescribe. Never mention drugs, doses, starting or stopping medication.
-- Use cautious wording: suggests, consistent with, pattern of, correlate clinically.
+- Never diagnose a disease. The treating doctor decides whether a result is a disease. Do not name a diagnosis. Do not write anaemia, anemia, thrombocytosis, thrombocytopenia, leukocytosis, leukopenia, anisocytosis, diabetes, hypothyroidism, hyperthyroidism, infection, or any other disease or syndrome.
+- A pattern title names the laboratory results, such as "Low haemoglobin with low red-cell indices and a high platelet count". It must not name a disease.
+- Describe only what the results show: which value is low or high, and which related results are within range. Do not write "suggests anaemia", "anaemia pattern", "consistent with thrombocytosis", or "reactive thrombocytosis".
+- Never prescribe. Never mention drugs, doses, starting or stopping medication.
 - Avoid: patient has, definitely, confirmed diagnosis, must take.
 - Keep it scannable in 20-30 seconds. Maximum 4 patterns.
 - overall_clinical_snapshot is a list of bullets, one bullet per test or profile. Haematology, urinalysis, glucose, lipids, thyroid, kidney, and liver each get their own bullet. Do not put two profiles in one bullet. Do not write one combined paragraph.

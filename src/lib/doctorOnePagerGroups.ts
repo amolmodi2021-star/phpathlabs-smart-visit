@@ -50,12 +50,8 @@ export function resultBlob(row: OnePagerResult): string {
     .replace(/\./g, "");
 }
 
-/**
- * The one box a parameter belongs in. Specimen and test family win over a shared
- * word such as RBC, glucose, or protein, so a urine result cannot join the CBC box.
- */
-export function primaryGroupFor(row: OnePagerResult): string | null {
-  const b = resultBlob(row);
+function groupFromText(text: string): string | null {
+  const b = text.toLowerCase().replace(/\./g, "");
   if (!b.trim()) return null;
   const isA1c = /hba1c|hb a1c|glycated|glycosylated/.test(b);
   if (URINE.test(b)) return "urinalysis";
@@ -70,6 +66,18 @@ export function primaryGroupFor(row: OnePagerResult): string | null {
   if (HAEM.test(b)) return "haematology";
   if (/calcium|phosphorus|phosphate/.test(b)) return "renal";
   return null;
+}
+
+/**
+ * The one box a parameter belongs in. The parameter's own name decides.
+ * A shared panel word such as ESR on the test name cannot pull haemoglobin
+ * out of the blood-count box. A urine test still keeps urine RBC and urine glucose.
+ */
+export function primaryGroupFor(row: OnePagerResult): string | null {
+  const param = [row.param_code, row.parameter_name].filter(Boolean).join(" ");
+  const test = String(row.test_name || "");
+  if (URINE.test(`${param} ${test}`.toLowerCase())) return "urinalysis";
+  return groupFromText(param) || groupFromText(test);
 }
 
 /** Groups a parameter belongs to. A parameter has one home group. */
@@ -489,9 +497,16 @@ export function scrubClinicalText(text: string): string {
   );
   clean = clean.replace(/\b(?:reported\s+)?(?:rbc\s+|red\s*cell\s+|smear\s+)?morphology\b/gi, "");
   clean = clean.replace(/\b(?:normocytic|microcytic|macrocytic|normochromic|hypochromic|hyperchromic)\b/gi, "");
+  clean = clean.replace(/,?\s*\bsuggest(?:s|ed|ing)?\s+an?\s+(?:[\w-]+\s+){0,4}pattern\b(?:\s+with\s+[^,.]*)?/gi, "");
+  clean = clean.replace(/\b(?:anaem\w*|anem\w*)[-\s]*pattern\b/gi, "");
+  clean = clean.replace(/\b(?:(?:mild|moderate|marked|severe|reactive|mildly)\s+)*thrombocytosis\b/gi, "high platelet count");
+  clean = clean.replace(/\b(?:(?:mild|moderate|marked|severe)\s+)*thrombocytop(?:enia|aenia)\b/gi, "low platelet count");
+  clean = clean.replace(/\b(?:leuco|leuko)cytosis\b/gi, "high white-cell count");
+  clean = clean.replace(/\b(?:leuco|leuko)(?:penia|paenia)\b/gi, "low white-cell count");
+  clean = clean.replace(/\b(?:anaem\w*|anem\w*|anisocytosis|poikilocytosis|polycyth(?:a)?emia|polycythemia|diabet\w*|hypothyroidism|hyperthyroidism)\b/gi, "");
   clean = clean.replace(/\b(?:cbc|haematology|hematology|blood[- ]count)\s+findings\b/gi, "haemoglobin findings");
   clean = clean.replace(/\b(?:alongside|along with|together with)\s+the\s+cbc\b/gi, "alongside the haemoglobin findings");
-  clean = clean.replace(/\s+/g, " ").replace(/\s+([,.;])/g, "$1").trim();
+  clean = clean.replace(/\s+/g, " ").replace(/\s+([,.;])/g, "$1").replace(/^[,\s]+/, "").trim();
   if (!clean) return "";
   if (!BANNED.test(clean)) return clean;
   return "Correlate with clinical history. This summary does not diagnose or recommend treatment.";
@@ -576,6 +591,12 @@ function asStringList(value: unknown, max: number): string[] {
     .slice(0, max);
 }
 
+function leadCapital(text: string): string {
+  const value = text.trim();
+  if (!value) return "";
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
 export function normalizeDoctorOnePagerSummary(raw: any): DoctorOnePagerSummary {
   const patterns = Array.isArray(raw?.clinical_patterns) ? raw.clinical_patterns : [];
   const history = raw?.historical_changes && typeof raw.historical_changes === "object" ? raw.historical_changes : {};
@@ -583,12 +604,12 @@ export function normalizeDoctorOnePagerSummary(raw: any): DoctorOnePagerSummary 
     overall_clinical_snapshot: snapshotBullets(raw?.overall_clinical_snapshot),
     clinical_patterns: patterns.slice(0, 4).map((p: any) => ({
       category: String(p?.category || "").trim(),
-      pattern_name: scrubClinicalText(p?.pattern_name) || "Pattern",
+      pattern_name: leadCapital(scrubClinicalText(p?.pattern_name)) || "Pattern",
       current_findings: asStringList(p?.current_findings, 6),
       related_parameters_considered: asStringList(p?.related_parameters_considered, 12),
       historical_context: scrubClinicalText(p?.historical_context),
       status: String(p?.status || "INDETERMINATE").trim().toUpperCase(),
-      integrated_interpretation: scrubClinicalText(p?.integrated_interpretation),
+      integrated_interpretation: leadCapital(scrubClinicalText(p?.integrated_interpretation)),
       clinical_correlation: asStringList(p?.clinical_correlation, 2),
     })),
     important_isolated_findings: asStringList(raw?.important_isolated_findings, 8),
