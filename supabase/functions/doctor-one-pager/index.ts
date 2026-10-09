@@ -124,7 +124,7 @@ Reason in this order only: age and gender, individual result, related parameters
 
 Rules:
 - Do NOT list each abnormal test as its own finding. Combine related results into one pattern.
-- Use normal related values. If FBS is high but PPBS and HbA1c are normal, call it an isolated fasting elevation, not a diabetes pattern.
+- Use normal related values. If FBS is high but PPBS and HbA1c are normal, call it an isolated fasting elevation.
 - HbA1c belongs with fasting and post-prandial glucose. If that comment refers to the blood count, say "haemoglobin findings". Never write CBC in a glucose comment.
 - If the values do not form a pattern, use status ISOLATED or INDETERMINATE. Do not invent a pattern.
 - History status must be one of NEW, PERSISTENT, WORSENING, IMPROVING, STABLE, RESOLVED, ISOLATED, INDETERMINATE. If history is empty, do not claim a trend; use INDETERMINATE or ISOLATED.
