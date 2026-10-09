@@ -7,6 +7,7 @@ import {
   normalizeDoctorOnePagerSummary,
   scrubClinicalText,
 } from "@/lib/doctorOnePagerGroups";
+import { referencesForSummary } from "@/lib/doctorOnePagerSources";
 
 describe("clinicalGroupsFor", () => {
   it("keeps FBS, PPBS and HbA1c in one glucose group", () => {
@@ -116,5 +117,29 @@ describe("normalizeDoctorOnePagerSummary", () => {
       note: "Recheck the lipid pattern.",
     });
     expect(summary.suggested_follow_up[1]?.test || "").toBe("");
+  });
+});
+
+describe("referencesForSummary", () => {
+  it("cites only the published page that matches the comments", () => {
+    const glucose = referencesForSummary(normalizeDoctorOnePagerSummary({
+      overall_clinical_snapshot: "Isolated fasting glucose elevation.",
+      clinical_patterns: [{ pattern_name: "Fasting glucose", category: "glucose", current_findings: ["FBS"] }],
+    }));
+    expect(glucose.map((ref) => ref.id)).toEqual(["ada"]);
+    expect(glucose[0].url).toBe("https://professional.diabetes.org/standards-of-care");
+
+    const lipid = referencesForSummary(normalizeDoctorOnePagerSummary({
+      overall_clinical_snapshot: "Lipid pattern.",
+      clinical_patterns: [{ pattern_name: "Cholesterol", current_findings: ["HDL", "LDL"] }],
+    }));
+    expect(lipid.map((ref) => ref.id)).toEqual(["nhlbi-lipid"]);
+  });
+
+  it("does not add a reference when the comments do not match a published page", () => {
+    const none = referencesForSummary(normalizeDoctorOnePagerSummary({
+      overall_clinical_snapshot: "No dominant pattern.",
+    }));
+    expect(none).toEqual([]);
   });
 });

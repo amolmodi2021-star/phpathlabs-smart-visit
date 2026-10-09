@@ -10,6 +10,7 @@ import {
   requestDoctorOnePager,
 } from "@/lib/doctorOnePager";
 import { matchPatternResultRows, type DoctorOnePagerSummary } from "@/lib/doctorOnePagerGroups";
+import { referencesForSummary } from "@/lib/doctorOnePagerSources";
 import { toast } from "sonner";
 
 const PAGE_W = 210;
@@ -308,7 +309,11 @@ function changeLinesOf(summary: DoctorOnePagerSummary): string[] {
   ].slice(0, 5);
 }
 
-function summaryBlocks(summary: DoctorOnePagerSummary, labResults: any[], changeLines: string[]): ReactNode[] {
+function summaryBlocks(
+  summary: DoctorOnePagerSummary,
+  labResults: any[],
+  changeLines: string[],
+): ReactNode[] {
   const blocks: ReactNode[] = [];
   blocks.push(
     <Section title="Clinical snapshot">
@@ -358,6 +363,26 @@ function summaryBlocks(summary: DoctorOnePagerSummary, labResults: any[], change
     blocks.push(
       <Section title="Points for clinical review">
         <BulletList items={summary.points_for_clinical_review} numbered />
+      </Section>,
+    );
+  }
+  const references = referencesForSummary(summary);
+  if (references.length > 0) {
+    blocks.push(
+      <Section title="References">
+        <div style={{ fontSize: "11px", color: "#334155", marginBottom: "4px" }}>
+          Clinical comments on this page follow these published sources.
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
+          {references.map((ref) => (
+            <div key={ref.id}>
+              <a href={ref.url} target="_blank" rel="noopener noreferrer" style={{ color: "#1d4ed8", textDecoration: "underline" }}>
+                {ref.title}
+              </a>
+              <div style={{ fontSize: "10px", color: "#1e40af", wordBreak: "break-all" }}>{ref.url}</div>
+            </div>
+          ))}
+        </div>
       </Section>,
     );
   }

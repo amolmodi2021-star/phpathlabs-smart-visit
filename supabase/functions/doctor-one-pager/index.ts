@@ -46,6 +46,13 @@ const toolParameters = {
       },
     },
     points_for_clinical_review: { type: "array", items: { type: "string" } },
+    reference_ids: {
+      type: "array",
+      items: {
+        type: "string",
+        enum: ["ada", "nhlbi-lipid", "kdigo", "niddk-thyroid", "aasld", "who-anaemia", "endocrine", "nih-b12"],
+      },
+    },
     suggested_follow_up: {
       type: "array",
       items: {
@@ -121,7 +128,17 @@ Rules:
 - points_for_clinical_review: at most 4 short correlation points, not a treatment plan.
 - suggested_follow_up: 2 to 4 laboratory tests that would help the doctor, only when an abnormal pattern makes them relevant. Each item has test (the investigation), when (a concrete interval such as "after 6-8 weeks" or "after 3 months"), and note (one short reason). These are repeat or additional laboratory tests, not medicines and not a treatment plan. Do not invent a follow-up when the available results do not support one.
 - Omit minor isolated noise. Prefer concordant patterns, then persistent or worsening change, then important isolated findings.
-- Do not reproduce charts.`;
+- Do not reproduce charts.
+- Base the clinical comments only on the verified results and these published sources. Do not invent a website, paper, or URL.
+- reference_ids: include only the ids you actually used, and only when that topic appears in the results:
+  ada — American Diabetes Association, Standards of Care in Diabetes. https://professional.diabetes.org/standards-of-care
+  nhlbi-lipid — National Heart, Lung, and Blood Institute, Blood Cholesterol. https://www.nhlbi.nih.gov/health/blood-cholesterol
+  kdigo — KDIGO, CKD Evaluation and Management. https://kdigo.org/guidelines/ckd-evaluation-and-management/
+  niddk-thyroid — NIDDK, Thyroid. https://www.niddk.nih.gov/health-information/endocrine-diseases/hypothyroidism
+  aasld — American Association for the Study of Liver Diseases, Practice Guidelines. https://www.aasld.org/practice-guidelines
+  who-anaemia — World Health Organization, Anaemia. https://www.who.int/news-room/fact-sheets/detail/anaemia
+  endocrine — Endocrine Society, Clinical Practice Guidelines. https://www.endocrine.org/clinical-practice-guidelines
+  nih-b12 — NIH Office of Dietary Supplements, Vitamin B12. https://ods.od.nih.gov/factsheets/VitaminB12-HealthProfessional/`;
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
