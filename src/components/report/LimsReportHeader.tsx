@@ -21,6 +21,7 @@ interface LimsReportHeaderProps {
   printDate: string | null;
   visitType: string | null;
   isCompact?: boolean;
+  fontSizePx?: number;
 }
 
 const formatDate = (d: string | null) => {
@@ -48,7 +49,7 @@ const formatVisitType = (visitType: string | null): string => {
 const LimsReportHeader = ({
   patientName, title, gender, dob, ageText, umrNumber, doctorName,
   mobileNumber, invoiceNumber, registrationDate,
-  sampleCollectionDate, approvalDate, printDate, visitType,
+  sampleCollectionDate, approvalDate, printDate, visitType, fontSizePx,
 }: LimsReportHeaderProps) => {
   // Prefer frozen snapshot age_text; else DOB age as of approval (not today).
   const age = formatPatientAge({
@@ -59,7 +60,7 @@ const LimsReportHeader = ({
   const displayName = formatPatientDisplayName(title, patientName, gender);
 
   return (
-    <div className="border-b pb-1 mb-1" style={{ fontSize: "13px", lineHeight: "1.5" }}>
+    <div className="border-b pb-1 mb-1" style={{ fontSize: `${fontSizePx || 13}px`, lineHeight: "1.5" }}>
       {/* Full-width patient name — no side fields so long names fit */}
       <div style={{ overflowWrap: "anywhere", wordBreak: "break-word", marginBottom: "2px" }}>
         <span className="font-semibold">Patient Name:</span> {displayName}

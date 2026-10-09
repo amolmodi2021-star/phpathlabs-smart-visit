@@ -196,7 +196,7 @@ const DoctorOnePagerView = ({ report, letterheadUrl, topMarginCm, bottomMarginCm
         <div
           ref={measureRef}
           aria-hidden
-          style={{ position: "absolute", left: "-10000px", top: 0, width: "194mm", fontFamily: REPORT_CAPTURE_FONT, fontSize: "12px", lineHeight: 1.4, visibility: "hidden" }}
+          style={{ position: "absolute", left: "-10000px", top: 0, width: "194mm", fontFamily: REPORT_CAPTURE_FONT, fontSize: "15px", lineHeight: 1.45, visibility: "hidden" }}
         >
           <div data-ruler-page style={{ height: `${PAGE_H}mm` }} />
           <div data-ruler-top style={{ height: `${topMm}mm` }} />
@@ -230,6 +230,7 @@ function SummaryChrome({ report }: { report: any }) {
   return (
     <>
       <LimsReportHeader
+        fontSizePx={16}
         patientName={report.patient_name}
         title={report.title}
         gender={report.gender}
@@ -247,7 +248,7 @@ function SummaryChrome({ report }: { report: any }) {
         printDate={report.print_date}
         visitType={report.visit_type}
       />
-      <div style={{ margin: "6px 0 8px", background: "#1e3a8a", color: "#ffffff", fontSize: "10px", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", textAlign: "center", padding: "4px 8px" }}>
+      <div style={{ margin: "6px 0 8px", background: "#1e3a8a", color: "#ffffff", fontSize: "13px", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", textAlign: "center", padding: "4px 8px" }}>
         Doctor clinical summary
       </div>
     </>
@@ -256,7 +257,7 @@ function SummaryChrome({ report }: { report: any }) {
 
 function DisclaimerLine() {
   return (
-    <div style={{ paddingTop: "6px", borderTop: "1px solid #e2e8f0", fontSize: "12px", lineHeight: 1.4, color: "#1e293b" }}>
+    <div style={{ paddingTop: "6px", borderTop: "1px solid #e2e8f0", fontSize: "15px", lineHeight: 1.45, color: "#1e293b" }}>
       {DISCLAIMER}
     </div>
   );
@@ -289,7 +290,7 @@ function SummarySheet({
         style={{ zIndex: 1, paddingTop: `${topMm}mm`, paddingBottom: `${bottomMm}mm`, paddingLeft: "8mm", paddingRight: "8mm" }}
       >
         <SummaryChrome report={report} />
-        <div style={{ fontSize: "12px", lineHeight: 1.4 }}>{children}</div>
+        <div style={{ fontSize: "15px", lineHeight: 1.45 }}>{children}</div>
         <div style={{ marginTop: "auto" }}>
           <DisclaimerLine />
         </div>
@@ -345,7 +346,7 @@ function summaryBlocks(
         <SectionTitle>Abnormal parameters</SectionTitle>
         {leftovers.map((box) => (
           <div key={box.id} style={{ border: "1px solid #e2e8f0", borderLeft: "3px solid #1e3a8a", padding: "6px 8px", marginBottom: "6px" }}>
-            <strong style={{ fontSize: "13px" }}>{box.label}</strong>
+            <strong style={{ fontSize: "16px" }}>{box.label}</strong>
             <ResultTable rows={box.rows} />
           </div>
         ))}
@@ -396,7 +397,7 @@ function summaryBlocks(
   if (references.length > 0) {
     blocks.push(
       <Section title="References">
-        <div style={{ fontSize: "11px", color: "#334155", marginBottom: "4px" }}>
+        <div style={{ fontSize: "14px", color: "#334155", marginBottom: "4px" }}>
           Clinical comments on this page follow these published sources.
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
@@ -405,7 +406,7 @@ function summaryBlocks(
               <a href={ref.url} target="_blank" rel="noopener noreferrer" style={{ color: "#1d4ed8", textDecoration: "underline" }}>
                 {ref.title}
               </a>
-              <div style={{ fontSize: "10px", color: "#1e40af", wordBreak: "break-all" }}>{ref.url}</div>
+              <div style={{ fontSize: "13px", color: "#1e40af", wordBreak: "break-all" }}>{ref.url}</div>
             </div>
           ))}
         </div>
@@ -417,7 +418,7 @@ function summaryBlocks(
 
 function SectionTitle({ children }: { children: ReactNode }) {
   return (
-    <div style={{ fontSize: "9px", fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", color: "#1e3a8a", borderBottom: "1px solid #cbd5e1", marginBottom: "5px", paddingBottom: "2px" }}>
+    <div style={{ fontSize: "12px", fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", color: "#1e3a8a", borderBottom: "1px solid #cbd5e1", marginBottom: "5px", paddingBottom: "2px" }}>
       {children}
     </div>
   );
@@ -442,7 +443,7 @@ function flagTone(flag: string): "high" | "low" | "other" {
 function ResultTable({ rows }: { rows: PatternTableRow[] }) {
   if (rows.length === 0) return null;
   return (
-    <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed", margin: "4px 0", fontSize: "11px" }}>
+    <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed", margin: "4px 0", fontSize: "14px" }}>
       <thead>
         <tr style={{ color: "#64748b", borderBottom: "1px solid #cbd5e1" }}>
           <th style={{ textAlign: "left", width: "32%", fontWeight: 600, padding: "2px 4px" }}>Parameter</th>
@@ -485,8 +486,8 @@ function PatternCard({
   return (
     <div style={{ border: "1px solid #e2e8f0", borderLeft: "3px solid #1e3a8a", padding: "6px 8px" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
-        <strong style={{ fontSize: "13px" }}>{pattern.pattern_name}</strong>
-        <span style={{ flexShrink: 0, fontSize: "8px", fontWeight: 700, letterSpacing: "0.04em", color: status.color, background: status.background, border: `1px solid ${status.border}`, borderRadius: "999px", padding: "1px 6px" }}>
+        <strong style={{ fontSize: "16px" }}>{pattern.pattern_name}</strong>
+        <span style={{ flexShrink: 0, fontSize: "11px", fontWeight: 700, letterSpacing: "0.04em", color: status.color, background: status.background, border: `1px solid ${status.border}`, borderRadius: "999px", padding: "1px 6px" }}>
           {pattern.status}
         </span>
       </div>
