@@ -316,7 +316,7 @@ export function normalizeDoctorOnePagerSummary(raw: any): DoctorOnePagerSummary 
       stable: asStringList(history.stable, 3),
       resolved: asStringList(history.resolved, 3),
     },
-    points_for_clinical_review: asStringList(raw?.points_for_clinical_review, 3),
+    points_for_clinical_review: asStringList(raw?.points_for_clinical_review, 4),
     suggested_follow_up: (Array.isArray(raw?.suggested_follow_up) ? raw.suggested_follow_up : [])
       .slice(0, 4)
       .map((item: any) => ({

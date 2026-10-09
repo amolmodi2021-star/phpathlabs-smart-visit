@@ -29,10 +29,6 @@ const toolParameters = {
             enum: ["NEW", "PERSISTENT", "WORSENING", "IMPROVING", "STABLE", "RESOLVED", "ISOLATED", "INDETERMINATE"],
           },
           integrated_interpretation: { type: "string" },
-          clinical_significance: {
-            type: "string",
-            enum: ["CLINICALLY_SIGNIFICANT", "POTENTIALLY_SIGNIFICANT", "MINOR_ISOLATED_DEVIATION", "NORMAL_OR_ACCEPTABLE", "INDETERMINATE"],
-          },
           clinical_correlation: { type: "array", items: { type: "string" } },
         },
         required: ["pattern_name", "current_findings", "status", "integrated_interpretation"],
@@ -104,21 +100,11 @@ function shouldTryNextModel(status: number, bodyText: string): boolean {
 const SYSTEM_PROMPT = `You prepare a one-page doctor-facing laboratory summary for PH PathLabs.
 You are given current verified results already grouped with clinically related parameters, including NORMAL related values, plus prior values for the same patient.
 
-Reason in this order: individual result, related parameters, whether HIGH or LOW is actually unfavorable, magnitude, the pattern, history, then clinical significance.
-
-A laboratory H or L flag is not the same as a clinically important abnormality. Each group includes clinical_review. Obey it.
-clinical_review.significance is one of CLINICALLY_SIGNIFICANT, POTENTIALLY_SIGNIFICANT, MINOR_ISOLATED_DEVIATION, NORMAL_OR_ACCEPTABLE, INDETERMINATE.
-If include_in_key_patterns is false, do not create a key pattern for that group.
-Never list a parameter in omit_from_adverse_findings as an adverse finding. A lower LDL/HDL or cholesterol/HDL ratio is not an unfavorable result just because it sits below a displayed interval.
-A mildly low HDL with normal total cholesterol, LDL and triglycerides is an isolated laboratory finding, not a dyslipidemia pattern.
-High FBS with normal PPBS and HbA1c is an isolated fasting elevation, not a broad glycaemic pattern.
-High creatinine with a normal eGFR is not reduced renal function.
-High TSH with a normal free T4 is not a thyroid diagnosis.
-Do not turn a minor isolated deviation into a disease, and do not recommend repeat testing for it.
+Reason in this order only: individual result, related parameters in the same group, the pattern they form together, then history.
 
 Rules:
 - Do NOT list each abnormal test as its own finding. Combine related results into one pattern.
-- Use normal related values. They decide whether an abnormal flag is isolated or part of a pattern.
+- Use normal related values. If FBS is high but PPBS and HbA1c are normal, call it an isolated fasting elevation, not a diabetes pattern.
 - If the values do not form a pattern, use status ISOLATED or INDETERMINATE. Do not invent a pattern.
 - History status must be one of NEW, PERSISTENT, WORSENING, IMPROVING, STABLE, RESOLVED, ISOLATED, INDETERMINATE. If history is empty, do not claim a trend; use INDETERMINATE or ISOLATED.
 - Use only the numbers, units, ranges and flags provided. Never invent values, ranges, symptoms or history.
@@ -132,8 +118,8 @@ Rules:
 - If no earlier result exists, write "Prior history for <test or panel name> not available." Never write "no prior results provided" or "no previous results".
 - Never mention sample contamination, haemolysis, clotting, insufficient sample, laboratory error, pre-analytical problems, or any wording that could be read as a fault in the sample or the laboratory.
 - integrated_interpretation is one sentence.
-- points_for_clinical_review: at most 3 concise points that the finding genuinely warrants. If nothing meaningful remains, return exactly one point: "No additional laboratory-specific points for review identified."
-- suggested_follow_up: only when clinical_review.significance is CLINICALLY_SIGNIFICANT or POTENTIALLY_SIGNIFICANT. Otherwise return an empty array. Do not recommend repeating a profile for a minor isolated deviation. Each item has test, when (such as "after 6-8 weeks" or "after 3 months"), and note. These are laboratory tests, not medicines.
+- points_for_clinical_review: at most 4 short correlation points, not a treatment plan.
+- suggested_follow_up: 2 to 4 laboratory tests that would help the doctor, only when an abnormal pattern makes them relevant. Each item has test (the investigation), when (a concrete interval such as "after 6-8 weeks" or "after 3 months"), and note (one short reason). These are repeat or additional laboratory tests, not medicines and not a treatment plan. Do not invent a follow-up when the available results do not support one.
 - Omit minor isolated noise. Prefer concordant patterns, then persistent or worsening change, then important isolated findings.
 - Do not reproduce charts.`;
 
