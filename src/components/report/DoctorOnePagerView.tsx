@@ -18,17 +18,6 @@ const PAGE_H = 297;
 const DISCLAIMER =
   "Laboratory summary for clinical review only. It's not a diagnosis or treatment advice. Refer to the original approved report.";
 
-const STATUS_STYLE: Record<string, { color: string; background: string; border: string }> = {
-  NEW: { color: "#9a3412", background: "#ffedd5", border: "#fdba74" },
-  PERSISTENT: { color: "#1e40af", background: "#dbeafe", border: "#93c5fd" },
-  WORSENING: { color: "#991b1b", background: "#fee2e2", border: "#fca5a5" },
-  IMPROVING: { color: "#166534", background: "#dcfce7", border: "#86efac" },
-  STABLE: { color: "#334155", background: "#f1f5f9", border: "#cbd5e1" },
-  RESOLVED: { color: "#166534", background: "#dcfce7", border: "#86efac" },
-  ISOLATED: { color: "#9a3412", background: "#ffedd5", border: "#fdba74" },
-  INDETERMINATE: { color: "#475569", background: "#f1f5f9", border: "#cbd5e1" },
-};
-
 
 type Props = {
   report: any;
@@ -482,14 +471,10 @@ function PatternCard({
   pattern: DoctorOnePagerSummary["clinical_patterns"][number];
   rows: PatternTableRow[];
 }) {
-  const status = STATUS_STYLE[pattern.status] || STATUS_STYLE.INDETERMINATE;
   return (
     <div style={{ border: "1px solid #e2e8f0", borderLeft: "3px solid #1e3a8a", padding: "6px 8px" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
+      <div style={{ marginBottom: "4px" }}>
         <strong style={{ fontSize: "16px" }}>{pattern.pattern_name}</strong>
-        <span style={{ flexShrink: 0, fontSize: "11px", fontWeight: 700, letterSpacing: "0.04em", color: status.color, background: status.background, border: `1px solid ${status.border}`, borderRadius: "999px", padding: "1px 6px" }}>
-          {pattern.status}
-        </span>
       </div>
       <ResultTable rows={rows} />
       {pattern.integrated_interpretation && <div>{pattern.integrated_interpretation}</div>}
