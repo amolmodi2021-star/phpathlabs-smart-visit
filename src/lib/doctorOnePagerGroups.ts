@@ -484,6 +484,20 @@ export function scrubClinicalText(text: string): string {
   return "Correlate with clinical history. This summary does not diagnose or recommend treatment.";
 }
 
+const TEACHING_POINT =
+  /\b(please|kindly|should|must|ought to|needs? to|consider|recommend\w*|advis\w*|correlat\w*|evaluate|rule out|work-?up|monitor|follow[- ]?up|ensure|physician|doctor|it is important|prudent|warrants|attention is drawn|clinical correlation)\b/i;
+
+/** Drop advice aimed at the treating doctor. Keep the laboratory observation. */
+export function softenReviewPoint(text: string): string {
+  const clean = scrubClinicalText(text);
+  if (!clean) return "";
+  const kept = clean
+    .split(/(?<=[.])\s+/)
+    .map((sentence) => sentence.trim())
+    .filter((sentence) => sentence && !TEACHING_POINT.test(sentence));
+  return kept.join(" ").replace(/\s+/g, " ").trim();
+}
+
 export type DoctorOnePagerPattern = {
   category: string;
   pattern_name: string;
@@ -572,7 +586,7 @@ export function normalizeDoctorOnePagerSummary(raw: any): DoctorOnePagerSummary 
       stable: asStringList(history.stable, 3),
       resolved: asStringList(history.resolved, 3),
     },
-    points_for_clinical_review: asStringList(raw?.points_for_clinical_review, 4),
+    points_for_clinical_review: asStringList(raw?.points_for_clinical_review, 4).map(softenReviewPoint).filter(Boolean),
     profile_notes: (Array.isArray(raw?.profile_notes) ? raw.profile_notes : [])
       .slice(0, 8)
       .map((item: any) => ({

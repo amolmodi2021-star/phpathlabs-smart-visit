@@ -396,8 +396,8 @@ function summaryBlocks(
   }
   if (summary.points_for_clinical_review.length > 0) {
     blocks.push(
-      <Section title="Points for clinical review">
-        <BulletList items={summary.points_for_clinical_review} numbered />
+      <Section title="Also noted">
+        <BulletList items={summary.points_for_clinical_review} />
       </Section>,
     );
   }

@@ -10,6 +10,7 @@ import {
   snapshotBullets,
   rowsForPatternBox,
   scrubClinicalText,
+  softenReviewPoint,
 } from "@/lib/doctorOnePagerGroups";
 import { referencesForSummary } from "@/lib/doctorOnePagerSources";
 
@@ -178,6 +179,11 @@ describe("scrubClinicalText", () => {
     expect(scrubClinicalText("HbA1c result is high, particularly alongside the CBC findings.")).toBe("HbA1c result is high, particularly alongside the haemoglobin findings.");
   });
 
+  it("drops advice aimed at the treating doctor and keeps the result", () => {
+    expect(softenReviewPoint("HDL is low while the other lipids are within range. The physician should consider further evaluation.")).toBe("HDL is low while the other lipids are within range.");
+    expect(softenReviewPoint("Please correlate clinically and rule out iron deficiency.")).toBe("");
+  });
+
   it("does not comment on the reported morphology", () => {
     const text = scrubClinicalText(
       "Low MCV and MCH suggest an anaemia pattern, while the reported RBC morphology is normocytic normochromic and WBC counts are within range.",
@@ -249,7 +255,7 @@ describe("normalizeDoctorOnePagerSummary", () => {
       points_for_clinical_review: ["Prescribe tablet."],
     });
     expect(summary.clinical_patterns).toHaveLength(4);
-    expect(summary.points_for_clinical_review[0]).toMatch(/does not diagnose/);
+    expect(summary.points_for_clinical_review).toEqual([]);
     expect(summary.suggested_follow_up).toEqual([]);
   });
 
