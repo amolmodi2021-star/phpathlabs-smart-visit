@@ -318,7 +318,7 @@ function summaryBlocks(
   blocks.push(
     <Section title="Clinical snapshot">
       <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderLeft: "3px solid #1e3a8a", padding: "6px 8px" }}>
-        {summary.overall_clinical_snapshot || "No dominant pattern was identified from the available results."}
+        <BulletList items={summary.overall_clinical_snapshot.length > 0 ? summary.overall_clinical_snapshot : ["No dominant pattern was identified from the available results."]} />
       </div>
     </Section>,
   );

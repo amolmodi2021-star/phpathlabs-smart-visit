@@ -13,7 +13,7 @@ const TOOL_NAME = "doctor_one_pager";
 const toolParameters = {
   type: "object",
   properties: {
-    overall_clinical_snapshot: { type: "string" },
+    overall_clinical_snapshot: { type: "array", items: { type: "string" } },
     clinical_patterns: {
       type: "array",
       items: {
@@ -121,7 +121,8 @@ Rules:
 - Never diagnose. Never prescribe. Never mention drugs, doses, starting or stopping medication.
 - Use cautious wording: suggests, consistent with, pattern of, correlate clinically.
 - Avoid: patient has, definitely, confirmed diagnosis, must take.
-- Keep it scannable in 20-30 seconds. Maximum 4 patterns. Snapshot is at most 2 short sentences.
+- Keep it scannable in 20-30 seconds. Maximum 4 patterns.
+- overall_clinical_snapshot is a list of bullets, one bullet per test or profile. Haematology, urinalysis, glucose, lipids, thyroid, kidney, and liver each get their own bullet. Do not put two profiles in one bullet. Do not write one combined paragraph.
 - Each current finding is the parameter name only, such as "Total Cholesterol" or "Vitamin D". Do not put the value, unit, or reference range in current_findings. The page shows those in a table from the laboratory record.
 - current_findings must name every abnormal parameter in that pattern's group, including ratios, not only the lead abnormality.
 - Say "result is low" or "result is high". Never write "by lab", "flagged by lab", or "low by lab".

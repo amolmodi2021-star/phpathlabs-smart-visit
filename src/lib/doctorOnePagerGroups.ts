@@ -455,7 +455,7 @@ export type SuggestedFollowUp = {
 };
 
 export type DoctorOnePagerSummary = {
-  overall_clinical_snapshot: string;
+  overall_clinical_snapshot: string[];
   clinical_patterns: DoctorOnePagerPattern[];
   important_isolated_findings: string[];
   historical_changes: {
@@ -470,6 +470,29 @@ export type DoctorOnePagerSummary = {
   overall_comment: string;
 };
 
+const SNAPSHOT_PROFILE = "haematolog\\w*|hematolog\\w*|\\bcbc\\b|complete blood count|urinalys\\w*|\\burine\\b|glucose|glycaem\\w*|glycem\\w*|lipid\\w*|cholesterol|thyroid|renal|kidney|liver|\\biron\\b|vitamin\\w*";
+
+/** One bullet per test or profile. A combined paragraph is split where the next profile starts. */
+export function snapshotBullets(value: unknown): string[] {
+  const rawParts = Array.isArray(value) ? value : [value];
+  const lines: string[] = [];
+  const whileJoin = new RegExp(`\\s*,?\\s+while\\s+(?=(?:${SNAPSHOT_PROFILE})\\b)`, "ig");
+  const sentenceJoin = new RegExp(`\\.\\s+(?=(?:${SNAPSHOT_PROFILE})\\b)`, "ig");
+  for (const part of rawParts) {
+    let text = scrubClinicalText(typeof part === "string" ? part : "");
+    if (!text) continue;
+    text = text.replace(whileJoin, ". ");
+    for (const bit of text.split(sentenceJoin)) {
+      const line = bit.trim().replace(/\s+/g, " ");
+      if (!line) continue;
+      const sentence = /[.!?]$/.test(line) ? line : `${line}.`;
+      const finished = sentence.charAt(0).toUpperCase() + sentence.slice(1);
+      if (!lines.includes(finished)) lines.push(finished);
+    }
+  }
+  return lines.slice(0, 6);
+}
+
 function asStringList(value: unknown, max: number): string[] {
   if (!Array.isArray(value)) return [];
   return value
@@ -482,7 +505,7 @@ export function normalizeDoctorOnePagerSummary(raw: any): DoctorOnePagerSummary 
   const patterns = Array.isArray(raw?.clinical_patterns) ? raw.clinical_patterns : [];
   const history = raw?.historical_changes && typeof raw.historical_changes === "object" ? raw.historical_changes : {};
   return {
-    overall_clinical_snapshot: scrubClinicalText(raw?.overall_clinical_snapshot),
+    overall_clinical_snapshot: snapshotBullets(raw?.overall_clinical_snapshot),
     clinical_patterns: patterns.slice(0, 4).map((p: any) => ({
       category: String(p?.category || "").trim(),
       pattern_name: scrubClinicalText(p?.pattern_name) || "Pattern",

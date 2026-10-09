@@ -6,6 +6,7 @@ import {
   leftoverAbnormalBoxes,
   matchPatternResultRows,
   normalizeDoctorOnePagerSummary,
+  snapshotBullets,
   rowsForPatternBox,
   scrubClinicalText,
 } from "@/lib/doctorOnePagerGroups";
@@ -182,6 +183,26 @@ describe("scrubClinicalText", () => {
     );
     expect(text).toBe("Low MCV and MCH suggest an anaemia pattern and WBC counts are within range.");
     expect(text).not.toMatch(/morpholog|normocytic|microcytic|hypochromic/i);
+  });
+});
+
+describe("snapshotBullets", () => {
+  it("separates a blood-count sentence from a urine sentence", () => {
+    expect(snapshotBullets(
+      "Haematology shows a low haemoglobin pattern with low PCV. Urinalysis shows marked urine glucose.",
+    )).toEqual([
+      "Haematology shows a low haemoglobin pattern with low PCV.",
+      "Urinalysis shows marked urine glucose.",
+    ]);
+  });
+
+  it("splits two profiles joined in one sentence", () => {
+    expect(snapshotBullets(
+      "Haematology shows low haemoglobin, while urinalysis shows urine glucose.",
+    )).toEqual([
+      "Haematology shows low haemoglobin.",
+      "Urinalysis shows urine glucose.",
+    ]);
   });
 });
 

@@ -61,7 +61,7 @@ export const CLINICAL_REFERENCES: ClinicalReference[] = [
 
 function summaryText(summary: DoctorOnePagerSummary): string {
   const parts = [
-    summary.overall_clinical_snapshot,
+    ...summary.overall_clinical_snapshot,
     summary.overall_comment,
     ...summary.important_isolated_findings,
     ...summary.points_for_clinical_review,
