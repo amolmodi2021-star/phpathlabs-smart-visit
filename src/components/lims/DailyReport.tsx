@@ -16,6 +16,7 @@ import * as XLSX from "@e965/xlsx";
 import jsPDF from "jspdf";
 import { patientDisplayName } from "@/lib/patientDisplayName";
 import { isHiddenDailyReportType, paymentRowGross, paymentRowPaid, mergeSameTimestampTestCancelRefunds } from "@/lib/dailyReportMetrics";
+import { fetchAllPages, fetchInIdChunks } from "@/lib/supabaseIdChunks";
 
 const TRANSACTION_LABELS: Record<string, string> = {
   registration_payment: "Registration",
@@ -66,15 +67,18 @@ const DailyReport = () => {
       }
       const from = startOfDay(parseISO(effectiveDateFrom)).toISOString();
       const to = endOfDay(parseISO(effectiveDateTo)).toISOString();
-      const { data, error } = await supabase
-        .from("payment_transactions" as any)
-        .select("*")
-        .gte("transaction_date", from)
-        .lte("transaction_date", to)
-        .order("invoice_number", { ascending: false })
-        .order("transaction_date", { ascending: true });
-      if (error) throw error;
-      return (data || []) as any[];
+      return fetchAllPages(async (fromIdx, toIdx) => {
+        const { data, error } = await supabase
+          .from("payment_transactions" as any)
+          .select("*")
+          .gte("transaction_date", from)
+          .lte("transaction_date", to)
+          .order("invoice_number", { ascending: false })
+          .order("transaction_date", { ascending: true })
+          .range(fromIdx, toIdx);
+        if (error) throw error;
+        return (data || []) as any[];
+      });
     },
   });
 
@@ -89,12 +93,15 @@ const DailyReport = () => {
     queryKey: ["daily-report-registrations", registrationIds],
     enabled: registrationIds.length > 0,
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("patient_registrations")
-        .select("id, visit_type, channel_id, pickup_point_id, title, gender, patient_name, home_visit_charges, due_amount, bill_cancelled")
-        .in("id", registrationIds);
-      if (error) throw error;
-      return (data || []) as any[];
+      // One giant `.in(id, …)` 400s on a full month (~800 UUIDs). Chunk like Dashboard.
+      return fetchInIdChunks(registrationIds, async (chunk) => {
+        const { data, error } = await supabase
+          .from("patient_registrations")
+          .select("id, visit_type, channel_id, pickup_point_id, title, gender, patient_name, home_visit_charges, due_amount, bill_cancelled")
+          .in("id", chunk);
+        if (error) throw error;
+        return (data || []) as any[];
+      });
     },
   });
 
@@ -162,6 +169,18 @@ const DailyReport = () => {
   const getRowGross = (r: any): number => paymentRowGross(r, hvcByRegId);
 
   const getRowPaid = (r: any): number => paymentRowPaid(r);
+
+  /** Live remaining due for registration rows so credit pickup bills stay visible after monthly invoice. */
+  const getRowDue = (r: any): number => {
+    if (r.transaction_type === "registration_payment" && r.registration_id) {
+      const reg: any = regMap[r.registration_id];
+      if (reg) {
+        if (reg.bill_cancelled) return 0;
+        return Math.max(0, Number(reg.due_amount || 0));
+      }
+    }
+    return Number(r.due_amount || 0);
+  };
 
   /** Uniform money display: `-₹123` (sign before ₹), never `₹-123`. */
   const formatSignedRupee = (v: number, decimals?: number): { text: string; negative: boolean } => {
@@ -285,7 +304,7 @@ const DailyReport = () => {
       t.discount += Number(r.discount_amount || 0);
       t.final += Number(r.final_amount || 0);
       t.paid += getRowPaid(r);
-      t.due += Number(r.due_amount || 0);
+      t.due += getRowDue(r);
       t.refund += Number(r.refund_amount || 0);
       if (r.direction === "in") t.total_in += Number(r.total_amount || 0);
       else t.total_out += Number(r.total_amount || 0);
@@ -312,7 +331,7 @@ const DailyReport = () => {
         "Discount": Number(r.discount_amount || 0),
         "Final Amount": Number(r.final_amount || 0),
         "Total Paid": getRowPaid(r),
-        "Total Due": Number(r.due_amount || 0),
+        "Total Due": getRowDue(r),
         "Cash": Number(r.cash_amount || 0),
         "GPay": Number(r.gpay_amount || 0),
         "Paytm": Number(r.paytm_amount || 0),
@@ -505,7 +524,7 @@ const DailyReport = () => {
         disc: fmtAmt(Number(r.discount_amount || 0)),
         final: fmtAmt(Number(r.final_amount || 0)),
         paid: fmtAmt(getRowPaid(r)),
-        due: fmtAmt(Number(r.due_amount || 0)),
+        due: fmtAmt(getRowDue(r)),
         cash: fmtAmt(Number(r.cash_amount || 0)),
         gpay: fmtAmt(Number(r.gpay_amount || 0)),
         paytm: fmtAmt(Number(r.paytm_amount || 0)),
@@ -739,7 +758,7 @@ const DailyReport = () => {
         disc: fmtAmt(Number(r.discount_amount || 0)),
         final: fmtAmt(Number(r.final_amount || 0)),
         paid: fmtAmt(getRowPaid(r)),
-        due: fmtAmt(Number(r.due_amount || 0)),
+        due: fmtAmt(getRowDue(r)),
         cash: fmtAmt(Number(r.cash_amount || 0)),
         gpay: fmtAmt(Number(r.gpay_amount || 0)),
         paytm: fmtAmt(Number(r.paytm_amount || 0)),
@@ -821,7 +840,7 @@ const DailyReport = () => {
         t.discount += Number(r.discount_amount || 0);
         t.final += Number(r.final_amount || 0);
         t.paid += getRowPaid(r);
-        t.due += Number(r.due_amount || 0);
+        t.due += getRowDue(r);
         t.refund += Number(r.refund_amount || 0);
         if (r.direction === "in") t.total_in += Number(r.total_amount || 0);
         else t.total_out += Number(r.total_amount || 0);
@@ -1275,7 +1294,7 @@ const DailyReport = () => {
                   {moneyCell(Number(r.discount_amount || 0))}
                   {moneyCell(Number(r.final_amount || 0), { fontMedium: true })}
                   {moneyCell(getRowPaid(r))}
-                  {moneyCell(Number(r.due_amount || 0), { dangerOnPositive: true })}
+                  {moneyCell(getRowDue(r), { dangerOnPositive: true })}
                   {(["cash_amount","gpay_amount","paytm_amount","neft_amount","credit_card_amount"] as const).map((k) =>
                     moneyCell(Number(r[k] || 0), { zeroAsDash: true, key: k }),
                   )}
