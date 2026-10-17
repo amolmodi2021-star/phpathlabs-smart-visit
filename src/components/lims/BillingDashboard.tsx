@@ -220,16 +220,16 @@ const BillingDashboard = () => {
                         <Button
                           size="icon"
                           variant="ghost"
-                          title="Reprocess with current pickup rates"
+                          title={`Reprocess ${inv.invoice_number || "this invoice"} only`}
                           disabled={reprocess.isPending}
                           onClick={() => {
                             if (!confirm(
-                              `Reprocess ${inv.invoice_number || "this invoice"} with current rates for this pickup point?\n\nEach patient on this monthly bill will be repriced (e.g. CBC 250 → 150). Daily Report amounts stay in sync. Invoice payments are kept; due is recalculated.`,
+                              `Reprocess ${inv.invoice_number || "this invoice"} only?\n\nOnly the ${inv.patient_count} patient(s) already on this invoice will be repriced. Other monthly invoices and other patients are not changed.`,
                             )) return;
                             reprocess.mutate(inv.id);
                           }}
                         >
-                          <RefreshCw className={`h-4 w-4 ${reprocess.isPending ? "animate-spin" : ""}`} />
+                          <RefreshCw className={`h-4 w-4 ${reprocess.isPending && reprocess.variables === inv.id ? "animate-spin" : ""}`} />
                         </Button>
                         <Button size="icon" variant="ghost" title="View / Download PDF" onClick={() => { setPdfWaQueue(false); setPdfOpen(inv); }}>
                           <FileText className="h-4 w-4" />

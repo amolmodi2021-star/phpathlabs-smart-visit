@@ -4,9 +4,37 @@ import { describe, expect, it } from "vitest";
 import {
   cancelledTestIdSet,
   recalculateRegistrationAtRates,
+  shouldRepriceRegistration,
 } from "@/lib/pickupInvoiceReprocessCalc";
 
 const prices = (entries: Array<[string, number]>) => new Map(entries);
+
+describe("shouldRepriceRegistration", () => {
+  const invoiceRegs = new Set(["reg-sept-1", "reg-sept-2"]);
+
+  it("allows only patients listed on that invoice for that pickup", () => {
+    expect(shouldRepriceRegistration("pp-vasu", invoiceRegs, {
+      id: "reg-sept-1",
+      pickup_point_id: "pp-vasu",
+    })).toBe(true);
+  });
+
+  it("rejects other invoices' patients and other pickup points", () => {
+    expect(shouldRepriceRegistration("pp-vasu", invoiceRegs, {
+      id: "reg-aug-1",
+      pickup_point_id: "pp-vasu",
+    })).toBe(false);
+    expect(shouldRepriceRegistration("pp-vasu", invoiceRegs, {
+      id: "reg-sept-1",
+      pickup_point_id: "pp-other",
+    })).toBe(false);
+    expect(shouldRepriceRegistration("pp-vasu", invoiceRegs, {
+      id: "reg-sept-1",
+      pickup_point_id: "pp-vasu",
+      bill_cancelled: true,
+    })).toBe(false);
+  });
+});
 
 describe("cancelledTestIdSet", () => {
   it("reads ids from strings and objects", () => {
@@ -137,11 +165,12 @@ describe("invoice reprocess wiring", () => {
       "utf8",
     );
     expect(dashboard).toContain("reprocessPickupInvoice");
-    expect(dashboard).toContain("Reprocess with current pickup rates");
+    expect(dashboard).toContain("reprocess.variables === inv.id");
+    expect(dashboard).toContain("Only the ${inv.patient_count} patient(s) already on this invoice");
     expect(generate).toContain("reprocessPickupInvoice");
-    expect(generate).toContain("Reprocess");
-    expect(impl).toContain("syncRegistrationPaymentRow");
-    expect(impl).toContain("Pickup rates reprocessed");
+    expect(generate).toContain("reprocess.variables === invoiceByPickup.get(pp.id)?.id");
+    expect(impl).toContain("shouldRepriceRegistration");
+    expect(impl).toContain("sync_bill_snapshot: true");
     expect(impl).toContain("pickup_point_prices");
   });
 });

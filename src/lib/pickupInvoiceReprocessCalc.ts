@@ -33,6 +33,19 @@ export type RecalcRegistrationResult = {
 
 export const roundMoney = (n: number): number => Math.round((Number(n) || 0) * 100) / 100;
 
+/** Only patients already listed on this invoice, for this pickup. Never other months/pickups. */
+export function shouldRepriceRegistration(
+  invoicePickupId: string,
+  invoiceRegistrationIds: Set<string>,
+  reg: { id?: string | null; pickup_point_id?: string | null; bill_cancelled?: boolean | null },
+): boolean {
+  const id = String(reg?.id || "").trim();
+  if (!id || !invoiceRegistrationIds.has(id)) return false;
+  if (reg.bill_cancelled) return false;
+  if (String(reg.pickup_point_id || "") !== String(invoicePickupId || "")) return false;
+  return true;
+}
+
 export function cancelledTestIdSet(cancelled: unknown): Set<string> {
   const ids = new Set<string>();
   if (!Array.isArray(cancelled)) return ids;

@@ -4,12 +4,15 @@ import type { PickupInvoice } from "@/lib/pickupBilling";
 import {
   recalculateRegistrationAtRates,
   roundMoney,
+  shouldRepriceRegistration,
 } from "@/lib/pickupInvoiceReprocessCalc";
+import { fetchInIdChunks } from "@/lib/supabaseIdChunks";
 
 export {
   cancelledTestIdSet,
   recalculateRegistrationAtRates,
   roundMoney,
+  shouldRepriceRegistration,
   type InvoiceTestLine,
   type RecalcRegistrationInput,
   type RecalcRegistrationResult,
@@ -60,17 +63,22 @@ export async function reprocessPickupInvoice(invoiceId: string): Promise<Reproce
   if (itemErr) throw itemErr;
 
   const prices = await loadPriceMapForPickup(invoice.pickup_point_id);
-  const regIds = (items || []).map((i: { registration_id?: string | null }) => i.registration_id).filter(Boolean) as string[];
+  const invoiceRegIds = new Set(
+    (items || []).map((i: { registration_id?: string | null }) => String(i.registration_id || "")).filter(Boolean),
+  );
   const regsById = new Map<string, any>();
-  if (regIds.length > 0) {
-    const { data: regs, error: regErr } = await supabase
-      .from("patient_registrations")
-      .select(
-        "id, invoice_number, patient_name, tests, cancelled_tests, global_discount_type, global_discount_value, home_visit_charges, paid_amount, payments, bill_cancelled",
-      )
-      .in("id", regIds);
-    if (regErr) throw regErr;
-    (regs || []).forEach((r: { id: string }) => regsById.set(r.id, r));
+  if (invoiceRegIds.size > 0) {
+    const regs = await fetchInIdChunks([...invoiceRegIds], async (chunk) => {
+      const { data, error: regErr } = await supabase
+        .from("patient_registrations")
+        .select(
+          "id, invoice_number, patient_name, pickup_point_id, tests, cancelled_tests, global_discount_type, global_discount_value, home_visit_charges, paid_amount, payments, bill_cancelled",
+        )
+        .in("id", chunk);
+      if (regErr) throw regErr;
+      return (data || []) as any[];
+    });
+    regs.forEach((r: { id: string }) => regsById.set(r.id, r));
   }
 
   let updated = 0;
@@ -80,7 +88,7 @@ export async function reprocessPickupInvoice(invoiceId: string): Promise<Reproce
 
   for (const item of items || []) {
     const reg = item.registration_id ? regsById.get(item.registration_id) : null;
-    if (!reg || reg.bill_cancelled) {
+    if (!reg || !shouldRepriceRegistration(invoice.pickup_point_id, invoiceRegIds, reg)) {
       skipped++;
       newTotal += Number(item.net_amount || 0);
       continue;
@@ -118,6 +126,7 @@ export async function reprocessPickupInvoice(invoiceId: string): Promise<Reproce
       gross_amount: next.gross_amount,
       discount_amount: next.discount_amount,
       change_reason: "Pickup rates reprocessed",
+      sync_bill_snapshot: true,
     });
 
     const { error: updItemErr } = await supabase

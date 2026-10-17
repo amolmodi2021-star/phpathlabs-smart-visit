@@ -169,13 +169,15 @@ const BillingGenerate = () => {
                           onClick={() => {
                             const inv = invoiceByPickup.get(pp.id)!;
                             if (!confirm(
-                              `Reprocess ${inv.invoice_number || "this invoice"} with current rates for ${pp.name}?\n\nPatients already on this monthly bill will be repriced. Daily Report amounts stay in sync.`,
+                              `Reprocess ${inv.invoice_number || "this invoice"} only for ${pp.name}?\n\nOnly patients already on this invoice will be repriced. Other monthly invoices are not changed.`,
                             )) return;
                             reprocess.mutate(inv.id);
                           }}
                         >
-                          {reprocess.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <RefreshCw className="h-4 w-4 mr-1" />}
-                          Reprocess
+                          {reprocess.isPending && reprocess.variables === invoiceByPickup.get(pp.id)?.id
+                            ? <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                            : <RefreshCw className="h-4 w-4 mr-1" />}
+                          Reprocess {invoiceByPickup.get(pp.id)?.invoice_number || ""}
                         </Button>
                       )}
                       <Button size="sm" variant="outline" onClick={() => setPreviewId(previewId === pp.id ? "" : pp.id)}>
