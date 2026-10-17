@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { FileText, IndianRupee, BellRing, BookOpen, Trash2, Send } from "lucide-react";
+import { FileText, IndianRupee, BellRing, BookOpen, Trash2, Send, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { format, differenceInDays } from "date-fns";
 import {
@@ -21,6 +21,7 @@ import {
   markReminderSent,
   type PickupInvoice,
 } from "@/lib/pickupBilling";
+import { reprocessPickupInvoice } from "@/lib/pickupInvoiceReprocess";
 import { supabase } from "@/integrations/supabase/client";
 import { shareOnWhatsApp } from "@/lib/whatsapp";
 import PickupPaymentDialog from "./PickupPaymentDialog";
@@ -80,6 +81,25 @@ const BillingDashboard = () => {
       qc.invalidateQueries({ queryKey: ["pickup_invoices"] });
       toast.success("Invoice deleted");
     },
+  });
+  const reprocess = useMutation({
+    mutationFn: (id: string) => reprocessPickupInvoice(id),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ["pickup_invoices"] });
+      qc.invalidateQueries({ queryKey: ["eligible_regs"] });
+      qc.invalidateQueries({ queryKey: ["payment-transactions"] });
+      qc.invalidateQueries({ queryKey: ["daily-report-registrations"] });
+      qc.invalidateQueries({ queryKey: ["registered_patients"] });
+      qc.invalidateQueries({ queryKey: ["due_payments"] });
+      const delta = res.total_amount - res.previousTotal;
+      const deltaText = delta === 0
+        ? "unchanged"
+        : `${delta > 0 ? "+" : "−"}₹${Math.abs(delta).toFixed(2)}`;
+      toast.success(
+        `Reprocessed ${res.updated} patient bill(s) (${res.unchanged} already current). Invoice total ${deltaText}: ₹${res.total_amount.toFixed(2)}`,
+      );
+    },
+    onError: (e: any) => toast.error(e.message || "Reprocess failed"),
   });
 
   const sendReminder = async (inv: PickupInvoice) => {
@@ -197,6 +217,20 @@ const BillingDashboard = () => {
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex gap-1 justify-end">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          title="Reprocess with current pickup rates"
+                          disabled={reprocess.isPending}
+                          onClick={() => {
+                            if (!confirm(
+                              `Reprocess ${inv.invoice_number || "this invoice"} with current rates for this pickup point?\n\nEach patient on this monthly bill will be repriced (e.g. CBC 250 → 150). Daily Report amounts stay in sync. Invoice payments are kept; due is recalculated.`,
+                            )) return;
+                            reprocess.mutate(inv.id);
+                          }}
+                        >
+                          <RefreshCw className={`h-4 w-4 ${reprocess.isPending ? "animate-spin" : ""}`} />
+                        </Button>
                         <Button size="icon" variant="ghost" title="View / Download PDF" onClick={() => { setPdfWaQueue(false); setPdfOpen(inv); }}>
                           <FileText className="h-4 w-4" />
                         </Button>

@@ -137,6 +137,16 @@ export async function generateInvoicesForPickups(
   return { created, skipped, invoiceIds };
 }
 
+export async function getInvoicesForPeriod(fromDate: string, toDate: string): Promise<PickupInvoice[]> {
+  const { data, error } = await supabase
+    .from("pickup_point_invoices")
+    .select("*")
+    .eq("period_from", fromDate)
+    .eq("period_to", toDate);
+  if (error) throw error;
+  return (data || []) as PickupInvoice[];
+}
+
 export async function getInvoices(filters?: {
   status?: string;
   pickupPointId?: string;

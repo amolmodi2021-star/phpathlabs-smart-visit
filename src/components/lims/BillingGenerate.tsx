@@ -7,14 +7,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2 } from "lucide-react";
+import { Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import {
   getCreditPickupPoints,
   getEligibleRegistrations,
   generateInvoicesForPickups,
+  getInvoicesForPeriod,
   defaultPreviousMonthRange,
 } from "@/lib/pickupBilling";
+import { reprocessPickupInvoice } from "@/lib/pickupInvoiceReprocess";
 
 const BillingGenerate = () => {
   const qc = useQueryClient();
@@ -43,14 +45,48 @@ const BillingGenerate = () => {
     enabled: !!previewId && !!from && !!to,
   });
 
+  const { data: periodInvoices = [] } = useQuery({
+    queryKey: ["pickup_invoices_period", from, to],
+    queryFn: () => getInvoicesForPeriod(from, to),
+    enabled: !!from && !!to,
+  });
+  const invoiceByPickup = useMemo(() => {
+    const m = new Map<string, (typeof periodInvoices)[number]>();
+    periodInvoices.forEach((inv) => {
+      if (!m.has(inv.pickup_point_id)) m.set(inv.pickup_point_id, inv);
+    });
+    return m;
+  }, [periodInvoices]);
+
   const generate = useMutation({
     mutationFn: () => generateInvoicesForPickups(Array.from(selected), from, to),
     onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ["pickup_invoices"] });
+      qc.invalidateQueries({ queryKey: ["pickup_invoices_period"] });
       qc.invalidateQueries({ queryKey: ["eligible_regs"] });
       toast.success(`${res.created} invoice(s) created${res.skipped ? `, ${res.skipped} skipped (no eligible registrations)` : ""}`);
     },
     onError: (e: any) => toast.error(e.message),
+  });
+
+  const reprocess = useMutation({
+    mutationFn: (id: string) => reprocessPickupInvoice(id),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ["pickup_invoices"] });
+      qc.invalidateQueries({ queryKey: ["pickup_invoices_period"] });
+      qc.invalidateQueries({ queryKey: ["eligible_regs"] });
+      qc.invalidateQueries({ queryKey: ["payment-transactions"] });
+      qc.invalidateQueries({ queryKey: ["daily-report-registrations"] });
+      qc.invalidateQueries({ queryKey: ["registered_patients"] });
+      const delta = res.total_amount - res.previousTotal;
+      const deltaText = delta === 0
+        ? "unchanged"
+        : `${delta > 0 ? "+" : "−"}₹${Math.abs(delta).toFixed(2)}`;
+      toast.success(
+        `Reprocessed ${res.updated} patient bill(s). Invoice total ${deltaText}: ₹${res.total_amount.toFixed(2)}`,
+      );
+    },
+    onError: (e: any) => toast.error(e.message || "Reprocess failed"),
   });
 
   const toggle = (id: string) => {
@@ -68,7 +104,7 @@ const BillingGenerate = () => {
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
-        <RefreshButton queryKeys={["credit_pickup_points", "eligible_regs", "pickup_invoices"]} />
+        <RefreshButton queryKeys={["credit_pickup_points", "eligible_regs", "pickup_invoices", "pickup_invoices_period"]} />
       </div>
       <Card>
         <CardContent className="p-4 space-y-3">
@@ -95,6 +131,7 @@ const BillingGenerate = () => {
           <p className="text-xs text-muted-foreground">
             Default range is the previous calendar month. Only credit pickup points are listed.
             Registrations already invoiced are excluded automatically.
+            After changing a pickup point&apos;s rates, use <strong>Reprocess</strong> on that month&apos;s invoice so patient bills and Daily Report stay in sync.
           </p>
         </CardContent>
       </Card>
@@ -123,9 +160,28 @@ const BillingGenerate = () => {
                   <TableCell>{pp.contact_person || "—"}</TableCell>
                   <TableCell>{pp.phone || "—"}</TableCell>
                   <TableCell className="text-right">
-                    <Button size="sm" variant="outline" onClick={() => setPreviewId(previewId === pp.id ? "" : pp.id)}>
-                      {previewId === pp.id ? "Hide" : "Preview"}
-                    </Button>
+                    <div className="flex gap-1 justify-end">
+                      {invoiceByPickup.get(pp.id) && (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          disabled={reprocess.isPending}
+                          onClick={() => {
+                            const inv = invoiceByPickup.get(pp.id)!;
+                            if (!confirm(
+                              `Reprocess ${inv.invoice_number || "this invoice"} with current rates for ${pp.name}?\n\nPatients already on this monthly bill will be repriced. Daily Report amounts stay in sync.`,
+                            )) return;
+                            reprocess.mutate(inv.id);
+                          }}
+                        >
+                          {reprocess.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <RefreshCw className="h-4 w-4 mr-1" />}
+                          Reprocess
+                        </Button>
+                      )}
+                      <Button size="sm" variant="outline" onClick={() => setPreviewId(previewId === pp.id ? "" : pp.id)}>
+                        {previewId === pp.id ? "Hide" : "Preview"}
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
