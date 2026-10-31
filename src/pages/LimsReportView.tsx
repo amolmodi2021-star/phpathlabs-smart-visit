@@ -14,7 +14,7 @@ import LimsReportHeader from "@/components/report/LimsReportHeader";
 import DoctorOnePagerView from "@/components/report/DoctorOnePagerView";
 import ReportSignatureBlock from "@/components/report/ReportSignatureBlock";
 import ReportInvoiceBarcode from "@/components/report/ReportInvoiceBarcode";
-import ReportResultsSection from "@/components/report/ReportResultsSection";
+import ReportResultsSection, { shouldWidenResult } from "@/components/report/ReportResultsSection";
 import CbcHistogramCharts, { pageHasCbcTest, type AnalyzerHistogram } from "@/components/report/CbcHistogramCharts";
 import AutoScaleContent from "@/components/report/AutoScaleContent";
 import type { TestResult, ProfileMeta } from "@/components/report/ReportResultsSection";
@@ -272,9 +272,8 @@ const rowHeightMm = (p: any, descriptionText?: string | null): number => {
 
   // Reference Range keeps Test Management line breaks (no mid-line wrap).
   const refLines = Math.max(1, refText.trim() ? refText.split(/\r\n|\n|\r/).length : 1);
-  // Result col ~20% width (~22 chars). Blank Display Text → Result spans Ref (~55 chars/line).
-  const isDescriptive = !refText;
-  const resultPerLine = isDescriptive ? 55 : 22;
+  // Result column ~22 chars. With no reference range the value also uses that column (~55 chars/line).
+  const resultPerLine = shouldWidenResult(resultText, !!refText.trim()) ? 55 : 22;
   const resultLines = resultText
     ? Math.max(Math.ceil(resultText.length / resultPerLine), resultText.split(/\r?\n/).length)
     : 1;

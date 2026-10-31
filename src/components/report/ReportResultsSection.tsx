@@ -73,37 +73,16 @@ const groupByTestName = (params: TestResult[]): { testName: string | null; param
 };
 
 const COMPACT_PROFILES = ["cbc", "complete blood count", "urine routine"];
-const MORPHOLOGY_TESTS = ["morphology", "rbc morphology", "wbc morphology", "platelet morphology", "peripheral smear"];
 
 const isCompactProfile = (profName: string): boolean => {
   const lower = profName.toLowerCase();
   return COMPACT_PROFILES.some(cp => lower.includes(cp));
 };
 
-const isMorphologySection = (testName: string | null | undefined): boolean => {
-  if (!testName) return false;
-  const lower = testName.toLowerCase();
-  return MORPHOLOGY_TESTS.some(m => lower.includes(m));
-};
-
-const isNumericResult = (value?: string): boolean => {
-  if (!value) return false;
-  const v = String(value).trim();
-  if (!v) return false;
-  // Time values like "2:30" are treated as numeric so they render centred under the Result column.
-  if (isCanonicalTimeValue(v)) return true;
-  // Treat plain numbers (incl. decimals, negatives, "<10", ">100", "1.2e3") and number+unit
-  // ("10 ml", "5.2 g/dL") as numeric so they render centered under the Result column.
-  // Examples that must be numeric: "11.48" (BUN/Creat ratio), "0.84", "-0.5", "<10", "10 ml".
-  return /^[<>]?\s*-?\d+(\.\d+)?(e[+-]?\d+)?(\s*[a-zA-Z%µμ/²³°]+)?\s*$/i.test(v);
-};
-
-const isDescriptiveResult = (r: TestResult): boolean => {
-  if (isNumericResult(r.result_value)) return false;
-  const hasRefText = !!(r.normal_range_text && String(r.normal_range_text).trim());
-  const hasRefBounds = r.normal_range_low != null && r.normal_range_high != null;
-  return !hasRefText && !hasRefBounds;
-};
+/** Use the empty reference-range width whenever that cell has nothing to show. */
+export function shouldWidenResult(_value: string | undefined, hasReference: boolean): boolean {
+  return !hasReference;
+}
 
 const isAbnormalFlag = (flag?: string): boolean => {
   return flag === "H" || flag === "L" || flag === "High" || flag === "Low" || flag === "X" || flag === "A";
@@ -148,20 +127,19 @@ interface ParamRowProps {
   r: TestResult;
   rowKey: string;
   compact: boolean;
-  isMorph: boolean;
   showFlagText: boolean;
   rowFontSize: string;
   colCount: number;
 }
 
-const ParamRow = ({ r, rowKey, compact, isMorph, showFlagText, rowFontSize, colCount }: ParamRowProps) => {
+const ParamRow = ({ r, rowKey, compact, showFlagText, rowFontSize, colCount }: ParamRowProps) => {
   const isAbnormal = isAbnormalFlag(r.flag);
   const hasRefText = !!(r.normal_range_text && String(r.normal_range_text).trim());
   const hasRefBounds = r.normal_range_low != null && r.normal_range_high != null;
   const hasReference = hasRefText || hasRefBounds;
-  // Descriptive / free-text with no reference (or Flag): span Result + empty columns
-  // so text like "No microorganisms are seen." does not wrap early in the narrow Result cell.
-  const widenResult = isMorph || (!hasReference && isDescriptiveResult(r));
+  // No reference range: the result uses that empty width. Every result is left-aligned.
+  const displayResult = isCanonicalTimeValue(r.result_value) ? formatTimeResult(r.result_value) : r.result_value;
+  const widenResult = shouldWidenResult(displayResult, hasReference);
   const py = compact ? 'py-[2px]' : 'py-0.5';
 
   // Bold styling only for abnormal rows
@@ -172,9 +150,6 @@ const ParamRow = ({ r, rowKey, compact, isMorph, showFlagText, rowFontSize, colC
   const showBadge = showFlagText && showFlagBadge(r.flag);
   // Result + Reference Range; include Flag column only when no HIGH/LOW badge to show
   const rightSpan = showFlagText ? (showBadge ? 2 : 3) : 2;
-
-  // Friendly display for "M:SS" time values
-  const displayResult = isCanonicalTimeValue(r.result_value) ? formatTimeResult(r.result_value) : r.result_value;
 
   return (
     <tr
@@ -234,7 +209,7 @@ const ParamRow = ({ r, rowKey, compact, isMorph, showFlagText, rowFontSize, colC
       ) : (
         <>
           <td
-            className={`text-center ${resultWeight} ${py}`}
+            className={`text-left px-2 ${resultWeight} ${py}`}
             style={isAbnormal ? { fontWeight: 700 } : undefined}
           >
             {displayResult}
@@ -284,7 +259,7 @@ const TableHeader = ({ showFlagText, fontSize }: { showFlagText: boolean; fontSi
     <tr className="text-gray-500 border-b" style={{ fontSize }}>
       <th className="text-left py-0.5 px-3" style={{ width: showFlagText ? '40%' : '42%' }}>Parameter</th>
       {!showFlagText && <th style={{ width: '24px' }}></th>}
-      <th className="text-center py-0.5" style={{ width: '20%' }}>Result</th>
+      <th className="text-left py-0.5 px-2" style={{ width: '20%' }}>Result</th>
       <th className="text-left py-0.5 px-2" style={{ width: showFlagText ? '25%' : '30%' }}>Reference Range</th>
       {showFlagText && <th className="text-center py-0.5" style={{ width: '15%' }}>Flag</th>}
     </tr>
@@ -336,7 +311,6 @@ const ReportResultsSection = ({
                       <TableHeader showFlagText={showFlagText} fontSize={headerFontSize} />
                       <tbody>
                         {params.map((r, pIdx) => {
-                          const isMorphRow = isMorphologySection(r.test_name) || isMorphologySection(r.parameter_name);
                           const paramMeta = {
                             sample_type: r.sample_type,
                             analyzer: r.analyzer,
@@ -358,7 +332,7 @@ const ReportResultsSection = ({
                                 <tr><td colSpan={totalCols}><div className="border-t-2 border-gray-400" style={{ marginBottom: '3mm' }} /></td></tr>
                               )}
                               {prevHadInterpretation && <TableHeader showFlagText={showFlagText} fontSize={headerFontSize} />}
-                              <ParamRow r={r} rowKey={`s-${pIdx}`} compact={useCompact} isMorph={isMorphRow} showFlagText={showFlagText} rowFontSize={rowFontSize} colCount={totalCols} />
+                              <ParamRow r={r} rowKey={`s-${pIdx}`} compact={useCompact} showFlagText={showFlagText} rowFontSize={rowFontSize} colCount={totalCols} />
                               {r.remark && (
                                 <tr className="border-b border-gray-100">
                                   <td colSpan={totalCols} className="px-3 py-0.5">
@@ -462,7 +436,6 @@ const ReportResultsSection = ({
                           );
                         }
 
-                        const isMorphRow = isMorphologySection(r.test_name) || isMorphologySection(r.parameter_name) || isMorphologySection(profName);
                         return (
                           <React.Fragment key={`p-${i}`}>
                             {hasMultipleTestNames && r.test_name && (i === 0 || r.test_name !== params[i - 1]?.test_name) && !params[i - 1]?.is_subheader && (
@@ -472,7 +445,7 @@ const ReportResultsSection = ({
                                 </td>
                               </tr>
                             )}
-                            <ParamRow r={r} rowKey={`r-${i}`} compact={useCompact} isMorph={isMorphRow} showFlagText={showFlagText} rowFontSize={rowFontSize} colCount={totalCols} />
+                            <ParamRow r={r} rowKey={`r-${i}`} compact={useCompact} showFlagText={showFlagText} rowFontSize={rowFontSize} colCount={totalCols} />
                             {r.remark && (
                               <tr className="border-b border-gray-100">
                                 <td colSpan={totalCols} className="px-3 py-0.5">
