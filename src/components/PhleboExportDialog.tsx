@@ -93,7 +93,7 @@ const PhleboExportDialog = ({ open, onOpenChange }: PhleboExportDialogProps) => 
             const { data, error } = await supabase
               .from("patient_registrations")
               .select(
-                "id, home_visit_id, home_visit_charges, due_amount, bill_cancelled, patient_name, title, gender, invoice_number, umr_number, mobile_number, tests, cancelled_tests",
+                "id, home_visit_id, home_visit_charges, due_amount, final_amount, paid_amount, bill_cancelled, status, patient_name, title, gender, invoice_number, umr_number, mobile_number, tests, cancelled_tests",
               )
               .in("home_visit_id", chunk)
               .order("id", { ascending: true })
@@ -251,7 +251,7 @@ const PhleboExportDialog = ({ open, onOpenChange }: PhleboExportDialogProps) => 
           }
         }
 
-        // Net payable = earned only. Hold/deducted are listed for audit, not subtracted again.
+        // Payable = earned. Cancelled and due amounts sit in their own buckets, so they are already out.
         const holdAbs = hvcBuckets.hold + incBuckets.hold;
         const deductedAbs = hvcBuckets.deducted + incBuckets.deducted;
         const earnedHvc = hvcBuckets.earned;

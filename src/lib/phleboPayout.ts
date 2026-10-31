@@ -129,26 +129,42 @@ export type PhleboPayoutBucketTotals = {
 };
 
 /**
- * Net payable = earned only.
- * Hold / deducted rows are never added to earned, so subtracting them again
- * would wrongly reduce pay (e.g. cancelled ₹50 → total 2550−50=2500 instead of 2550).
+ * Payable = earned.
+ * Cancelled bills and unpaid dues are stored in deducted / hold, not in earned,
+ * so they are already removed. Subtracting them again would cut pay twice
+ * (e.g. cancelled ₹50 on a ₹2,600 gross → payable ₹2,550, not ₹2,500).
  */
 export function payoutBucketNet(b: PhleboPayoutBucketTotals): number {
   return Number(b.earned) || 0;
 }
 
+function registrationOutstanding(reg: {
+  due_amount?: number | null;
+  final_amount?: number | null;
+  paid_amount?: number | null;
+}): number {
+  const due = Number(reg.due_amount || 0);
+  const gap = Number(reg.final_amount || 0) - Number(reg.paid_amount || 0);
+  return Math.max(due, gap);
+}
+
 /**
  * Month-end payout bucket for one registration.
- * - Cancelled bill -> deducted (HVC + incentives must not be paid).
- * - Open due -> hold until collected.
+ * - Cancelled bill (flag or status) -> deducted. HVC and incentives are not paid.
+ * - Open due, or final still above paid -> hold until collected. HVC and incentives are not paid.
  * - Otherwise -> earned.
- * Secondary family members with HVC=0 correctly earn 0 HVC (no false "refunded").
+ * Secondary family members with HVC=0 stay earned at ₹0 (not a false refund).
  */
 export function registrationPayoutBucket(reg: {
   bill_cancelled?: boolean | null;
+  status?: string | null;
   due_amount?: number | null;
+  final_amount?: number | null;
+  paid_amount?: number | null;
 }): PhleboPayoutBucket {
-  if (reg.bill_cancelled) return "deducted";
-  if (Number(reg.due_amount || 0) > 0.01) return "hold";
+  const cancelled =
+    !!reg.bill_cancelled || String(reg.status || "").trim().toLowerCase() === "cancelled";
+  if (cancelled) return "deducted";
+  if (registrationOutstanding(reg) > 0.01) return "hold";
   return "earned";
 }

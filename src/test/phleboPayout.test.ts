@@ -34,8 +34,18 @@ describe("phleboPayout", () => {
     expect(registrationPayoutBucket({ bill_cancelled: true, due_amount: 0 })).toBe("deducted");
   });
 
+  it("deducts a bill whose status is cancelled", () => {
+    expect(registrationPayoutBucket({ bill_cancelled: false, status: "cancelled", due_amount: 0 })).toBe("deducted");
+  });
+
   it("holds unpaid dues", () => {
     expect(registrationPayoutBucket({ bill_cancelled: false, due_amount: 100 })).toBe("hold");
+  });
+
+  it("holds a bill whose final is still above paid", () => {
+    expect(
+      registrationPayoutBucket({ bill_cancelled: false, due_amount: 0, final_amount: 500, paid_amount: 400 }),
+    ).toBe("hold");
   });
 
   it("sums incentives for active tests only", () => {

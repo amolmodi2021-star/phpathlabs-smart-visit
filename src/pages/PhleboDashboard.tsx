@@ -175,8 +175,8 @@ const PhleboDashboard = () => {
 
     phlebotomists.forEach((p: any) => ensure(p.id));
 
-    // Keep earned / hold / deducted in separate buckets.
-    // Payable = earned only. Hold/deducted are audit lists (never subtracted from earned).
+    // Cancelled bills and unpaid dues go to their own buckets (HVC + incentive).
+    // Payable is earned only, so those amounts are removed once and not again.
     registrations.forEach((reg: any) => {
       const visit = visitMap[reg.home_visit_id];
       if (!visit?.phlebotomist_id) return;
@@ -205,7 +205,7 @@ const PhleboDashboard = () => {
             registration: reg,
             hvc,
             incentive,
-            reason: "Payment due — excluded from pay until collected",
+            reason: "Payment due — not paid until collected",
           });
         }
       } else if (bucket === "deducted") {
@@ -217,7 +217,7 @@ const PhleboDashboard = () => {
             registration: reg,
             hvc,
             incentive,
-            reason: "Bill cancelled — excluded from pay (not subtracted from earned)",
+            reason: "Bill cancelled — not payable",
           });
         }
       }
@@ -361,7 +361,7 @@ const PhleboDashboard = () => {
     const earned = hvc.earned + inc.earned;
     const hold = hvc.hold + inc.hold;
     const deducted = hvc.deducted + inc.deducted;
-    // Payable = earned only; hold/deducted listed below for audit (not subtracted again).
+    // Payable = earned. Cancelled and due are already in their own buckets.
     const net = earned;
 
     return (
@@ -432,7 +432,7 @@ const PhleboDashboard = () => {
           <div className="flex justify-between col-span-2 border-t pt-2 mt-1">
             <div>
               <span className="font-semibold">Payable</span>
-              <p className="text-[10px] text-muted-foreground font-normal">Same as earned — hold/cancelled not subtracted</p>
+              <p className="text-[10px] text-muted-foreground font-normal">Cancelled bills and unpaid dues already removed</p>
             </div>
             <span className="font-bold text-primary">{money(net)}</span>
           </div>
@@ -447,7 +447,7 @@ const PhleboDashboard = () => {
         <div>
           <h1 className="text-xl font-bold">Phlebo Dashboard</h1>
           <p className="text-sm text-muted-foreground">
-            Month-end home visit charges + test incentives by phlebo. Payable = earned visits only; hold and cancelled are listed separately (not subtracted).
+            Month-end home visit charges and test incentives by phlebo. Cancelled bills and unpaid dues are removed from payable, including their incentives.
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={() => setShowPasswordDialog(true)}>
@@ -513,7 +513,7 @@ const PhleboDashboard = () => {
               Home Visit Charges (payable)
             </h2>
             <p className="text-xs text-muted-foreground -mt-1">
-              Only earned visits. Cancelled and unpaid (hold) are listed separately — not subtracted from this total.
+              Paid visits only. Cancelled bills and unpaid dues are left out of this total.
             </p>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {activePhleboIds.map((id) => (
@@ -543,7 +543,7 @@ const PhleboDashboard = () => {
               Incentive Earnings (payable)
             </h2>
             <p className="text-xs text-muted-foreground -mt-1">
-              Tests / packages / combos on earned visits only. Hold and cancelled listed separately.
+              Incentives on paid visits only. Cancelled bills and unpaid dues are left out.
             </p>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {activePhleboIds.map((id) => (
