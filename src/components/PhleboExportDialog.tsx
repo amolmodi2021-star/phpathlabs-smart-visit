@@ -16,6 +16,7 @@ import {
   registrationIncentiveDetails,
   registrationPayoutBucket,
 } from "@/lib/phleboPayout";
+import { fetchAllPages, fetchInIdChunks } from "@/lib/supabaseIdChunks";
 
 interface PhleboExportDialogProps {
   open: boolean;
@@ -63,13 +64,19 @@ const PhleboExportDialog = ({ open, onOpenChange }: PhleboExportDialogProps) => 
       const end = format(endOfMonth(monthDate), "yyyy-MM-dd");
       const monthLabel = format(monthDate, "MMMM yyyy");
 
-      const { data: visits } = await supabase
-        .from("home_visits")
-        .select("id, estimate_id, phlebotomist_id, visit_date, address, status")
-        .in("status", ["Completed", "Registered"])
-        .gte("visit_date", start)
-        .lte("visit_date", end)
-        .order("visit_date", { ascending: true });
+      const visits = await fetchAllPages(async (from, to) => {
+        const { data, error } = await supabase
+          .from("home_visits")
+          .select("id, estimate_id, phlebotomist_id, visit_date, address, status")
+          .in("status", ["Completed", "Registered"])
+          .gte("visit_date", start)
+          .lte("visit_date", end)
+          .order("visit_date", { ascending: true })
+          .order("id", { ascending: true })
+          .range(from, to);
+        if (error) throw error;
+        return data || [];
+      });
 
       if (!visits || visits.length === 0) {
         toast.error("No registered home visits found for " + monthLabel);
@@ -80,13 +87,21 @@ const PhleboExportDialog = ({ open, onOpenChange }: PhleboExportDialogProps) => 
       const visitIds = visits.map((v) => v.id);
       const phleboIds = [...new Set(visits.filter((v) => v.phlebotomist_id).map((v) => v.phlebotomist_id!))];
 
-      const [regsRes, phleboRes, testsRes, checkupsRes, profilesRes, combosRes] = await Promise.all([
-        supabase
-          .from("patient_registrations")
-          .select(
-            "id, home_visit_id, home_visit_charges, due_amount, bill_cancelled, patient_name, title, gender, invoice_number, umr_number, mobile_number, tests, cancelled_tests",
-          )
-          .in("home_visit_id", visitIds),
+      const [registrations, phleboRes, testsRes, checkupsRes, profilesRes, combosRes] = await Promise.all([
+        fetchInIdChunks(visitIds, async (chunk) => {
+          return fetchAllPages(async (from, to) => {
+            const { data, error } = await supabase
+              .from("patient_registrations")
+              .select(
+                "id, home_visit_id, home_visit_charges, due_amount, bill_cancelled, patient_name, title, gender, invoice_number, umr_number, mobile_number, tests, cancelled_tests",
+              )
+              .in("home_visit_id", chunk)
+              .order("id", { ascending: true })
+              .range(from, to);
+            if (error) throw error;
+            return data || [];
+          });
+        }),
         supabase.from("phlebotomists").select("id, name").in("id", phleboIds),
         supabase.from("tests").select("id, test_name, incentive_allowed, incentive_amount"),
         supabase.from("health_checkups").select("id, health_checkup_name, incentive_allowed, incentive_amount"),
@@ -94,7 +109,6 @@ const PhleboExportDialog = ({ open, onOpenChange }: PhleboExportDialogProps) => 
         (supabase as any).from("combos").select("id, combo_name, incentive_allowed, incentive_amount"),
       ]);
 
-      const registrations = regsRes.data || [];
       if (registrations.length === 0) {
         toast.error("No registered patients found for " + monthLabel);
         setLoading(false);

@@ -18,6 +18,7 @@ import {
   registrationPayoutBucket,
   type PhleboPayoutBucketTotals,
 } from "@/lib/phleboPayout";
+import { fetchAllPages, fetchInIdChunks } from "@/lib/supabaseIdChunks";
 
 type PeriodKey = "current" | "previous";
 
@@ -71,32 +72,46 @@ const PhleboDashboard = () => {
     },
   });
 
-  const { data: visits = [], isLoading: visitsLoading } = useQuery({
+  const { data: visits = [], isLoading: visitsLoading, isError: visitsError } = useQuery({
     queryKey: ["phlebo_dashboard_visits", prevMonthStart, currentMonthEnd],
     queryFn: async () => {
-      const { data } = await supabase
-        .from("home_visits")
-        .select("id, estimate_id, phlebotomist_id, visit_date, visit_time, address, status")
-        .in("status", ["Completed", "Registered"])
-        .gte("visit_date", prevMonthStart)
-        .lte("visit_date", currentMonthEnd);
-      return data || [];
+      return fetchAllPages(async (from, to) => {
+        const { data, error } = await supabase
+          .from("home_visits")
+          .select("id, estimate_id, phlebotomist_id, visit_date, visit_time, address, status")
+          .in("status", ["Completed", "Registered"])
+          .gte("visit_date", prevMonthStart)
+          .lte("visit_date", currentMonthEnd)
+          .order("id", { ascending: true })
+          .range(from, to);
+        if (error) throw error;
+        return data || [];
+      });
     },
   });
 
   const visitIds = useMemo(() => visits.map((v) => v.id), [visits]);
 
-  const { data: registrations = [], isLoading: regsLoading } = useQuery({
+  const { data: registrations = [], isLoading: regsLoading, isError: regsError } = useQuery({
     queryKey: ["phlebo_dashboard_registrations", visitIds],
     queryFn: async () => {
       if (visitIds.length === 0) return [];
-      const { data } = await supabase
-        .from("patient_registrations")
-        .select(
-          "id, home_visit_id, home_visit_charges, due_amount, final_amount, paid_amount, bill_cancelled, refund_amount, patient_name, title, gender, mobile_number, umr_number, invoice_number, tests, cancelled_tests, status, completing_phlebo_name",
-        )
-        .in("home_visit_id", visitIds);
-      return data || [];
+      // One `.in(home_visit_id, …)` for two months (~600+ visits) exceeds the
+      // PostgREST URL limit and comes back as an empty list, so every total shows ₹0.
+      return fetchInIdChunks(visitIds, async (chunk) => {
+        return fetchAllPages(async (from, to) => {
+          const { data, error } = await supabase
+            .from("patient_registrations")
+            .select(
+              "id, home_visit_id, home_visit_charges, due_amount, final_amount, paid_amount, bill_cancelled, refund_amount, patient_name, title, gender, mobile_number, umr_number, invoice_number, tests, cancelled_tests, status, completing_phlebo_name",
+            )
+            .in("home_visit_id", chunk)
+            .order("id", { ascending: true })
+            .range(from, to);
+          if (error) throw error;
+          return data || [];
+        });
+      });
     },
     enabled: visitIds.length > 0,
   });
@@ -445,6 +460,8 @@ const PhleboDashboard = () => {
 
       {isLoading ? (
         <p className="text-sm text-muted-foreground">Loading...</p>
+      ) : visitsError || regsError ? (
+        <p className="text-sm text-destructive text-center py-8">Could not load phlebo payout data. Refresh the page.</p>
       ) : activePhleboIds.length === 0 ? (
         <p className="text-sm text-muted-foreground text-center py-8">No registered visits found for current or previous month.</p>
       ) : (
