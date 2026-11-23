@@ -33,6 +33,11 @@ import {
   type LeafContribution,
   type TestVolumeRow,
 } from "@/lib/dashboardTestVolume";
+import {
+  fetchCombo99Bills,
+  summarizeCombo99,
+  type Combo99DateRow,
+} from "@/lib/dashboardCombo99";
 type RegRow = {
   id: string;
   created_at: string;
@@ -80,6 +85,10 @@ const Dashboard = () => {
   const [drillTest, setDrillTest] = useState<TestVolumeRow | null>(null);
   /** Tests Booked stays idle until user clicks Load (saves egress). */
   const [testsBookedArmed, setTestsBookedArmed] = useState(false);
+  /** COMBO99 stays idle until user clicks Load. */
+  const [combo99Armed, setCombo99Armed] = useState(false);
+  const [combo99Open, setCombo99Open] = useState(false);
+  const [combo99Date, setCombo99Date] = useState<string | null>(null);
 
   const setRange = (from: Date, to: Date) => {
     setDateFrom(format(from, "yyyy-MM-dd"));
@@ -88,6 +97,9 @@ const Dashboard = () => {
 
   useEffect(() => {
     setTestsBookedArmed(false);
+    setCombo99Armed(false);
+    setCombo99Open(false);
+    setCombo99Date(null);
     setDrillTest(null);
     setTestSearch("");
   }, [dateFrom, dateTo]);
@@ -452,6 +464,43 @@ const Dashboard = () => {
     ? (testsErrorObj as Error)?.message || "Failed to load tests booked"
     : null;
 
+  const {
+    data: combo99Rows = [],
+    isLoading: combo99Loading,
+    isFetching: combo99Fetching,
+    isError: combo99Error,
+    error: combo99ErrorObj,
+    refetch: refetchCombo99,
+  } = useQuery({
+    queryKey: ["dashboard_combo99_bills", dateFrom, dateTo],
+    enabled: combo99Armed,
+    queryFn: async () => {
+      const from = startOfDay(parseISO(dateFrom)).toISOString();
+      const to = endOfDay(parseISO(dateTo)).toISOString();
+      return fetchCombo99Bills(from, to);
+    },
+    staleTime: 60_000,
+    retry: 2,
+  });
+
+  const combo99 = useMemo(() => summarizeCombo99(combo99Rows), [combo99Rows]);
+  const combo99Busy = combo99Armed && (combo99Loading || combo99Fetching);
+  const combo99ErrorMsg = combo99Error
+    ? (combo99ErrorObj as Error)?.message || "Failed to load COMBO99"
+    : null;
+  const combo99DayPatients = useMemo(
+    () => combo99Rows.filter((r) => r.bookedOn === combo99Date),
+    [combo99Rows, combo99Date],
+  );
+
+  const formatBookedOn = (ymd: string) => {
+    const [y, m, d] = ymd.split("-");
+    if (!y || !m || !d) return ymd;
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const month = months[Number(m) - 1];
+    return month ? `${d} ${month} ${y}` : ymd;
+  };
+
   const modeRows = Object.entries(summary.modes)
     .filter(([, v]) => Math.abs(v) > 0.009)
     .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]));
@@ -761,6 +810,83 @@ const Dashboard = () => {
         </CardContent>
       </Card>
 
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <CardTitle className="text-base">COMBO99</CardTitle>
+              <p className="text-sm text-muted-foreground mt-1">
+                Patients who booked COMBO99 in the selected dates. The bill is that patient’s full test total, including any other tests on the same invoice. Home visit charges are not included. Nothing loads until you click Load.
+              </p>
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              variant={combo99Armed ? "outline" : "default"}
+              disabled={combo99Busy}
+              onClick={() => {
+                if (!combo99Armed) {
+                  setCombo99Armed(true);
+                  return;
+                }
+                void refetchCombo99();
+              }}
+            >
+              {combo99Busy ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                  Loading…
+                </>
+              ) : combo99Armed ? (
+                "Reload"
+              ) : (
+                "Load"
+              )}
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {!combo99Armed ? (
+            <p className="text-sm text-muted-foreground py-6 text-center">
+              Click Load to fetch COMBO99 for the selected dates.
+            </p>
+          ) : combo99Busy ? (
+            <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+          ) : combo99ErrorMsg ? (
+            <p className="text-sm text-destructive py-6 text-center">{combo99ErrorMsg}</p>
+          ) : (
+            <button
+              type="button"
+              className="w-full rounded-xl border p-4 text-left hover:ring-2 hover:ring-sky-300"
+              onClick={() => {
+                setCombo99Date(combo99.dates[0]?.bookedOn ?? null);
+                setCombo99Open(true);
+              }}
+            >
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">COMBO99 sold</p>
+                  <p className="text-2xl font-bold tabular-nums">{combo99.comboQty}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Patients</p>
+                  <p className="text-2xl font-bold tabular-nums">{combo99.patients}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Total bill</p>
+                  <p className="text-2xl font-bold tabular-nums">{money(combo99.billAmount)}</p>
+                </div>
+              </div>
+              <p className="text-[11px] mt-3 text-muted-foreground">
+                {combo99.patients === 0
+                  ? "No COMBO99 bookings in this date range."
+                  : `${combo99.withOtherTests} of ${combo99.patients} patient${combo99.patients === 1 ? "" : "s"} also booked other tests. Click for the date-wise split.`}
+              </p>
+            </button>
+          )}
+        </CardContent>
+      </Card>
+
       <Dialog open={showModes} onOpenChange={setShowModes}>
         <DialogContent className="max-w-md">
           <DialogHeader>
@@ -860,6 +986,95 @@ const Dashboard = () => {
                   </TableRow>
                 </TableFooter>
               </Table>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+      <Dialog open={combo99Open} onOpenChange={(o) => { if (!o) setCombo99Open(false); }}>
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>COMBO99 — date wise</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            {combo99.comboQty} COMBO99 · {combo99.patients} patient{combo99.patients === 1 ? "" : "s"} · Bill {money(combo99.billAmount)}
+          </p>
+          {combo99.dates.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-4 text-center">No COMBO99 bookings in this date range.</p>
+          ) : (
+            <div className="rounded-md border overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Date</TableHead>
+                    <TableHead className="text-right">COMBO99</TableHead>
+                    <TableHead className="text-right">Patients</TableHead>
+                    <TableHead className="text-right">With other tests</TableHead>
+                    <TableHead className="text-right">Bill</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {combo99.dates.map((day: Combo99DateRow) => (
+                    <TableRow
+                      key={day.bookedOn}
+                      className={cn(
+                        "cursor-pointer hover:bg-muted/50",
+                        combo99Date === day.bookedOn && "bg-muted/60",
+                      )}
+                      onClick={() => setCombo99Date(day.bookedOn)}
+                    >
+                      <TableCell className="font-medium whitespace-nowrap">{formatBookedOn(day.bookedOn)}</TableCell>
+                      <TableCell className="text-right tabular-nums">{day.comboQty}</TableCell>
+                      <TableCell className="text-right tabular-nums">{day.patients}</TableCell>
+                      <TableCell className="text-right tabular-nums">{day.withOtherTests}</TableCell>
+                      <TableCell className="text-right tabular-nums">{money(day.billAmount)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+                <TableFooter>
+                  <TableRow>
+                    <TableCell>Total</TableCell>
+                    <TableCell className="text-right tabular-nums">{combo99.comboQty}</TableCell>
+                    <TableCell className="text-right tabular-nums">{combo99.patients}</TableCell>
+                    <TableCell className="text-right tabular-nums">{combo99.withOtherTests}</TableCell>
+                    <TableCell className="text-right tabular-nums">{money(combo99.billAmount)}</TableCell>
+                  </TableRow>
+                </TableFooter>
+              </Table>
+            </div>
+          )}
+          {combo99Date && (
+            <div className="space-y-2">
+              <p className="text-sm font-medium">{formatBookedOn(combo99Date)}</p>
+              {combo99DayPatients.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No patients.</p>
+              ) : (
+                <div className="rounded-md border overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Invoice #</TableHead>
+                        <TableHead>Patient</TableHead>
+                        <TableHead className="text-right">COMBO99</TableHead>
+                        <TableHead className="text-right">Other tests</TableHead>
+                        <TableHead className="text-right">Bill</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {combo99DayPatients.map((p) => (
+                        <TableRow key={p.registrationId}>
+                          <TableCell className="font-mono text-xs whitespace-nowrap">{p.invoiceNumber}</TableCell>
+                          <TableCell className="font-medium whitespace-nowrap">
+                            {patientDisplayName({ title: p.title, patient_name: p.patientName })}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums">{p.comboQty}</TableCell>
+                          <TableCell className="text-right tabular-nums">{p.otherTestCount}</TableCell>
+                          <TableCell className="text-right tabular-nums">{money(p.billAmount)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
             </div>
           )}
         </DialogContent>
