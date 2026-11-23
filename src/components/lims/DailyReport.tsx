@@ -15,7 +15,7 @@ import DeletePasswordDialog from "@/components/DeletePasswordDialog";
 import * as XLSX from "@e965/xlsx";
 import jsPDF from "jspdf";
 import { patientDisplayName } from "@/lib/patientDisplayName";
-import { isHiddenDailyReportType, paymentRowGross, paymentRowPaid, mergeSameTimestampTestCancelRefunds } from "@/lib/dailyReportMetrics";
+import { isHiddenDailyReportType, paymentRowGross, paymentRowPaid, paymentRowDue, mergeSameTimestampTestCancelRefunds } from "@/lib/dailyReportMetrics";
 import { fetchAllPages, fetchInIdChunks } from "@/lib/supabaseIdChunks";
 
 const TRANSACTION_LABELS: Record<string, string> = {
@@ -170,16 +170,10 @@ const DailyReport = () => {
 
   const getRowPaid = (r: any): number => paymentRowPaid(r);
 
-  /** Live remaining due for registration rows so credit pickup bills stay visible after monthly invoice. */
+  /** Due booked on this row. A later collection must not wipe the registration due. */
   const getRowDue = (r: any): number => {
-    if (r.transaction_type === "registration_payment" && r.registration_id) {
-      const reg: any = regMap[r.registration_id];
-      if (reg) {
-        if (reg.bill_cancelled) return 0;
-        return Math.max(0, Number(reg.due_amount || 0));
-      }
-    }
-    return Number(r.due_amount || 0);
+    const reg = r.registration_id ? regMap[r.registration_id] : null;
+    return paymentRowDue(r, reg);
   };
 
   /** Uniform money display: `-₹123` (sign before ₹), never `₹-123`. */

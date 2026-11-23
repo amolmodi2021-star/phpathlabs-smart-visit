@@ -1,7 +1,9 @@
+// @vitest-environment node
 import { describe, expect, it } from "vitest";
 import {
   paymentRowGross,
   paymentRowPaid,
+  paymentRowDue,
   mergeSameTimestampTestCancelRefunds,
 } from "@/lib/dailyReportMetrics";
 
@@ -150,5 +152,20 @@ describe("dailyReportMetrics", () => {
       },
     ]);
     expect(merged).toHaveLength(2);
+  });
+
+  it("keeps the due booked at registration after it is collected later", () => {
+    expect(paymentRowDue(
+      { transaction_type: "registration_payment", due_amount: 160 },
+      { bill_cancelled: false },
+    )).toBe(160);
+    expect(paymentRowDue(
+      { transaction_type: "due_collection", due_amount: -160 },
+      { bill_cancelled: false },
+    )).toBe(-160);
+    expect(paymentRowDue(
+      { transaction_type: "registration_payment", due_amount: 160 },
+      { bill_cancelled: true },
+    )).toBe(0);
   });
 });

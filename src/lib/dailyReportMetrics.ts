@@ -58,6 +58,20 @@ export function paymentRowPaid(row: {
   return Number(row.paid_amount || 0);
 }
 
+/**
+ * Due on a Daily Report row.
+ * Registration shows the due stored on that booking, not the live balance
+ * after a later collection. Due collection is stored negative so the two net.
+ * A cancelled bill's registration due is cleared; the cancel row reverses it.
+ */
+export function paymentRowDue(
+  row: { transaction_type?: string | null; due_amount?: number | null },
+  registration?: { bill_cancelled?: boolean | null } | null,
+): number {
+  if (row.transaction_type === "registration_payment" && registration?.bill_cancelled) return 0;
+  return Number(row.due_amount || 0);
+}
+
 export function isHiddenDailyReportType(type: string | null | undefined): boolean {
   // Cross-day cancel used to hide the marker while a separate refund carried cash.
   // Combined cancel rows now include cash — always show them.
