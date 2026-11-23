@@ -143,6 +143,25 @@ export function summarizeCombo99(rows: Combo99BillRow[]): Combo99Summary {
   };
 }
 
+export type Combo99Lifetime = {
+  lifetimeRevenue: number;
+  uniquePatients: number;
+  lifetimeBills: number;
+};
+
+/** Lifetime revenue for every patient who has booked COMBO99, ignoring the date range. */
+export async function fetchCombo99Lifetime(): Promise<Combo99Lifetime> {
+  const { supabase } = await import("@/integrations/supabase/client");
+  const { data, error } = await (supabase as any).rpc("dashboard_combo99_lifetime");
+  if (error) throw error;
+  const row = ((data || []) as any[])[0] || {};
+  return {
+    lifetimeRevenue: Number(row.lifetime_revenue || 0) || 0,
+    uniquePatients: Number(row.unique_patients || 0) || 0,
+    lifetimeBills: Number(row.lifetime_bills || 0) || 0,
+  };
+}
+
 export async function fetchCombo99Bills(fromIso: string, toIso: string): Promise<Combo99BillRow[]> {
   const { supabase } = await import("@/integrations/supabase/client");
   const { data, error } = await (supabase as any).rpc("dashboard_combo99_bills", {

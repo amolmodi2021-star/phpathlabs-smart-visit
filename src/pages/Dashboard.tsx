@@ -36,6 +36,7 @@ import {
 import {
   combo99VisitSplit,
   fetchCombo99Bills,
+  fetchCombo99Lifetime,
   summarizeCombo99,
   type Combo99DateRow,
 } from "@/lib/dashboardCombo99";
@@ -466,24 +467,30 @@ const Dashboard = () => {
     : null;
 
   const {
-    data: combo99Rows = [],
+    data: combo99Report,
     isLoading: combo99Loading,
     isFetching: combo99Fetching,
     isError: combo99Error,
     error: combo99ErrorObj,
     refetch: refetchCombo99,
   } = useQuery({
-    queryKey: ["dashboard_combo99_bills_v4", dateFrom, dateTo],
+    queryKey: ["dashboard_combo99_bills_v5", dateFrom, dateTo],
     enabled: combo99Armed,
     queryFn: async () => {
       const from = startOfDay(parseISO(dateFrom)).toISOString();
       const to = endOfDay(parseISO(dateTo)).toISOString();
-      return fetchCombo99Bills(from, to);
+      const [rows, lifetime] = await Promise.all([
+        fetchCombo99Bills(from, to),
+        fetchCombo99Lifetime(),
+      ]);
+      return { rows, lifetimeRevenue: lifetime.lifetimeRevenue };
     },
     staleTime: 60_000,
     retry: 2,
   });
 
+  const combo99Rows = combo99Report?.rows ?? [];
+  const combo99LifetimeRevenue = combo99Report?.lifetimeRevenue ?? 0;
   const combo99 = useMemo(() => summarizeCombo99(combo99Rows), [combo99Rows]);
   const combo99Busy = combo99Armed && (combo99Loading || combo99Fetching);
   const combo99ErrorMsg = combo99Error
@@ -817,7 +824,7 @@ const Dashboard = () => {
             <div>
               <CardTitle className="text-base">COMBO99</CardTitle>
               <p className="text-sm text-muted-foreground mt-1">
-                COMBO99 value is the combo itself. Extra revenue is other tests on those same bills. Total revenue is only bills that include COMBO99. Lifetime revenue is every bill for that UMR, with and without COMBO99. Home visit charges are not included. Nothing loads until you click Load.
+                COMBO99 value, extra revenue, and total revenue use the selected dates. Unique patients is the distinct UMR count across those bills. Lifetime revenue is every test bill for every COMBO99 patient and does not use the date range. Home visit charges are not included. Nothing loads until you click Load.
               </p>
             </div>
             <Button
@@ -864,7 +871,7 @@ const Dashboard = () => {
                 setCombo99Open(true);
               }}
             >
-              <div className="grid gap-3 sm:grid-cols-2 mb-4">
+              <div className="grid gap-3 sm:grid-cols-3 mb-4">
                 <div>
                   <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Bills with COMBO99</p>
                   <p className="text-2xl font-bold tabular-nums">{combo99.comboBills}</p>
@@ -873,6 +880,11 @@ const Dashboard = () => {
                   <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Return bills</p>
                   <p className="text-2xl font-bold tabular-nums">{combo99.returnBills}</p>
                   <p className="text-[11px] text-muted-foreground">Same UMR came back, with or without COMBO99</p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Unique patients</p>
+                  <p className="text-2xl font-bold tabular-nums">{combo99.patients}</p>
+                  <p className="text-[11px] text-muted-foreground">Distinct UMR across all bills in this range</p>
                 </div>
               </div>
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -890,13 +902,14 @@ const Dashboard = () => {
                 </div>
                 <div>
                   <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Lifetime revenue</p>
-                  <p className="text-2xl font-bold tabular-nums">{money(combo99.lifetimeBill)}</p>
+                  <p className="text-2xl font-bold tabular-nums">{money(combo99LifetimeRevenue)}</p>
+                  <p className="text-[11px] text-muted-foreground">All time, not this date range</p>
                 </div>
               </div>
               <p className="text-[11px] mt-3 text-muted-foreground">
                 {combo99.patients === 0
                   ? "No COMBO99 patients in this date range."
-                  : `${combo99.patients} patient${combo99.patients === 1 ? "" : "s"}. A return bill is a later visit of the same UMR. Click for the date-wise split.`}
+                  : "A return bill is a later visit of the same UMR. Click for the date-wise split."}
               </p>
             </button>
           )}
@@ -1012,7 +1025,7 @@ const Dashboard = () => {
             <DialogTitle>COMBO99 — date wise</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            COMBO99 {money(combo99.comboValue)} · Extra {money(combo99.extraRevenue)} · Total {money(combo99.totalRevenue)} · Lifetime {money(combo99.lifetimeBill)}
+            COMBO99 {money(combo99.comboValue)} · Extra {money(combo99.extraRevenue)} · Total {money(combo99.totalRevenue)} · Unique patients {combo99.patients} · Lifetime {money(combo99LifetimeRevenue)} (all time)
           </p>
           {combo99.dates.length === 0 ? (
             <p className="text-sm text-muted-foreground py-4 text-center">No COMBO99 patients in this date range.</p>
