@@ -18,6 +18,8 @@ export type Combo99BillRow = {
   /** Every test bill for this UMR. Same value on each of that patient's visits. */
   lifetimeBill: number;
   lifetimeVisits: number;
+  /** Later bill for the same UMR, whether or not this bill includes COMBO99. */
+  isReturn: boolean;
 };
 
 export type Combo99DateRow = {
@@ -25,7 +27,8 @@ export type Combo99DateRow = {
   comboQty: number;
   visits: number;
   patients: number;
-  returnVisits: number;
+  comboBills: number;
+  returnBills: number;
   comboValue: number;
   extraRevenue: number;
   totalRevenue: number;
@@ -35,7 +38,10 @@ export type Combo99Summary = {
   comboQty: number;
   patients: number;
   visits: number;
-  returnVisits: number;
+  /** Bills in the selected dates that include COMBO99. */
+  comboBills: number;
+  /** Later bills of the same UMR in the selected dates, with or without COMBO99. */
+  returnBills: number;
   /** COMBO99 line value on bills that include COMBO99. */
   comboValue: number;
   /** Other tests on those same COMBO99 bills. */
@@ -67,7 +73,8 @@ export function summarizeCombo99(rows: Combo99BillRow[]): Combo99Summary {
   const byDate = new Map<string, Combo99DateRow & { keys: Set<string> }>();
   const seenPatients = new Map<string, number>();
   let comboQty = 0;
-  let returnVisits = 0;
+  let comboBills = 0;
+  let returnBills = 0;
   let comboValue = 0;
   let extraRevenue = 0;
   let totalRevenue = 0;
@@ -79,8 +86,9 @@ export function summarizeCombo99(rows: Combo99BillRow[]): Combo99Summary {
     const extra = split.extra;
     const key = combo99PatientKey(row);
     comboQty += qty;
-    if (qty <= 0) returnVisits += 1;
-    else {
+    if (qty > 0) comboBills += 1;
+    if (row.isReturn) returnBills += 1;
+    if (qty > 0) {
       comboValue += combo;
       extraRevenue += extra;
       totalRevenue += split.total;
@@ -93,7 +101,8 @@ export function summarizeCombo99(rows: Combo99BillRow[]): Combo99Summary {
       comboQty: 0,
       visits: 0,
       patients: 0,
-      returnVisits: 0,
+      comboBills: 0,
+      returnBills: 0,
       comboValue: 0,
       extraRevenue: 0,
       totalRevenue: 0,
@@ -101,8 +110,9 @@ export function summarizeCombo99(rows: Combo99BillRow[]): Combo99Summary {
     };
     prev.comboQty += qty;
     prev.visits += 1;
-    if (qty <= 0) prev.returnVisits += 1;
-    else {
+    if (qty > 0) prev.comboBills += 1;
+    if (row.isReturn) prev.returnBills += 1;
+    if (qty > 0) {
       prev.comboValue += combo;
       prev.extraRevenue += extra;
       prev.totalRevenue += split.total;
@@ -123,7 +133,8 @@ export function summarizeCombo99(rows: Combo99BillRow[]): Combo99Summary {
     comboQty,
     patients: seenPatients.size,
     visits: rows.length,
-    returnVisits,
+    comboBills,
+    returnBills,
     comboValue,
     extraRevenue,
     totalRevenue,
@@ -153,5 +164,6 @@ export async function fetchCombo99Bills(fromIso: string, toIso: string): Promise
     billAmount: Number(r.bill_amount || 0) || 0,
     lifetimeBill: Number(r.lifetime_bill || 0) || 0,
     lifetimeVisits: Number(r.lifetime_visits || 0) || 0,
+    isReturn: r.is_return === true,
   }));
 }

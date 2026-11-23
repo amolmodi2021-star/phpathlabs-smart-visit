@@ -19,6 +19,7 @@ function row(partial: Partial<Combo99BillRow> & Pick<Combo99BillRow, "billAmount
     billAmount: partial.billAmount,
     lifetimeBill: partial.lifetimeBill ?? partial.billAmount,
     lifetimeVisits: partial.lifetimeVisits ?? 1,
+    isReturn: partial.isReturn ?? false,
   };
 }
 
@@ -34,14 +35,15 @@ describe("summarizeCombo99", () => {
     expect(summary.comboQty).toBe(5);
     expect(summary.patients).toBe(5);
     expect(summary.visits).toBe(5);
-    expect(summary.returnVisits).toBe(0);
+    expect(summary.comboBills).toBe(5);
+    expect(summary.returnBills).toBe(0);
     expect(summary.comboValue).toBe(99 * 5);
     expect(summary.extraRevenue).toBe(300 + 400);
     expect(summary.totalRevenue).toBe(99 + 99 + 99 + 399 + 499);
     expect(summary.lifetimeBill).toBe(99 + 99 + 99 + 399 + 499);
     expect(summary.dates).toEqual([
-      { bookedOn: "2026-11-23", comboQty: 4, visits: 4, patients: 4, returnVisits: 0, comboValue: 99 * 4, extraRevenue: 300, totalRevenue: 99 + 99 + 99 + 399 },
-      { bookedOn: "2026-11-24", comboQty: 1, visits: 1, patients: 1, returnVisits: 0, comboValue: 99, extraRevenue: 400, totalRevenue: 499 },
+      { bookedOn: "2026-11-23", comboQty: 4, visits: 4, patients: 4, comboBills: 4, returnBills: 0, comboValue: 99 * 4, extraRevenue: 300, totalRevenue: 99 + 99 + 99 + 399 },
+      { bookedOn: "2026-11-24", comboQty: 1, visits: 1, patients: 1, comboBills: 1, returnBills: 0, comboValue: 99, extraRevenue: 400, totalRevenue: 499 },
     ]);
   });
 
@@ -75,16 +77,28 @@ describe("summarizeCombo99", () => {
         otherTestCount: 1,
         lifetimeBill: 399,
         lifetimeVisits: 2,
+        isReturn: true,
       }),
     ]);
     expect(summary.patients).toBe(1);
     expect(summary.visits).toBe(2);
-    expect(summary.returnVisits).toBe(1);
+    expect(summary.comboBills).toBe(1);
+    expect(summary.returnBills).toBe(1);
     expect(summary.comboQty).toBe(1);
     expect(summary.comboValue).toBe(99);
     expect(summary.extraRevenue).toBe(0);
     expect(summary.totalRevenue).toBe(99);
     expect(summary.lifetimeBill).toBe(399);
-    expect(summary.dates.map((d) => d.returnVisits)).toEqual([0, 1]);
+    expect(summary.dates.map((d) => d.returnBills)).toEqual([0, 1]);
+  });
+
+  it("counts a later COMBO99 bill as both a COMBO99 bill and a return bill", () => {
+    const summary = summarizeCombo99([
+      row({ umrNumber: "UMR2", bookedOn: "2026-11-01", billAmount: 99, isReturn: false }),
+      row({ umrNumber: "UMR2", bookedOn: "2026-11-20", billAmount: 99, isReturn: true, lifetimeBill: 198, lifetimeVisits: 2 }),
+    ]);
+    expect(summary.comboBills).toBe(2);
+    expect(summary.returnBills).toBe(1);
+    expect(summary.totalRevenue).toBe(198);
   });
 });
