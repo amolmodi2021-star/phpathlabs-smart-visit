@@ -34,6 +34,7 @@ import {
   type TestVolumeRow,
 } from "@/lib/dashboardTestVolume";
 import {
+  combo99VisitSplit,
   fetchCombo99Bills,
   summarizeCombo99,
   type Combo99DateRow,
@@ -472,7 +473,7 @@ const Dashboard = () => {
     error: combo99ErrorObj,
     refetch: refetchCombo99,
   } = useQuery({
-    queryKey: ["dashboard_combo99_bills_v2", dateFrom, dateTo],
+    queryKey: ["dashboard_combo99_bills_v3", dateFrom, dateTo],
     enabled: combo99Armed,
     queryFn: async () => {
       const from = startOfDay(parseISO(dateFrom)).toISOString();
@@ -816,7 +817,7 @@ const Dashboard = () => {
             <div>
               <CardTitle className="text-base">COMBO99</CardTitle>
               <p className="text-sm text-muted-foreground mt-1">
-                Patients who have booked COMBO99 at least once. A later visit with the same UMR is included even when that visit has no COMBO99. Lifetime value is every test bill for that UMR. Home visit charges are not included. Nothing loads until you click Load.
+                COMBO99 value is the combo itself. Extra revenue is other tests on those same bills. Total revenue is only bills that include COMBO99. Lifetime revenue is every bill for that UMR, with and without COMBO99. Home visit charges are not included. Nothing loads until you click Load.
               </p>
             </div>
             <Button
@@ -865,26 +866,26 @@ const Dashboard = () => {
             >
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 <div>
-                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">COMBO99 sold</p>
-                  <p className="text-2xl font-bold tabular-nums">{combo99.comboQty}</p>
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">COMBO99 value</p>
+                  <p className="text-2xl font-bold tabular-nums">{money(combo99.comboValue)}</p>
                 </div>
                 <div>
-                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Patients</p>
-                  <p className="text-2xl font-bold tabular-nums">{combo99.patients}</p>
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Extra revenue</p>
+                  <p className="text-2xl font-bold tabular-nums">{money(combo99.extraRevenue)}</p>
                 </div>
                 <div>
-                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Bills in range</p>
-                  <p className="text-2xl font-bold tabular-nums">{money(combo99.billAmount)}</p>
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Total revenue</p>
+                  <p className="text-2xl font-bold tabular-nums">{money(combo99.totalRevenue)}</p>
                 </div>
                 <div>
-                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Lifetime value</p>
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Lifetime revenue</p>
                   <p className="text-2xl font-bold tabular-nums">{money(combo99.lifetimeBill)}</p>
                 </div>
               </div>
               <p className="text-[11px] mt-3 text-muted-foreground">
                 {combo99.patients === 0
                   ? "No COMBO99 patients in this date range."
-                  : `${combo99.returnVisits} return visit${combo99.returnVisits === 1 ? "" : "s"} in this range had no COMBO99. Click for the date-wise split.`}
+                  : `${combo99.comboQty} COMBO99 · ${combo99.patients} patient${combo99.patients === 1 ? "" : "s"}. ${combo99.returnVisits} return visit${combo99.returnVisits === 1 ? "" : "s"} without COMBO99 ${combo99.returnVisits === 1 ? "is" : "are"} in lifetime revenue only. Click for the date-wise split.`}
               </p>
             </button>
           )}
@@ -1000,7 +1001,7 @@ const Dashboard = () => {
             <DialogTitle>COMBO99 — date wise</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            {combo99.comboQty} COMBO99 · {combo99.patients} patient{combo99.patients === 1 ? "" : "s"} · Bills in range {money(combo99.billAmount)} · Lifetime {money(combo99.lifetimeBill)}
+            COMBO99 {money(combo99.comboValue)} · Extra {money(combo99.extraRevenue)} · Total {money(combo99.totalRevenue)} · Lifetime {money(combo99.lifetimeBill)}
           </p>
           {combo99.dates.length === 0 ? (
             <p className="text-sm text-muted-foreground py-4 text-center">No COMBO99 patients in this date range.</p>
@@ -1010,10 +1011,10 @@ const Dashboard = () => {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Date</TableHead>
-                    <TableHead className="text-right">COMBO99</TableHead>
-                    <TableHead className="text-right">Visits</TableHead>
+                    <TableHead className="text-right">COMBO99 value</TableHead>
+                    <TableHead className="text-right">Extra revenue</TableHead>
+                    <TableHead className="text-right">Total revenue</TableHead>
                     <TableHead className="text-right">Returns</TableHead>
-                    <TableHead className="text-right">Bill</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1027,20 +1028,20 @@ const Dashboard = () => {
                       onClick={() => setCombo99Date(day.bookedOn)}
                     >
                       <TableCell className="font-medium whitespace-nowrap">{formatBookedOn(day.bookedOn)}</TableCell>
-                      <TableCell className="text-right tabular-nums">{day.comboQty}</TableCell>
-                      <TableCell className="text-right tabular-nums">{day.visits}</TableCell>
+                      <TableCell className="text-right tabular-nums">{money(day.comboValue)}</TableCell>
+                      <TableCell className="text-right tabular-nums">{money(day.extraRevenue)}</TableCell>
+                      <TableCell className="text-right tabular-nums">{money(day.totalRevenue)}</TableCell>
                       <TableCell className="text-right tabular-nums">{day.returnVisits}</TableCell>
-                      <TableCell className="text-right tabular-nums">{money(day.billAmount)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
                 <TableFooter>
                   <TableRow>
                     <TableCell>Total</TableCell>
-                    <TableCell className="text-right tabular-nums">{combo99.comboQty}</TableCell>
-                    <TableCell className="text-right tabular-nums">{combo99.visits}</TableCell>
+                    <TableCell className="text-right tabular-nums">{money(combo99.comboValue)}</TableCell>
+                    <TableCell className="text-right tabular-nums">{money(combo99.extraRevenue)}</TableCell>
+                    <TableCell className="text-right tabular-nums">{money(combo99.totalRevenue)}</TableCell>
                     <TableCell className="text-right tabular-nums">{combo99.returnVisits}</TableCell>
-                    <TableCell className="text-right tabular-nums">{money(combo99.billAmount)}</TableCell>
                   </TableRow>
                 </TableFooter>
               </Table>
@@ -1060,6 +1061,8 @@ const Dashboard = () => {
                         <TableHead>UMR</TableHead>
                         <TableHead>Patient</TableHead>
                         <TableHead>Visit</TableHead>
+                        <TableHead className="text-right">COMBO99</TableHead>
+                        <TableHead className="text-right">Extra</TableHead>
                         <TableHead className="text-right">This bill</TableHead>
                         <TableHead className="text-right">Lifetime</TableHead>
                       </TableRow>
@@ -1075,6 +1078,8 @@ const Dashboard = () => {
                           <TableCell className="whitespace-nowrap">
                             {p.comboQty > 0 ? `COMBO99 × ${p.comboQty}` : "Return"}
                           </TableCell>
+                          <TableCell className="text-right tabular-nums">{money(combo99VisitSplit(p).combo)}</TableCell>
+                          <TableCell className="text-right tabular-nums">{money(combo99VisitSplit(p).extra)}</TableCell>
                           <TableCell className="text-right tabular-nums">{money(p.billAmount)}</TableCell>
                           <TableCell className="text-right tabular-nums">
                             {money(p.lifetimeBill)}

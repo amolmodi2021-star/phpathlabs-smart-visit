@@ -11,6 +11,8 @@ export type Combo99BillRow = {
   bookedOn: string;
   comboQty: number;
   otherTestCount: number;
+  /** Billed amount of the COMBO99 lines on this visit. Zero on a return visit. */
+  comboAmount: number;
   /** This visit's test bill after discount, excluding home visit charges. */
   billAmount: number;
   /** Every test bill for this UMR. Same value on each of that patient's visits. */
@@ -24,8 +26,9 @@ export type Combo99DateRow = {
   visits: number;
   patients: number;
   returnVisits: number;
-  billAmount: number;
-  withOtherTests: number;
+  comboValue: number;
+  extraRevenue: number;
+  totalRevenue: number;
 };
 
 export type Combo99Summary = {
@@ -33,11 +36,27 @@ export type Combo99Summary = {
   patients: number;
   visits: number;
   returnVisits: number;
-  billAmount: number;
+  /** COMBO99 line value on bills that include COMBO99. */
+  comboValue: number;
+  /** Other tests on those same COMBO99 bills. */
+  extraRevenue: number;
+  /** Full test bill of invoices that include COMBO99. Return visits are not included. */
+  totalRevenue: number;
+  /** Every test bill for those UMRs, with and without COMBO99. */
   lifetimeBill: number;
-  withOtherTests: number;
   dates: Combo99DateRow[];
 };
+
+export function combo99VisitSplit(row: Pick<Combo99BillRow, "comboQty" | "comboAmount" | "billAmount">): {
+  combo: number;
+  extra: number;
+  total: number;
+} {
+  const bill = Math.max(0, Number(row.billAmount) || 0);
+  if ((Number(row.comboQty) || 0) <= 0) return { combo: 0, extra: 0, total: 0 };
+  const combo = Math.min(Math.max(Number(row.comboAmount) || 0, 0), bill);
+  return { combo, extra: bill - combo, total: bill };
+}
 
 export function combo99PatientKey(row: Pick<Combo99BillRow, "umrNumber" | "registrationId">): string {
   const umr = String(row.umrNumber || "").trim().toUpperCase();
@@ -49,18 +68,23 @@ export function summarizeCombo99(rows: Combo99BillRow[]): Combo99Summary {
   const seenPatients = new Map<string, number>();
   let comboQty = 0;
   let returnVisits = 0;
-  let billAmount = 0;
-  let withOtherTests = 0;
+  let comboValue = 0;
+  let extraRevenue = 0;
+  let totalRevenue = 0;
 
   for (const row of rows) {
     const qty = Number(row.comboQty) || 0;
-    const bill = Number(row.billAmount) || 0;
-    const others = Number(row.otherTestCount) || 0;
+    const split = combo99VisitSplit(row);
+    const combo = split.combo;
+    const extra = split.extra;
     const key = combo99PatientKey(row);
     comboQty += qty;
-    billAmount += bill;
     if (qty <= 0) returnVisits += 1;
-    if (others > 0) withOtherTests += 1;
+    else {
+      comboValue += combo;
+      extraRevenue += extra;
+      totalRevenue += split.total;
+    }
     if (!seenPatients.has(key)) seenPatients.set(key, Number(row.lifetimeBill) || 0);
 
     const dayKey = row.bookedOn || "—";
@@ -70,15 +94,19 @@ export function summarizeCombo99(rows: Combo99BillRow[]): Combo99Summary {
       visits: 0,
       patients: 0,
       returnVisits: 0,
-      billAmount: 0,
-      withOtherTests: 0,
+      comboValue: 0,
+      extraRevenue: 0,
+      totalRevenue: 0,
       keys: new Set<string>(),
     };
     prev.comboQty += qty;
     prev.visits += 1;
-    prev.billAmount += bill;
     if (qty <= 0) prev.returnVisits += 1;
-    if (others > 0) prev.withOtherTests += 1;
+    else {
+      prev.comboValue += combo;
+      prev.extraRevenue += extra;
+      prev.totalRevenue += split.total;
+    }
     prev.keys.add(key);
     prev.patients = prev.keys.size;
     byDate.set(dayKey, prev);
@@ -96,9 +124,10 @@ export function summarizeCombo99(rows: Combo99BillRow[]): Combo99Summary {
     patients: seenPatients.size,
     visits: rows.length,
     returnVisits,
-    billAmount,
+    comboValue,
+    extraRevenue,
+    totalRevenue,
     lifetimeBill,
-    withOtherTests,
     dates,
   };
 }
@@ -120,6 +149,7 @@ export async function fetchCombo99Bills(fromIso: string, toIso: string): Promise
     bookedOn: String(r.booked_on || ""),
     comboQty: Number(r.combo_qty || 0) || 0,
     otherTestCount: Number(r.other_test_count || 0) || 0,
+    comboAmount: Number(r.combo_amount || 0) || 0,
     billAmount: Number(r.bill_amount || 0) || 0,
     lifetimeBill: Number(r.lifetime_bill || 0) || 0,
     lifetimeVisits: Number(r.lifetime_visits || 0) || 0,

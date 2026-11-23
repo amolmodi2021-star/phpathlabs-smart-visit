@@ -15,6 +15,7 @@ function row(partial: Partial<Combo99BillRow> & Pick<Combo99BillRow, "billAmount
     bookedOn: partial.bookedOn,
     comboQty: partial.comboQty ?? 1,
     otherTestCount: partial.otherTestCount ?? 0,
+    comboAmount: partial.comboAmount ?? ((partial.comboQty ?? 1) > 0 ? partial.billAmount : 0),
     billAmount: partial.billAmount,
     lifetimeBill: partial.lifetimeBill ?? partial.billAmount,
     lifetimeVisits: partial.lifetimeVisits ?? 1,
@@ -27,19 +28,20 @@ describe("summarizeCombo99", () => {
       row({ bookedOn: "2026-11-23", billAmount: 99 }),
       row({ bookedOn: "2026-11-23", billAmount: 99 }),
       row({ bookedOn: "2026-11-23", billAmount: 99 }),
-      row({ bookedOn: "2026-11-23", billAmount: 399, otherTestCount: 2 }),
-      row({ bookedOn: "2026-11-24", billAmount: 499, otherTestCount: 1 }),
+      row({ bookedOn: "2026-11-23", billAmount: 399, comboAmount: 99, otherTestCount: 2 }),
+      row({ bookedOn: "2026-11-24", billAmount: 499, comboAmount: 99, otherTestCount: 1 }),
     ]);
     expect(summary.comboQty).toBe(5);
     expect(summary.patients).toBe(5);
     expect(summary.visits).toBe(5);
     expect(summary.returnVisits).toBe(0);
-    expect(summary.withOtherTests).toBe(2);
-    expect(summary.billAmount).toBe(99 + 99 + 99 + 399 + 499);
+    expect(summary.comboValue).toBe(99 * 5);
+    expect(summary.extraRevenue).toBe(300 + 400);
+    expect(summary.totalRevenue).toBe(99 + 99 + 99 + 399 + 499);
     expect(summary.lifetimeBill).toBe(99 + 99 + 99 + 399 + 499);
     expect(summary.dates).toEqual([
-      { bookedOn: "2026-11-23", comboQty: 4, visits: 4, patients: 4, returnVisits: 0, billAmount: 99 + 99 + 99 + 399, withOtherTests: 1 },
-      { bookedOn: "2026-11-24", comboQty: 1, visits: 1, patients: 1, returnVisits: 0, billAmount: 499, withOtherTests: 1 },
+      { bookedOn: "2026-11-23", comboQty: 4, visits: 4, patients: 4, returnVisits: 0, comboValue: 99 * 4, extraRevenue: 300, totalRevenue: 99 + 99 + 99 + 399 },
+      { bookedOn: "2026-11-24", comboQty: 1, visits: 1, patients: 1, returnVisits: 0, comboValue: 99, extraRevenue: 400, totalRevenue: 499 },
     ]);
   });
 
@@ -49,9 +51,10 @@ describe("summarizeCombo99", () => {
     ]);
     expect(summary.comboQty).toBe(2);
     expect(summary.patients).toBe(1);
-    expect(summary.billAmount).toBe(198);
+    expect(summary.comboValue).toBe(198);
+    expect(summary.extraRevenue).toBe(0);
+    expect(summary.totalRevenue).toBe(198);
     expect(summary.lifetimeBill).toBe(198);
-    expect(summary.withOtherTests).toBe(0);
   });
 
   it("counts a later visit of the same UMR once in lifetime value", () => {
@@ -78,7 +81,9 @@ describe("summarizeCombo99", () => {
     expect(summary.visits).toBe(2);
     expect(summary.returnVisits).toBe(1);
     expect(summary.comboQty).toBe(1);
-    expect(summary.billAmount).toBe(399);
+    expect(summary.comboValue).toBe(99);
+    expect(summary.extraRevenue).toBe(0);
+    expect(summary.totalRevenue).toBe(99);
     expect(summary.lifetimeBill).toBe(399);
     expect(summary.dates.map((d) => d.returnVisits)).toEqual([0, 1]);
   });
